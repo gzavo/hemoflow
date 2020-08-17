@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+
+<simulation>
+	<Re>200</Re>
+	<blockSize>50</blockSize>
+	<outputDir>output</outputDir>
+	<simLength>1.0</simLength>
+	<saveFrequency>0.1</saveFrequency>
+</simulation>
+
+<geometry>
+	<inletDiam>2</inletDiam>
+	<inletFlowrateFunc>data/inletScale.txt</inletFlowrateFunc>
+	<file>data/valid_geom_c.npz</file>
+	<stent>stent</stent>
+</geometry>

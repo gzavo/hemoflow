@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+
+<simulation>
+	<Re>100</Re>
+	<blockSize>50</blockSize>
+	<outputDir>output</outputDir>
+	<simLength>1.0</simLength>
+	<saveFrequency>0.1</saveFrequency>
+</simulation>
+
+<geometry>
+	<inletDiam>2</inletDiam>
+	<inletFlowrateFunc>data/inletScale.txt</inletFlowrateFunc>
+	<file>data/straight_vessel_data_c.npz</file>
+	<stent></stent>
+</geometry>

@@ -1,0 +1,105 @@
+#ifndef __POROUS_H__
+#define __POROUS_H__
+
+#include "globals.h"
+#include "helper.h"
+
+
+template<typename T, typename T_>
+class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
+    public:
+        InitializePorousField(T_ *porousGeometryData, T DarcyCoefficient) : porousData(porousGeometryData), DarcyCoeff(DarcyCoefficient)
+        { }
+
+    virtual void process(Box3D domain, NTensorField3D<T>& field)
+    {
+        Dot3D offset = field.getLocation();
+
+        for (plint iX=domain.x0; iX<=domain.x1; ++iX)
+            for(plint iY=domain.y0; iY<=domain.y1; ++iY) 
+                for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
+                    plint absX = offset.x + iX;
+                    plint absY = offset.y + iY;
+                    plint absZ = offset.z + iZ;
+
+                    // if(absX==100)
+                    //     *field.get(iX, iY, iZ) = 0.5;
+
+                    T porosity = porousData[gT(absX, absY, absZ)];
+                    if(porosity > 0.0) {
+                        *field.get(iX, iY, iZ) = porousData[gT(absX, absY, absZ)] * DarcyCoeff;
+                    }
+                }  
+    }
+
+    virtual InitializePorousField<T,T_>* clone() const
+    {
+        return new InitializePorousField<T,T_>(*this);
+    }
+
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const {
+        modified[0] = modif::staticVariables;
+    }
+
+    virtual BlockDomain::DomainT appliesTo() const {
+        return BlockDomain::bulkAndEnvelope;
+    }
+
+    private:
+        T_ *porousData;
+        T DarcyCoeff;
+};
+
+
+
+/// Apply Darcy forcing
+template<typename T, template<typename U> class Descriptor>
+struct DarcyPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor, T> {
+
+    virtual void process(Box3D domain, BlockLattice3D<T,Descriptor>& lattice,
+                                       NTensorField3D<T>& field)
+    {
+    	for (plint iX=domain.x0; iX<=domain.x1; ++iX) 
+            for (plint iY=domain.y0; iY<=domain.y1; ++iY) 
+                for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
+                
+                T porosity = *field.get(iX, iY, iZ);
+
+                if(porosity == 0.0)
+                	continue;
+                	
+                if(lattice.get(iX,iY,iZ).getDynamics().isBoundary())
+                    continue;
+
+                //If it has porosity
+                Array<T,Descriptor<T>::d> vel;
+            	lattice.get(iX,iY,iZ).computeVelocity(vel);
+
+            	T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
+
+            	// Calculate the force (momentum loss)
+            	for (pluint iD = 0; iD < Descriptor<T>::d; ++iD) 
+            	{
+                	force[iD] = -porosity * vel[iD];
+            	}
+            }
+        
+    }
+
+    virtual DarcyPorousForceFunctional<T, Descriptor>* clone() const
+    {
+        return new DarcyPorousForceFunctional<T, Descriptor>(*this);
+    }
+
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const {
+        modified[0] = modif::staticVariables;
+    }
+
+    virtual BlockDomain::DomainT appliesTo() const {
+        return BlockDomain::bulkAndEnvelope;
+    }
+
+};
+
+
+#endif

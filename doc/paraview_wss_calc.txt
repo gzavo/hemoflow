@@ -1,0 +1,9 @@
+- Convert dataset to point set
+
+- Sample the point set with the stl surface
+
+- use calc normals to get normals on the surface
+
+- use calculator to get WSS:
+
+iHat*((PiNeq_XX*Normals_X)+(PiNeq_XY*Normals_Y)+(PiNeq_XZ*Normals_Z))+ jHat*((PiNeq_XY*Normals_X)+(PiNeq_YY*Normals_Y)+(PiNeq_YZ*Normals_Z))+ kHat*((PiNeq_XZ*Normals_X)+(PiNeq_YZ*Normals_Y)+(PiNeq_ZZ*Normals_Z))
