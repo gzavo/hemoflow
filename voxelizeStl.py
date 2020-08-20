@@ -17,6 +17,8 @@ def voxelize(inputFile, targetElements, isMeshAShell = False, domainData = None,
     else:
         scale, shift, domain, bounding_box = domainData
 
+    print(" (DEBUG) scale, shift, domain, BB", scale, shift, domain, bounding_box)
+
     mesh = list(slice.scaleAndShiftMesh(mesh, scale, shift))
     #Note: vol should be addressed with vol[z][x][y]
     
@@ -66,6 +68,11 @@ def voxelize(inputFile, targetElements, isMeshAShell = False, domainData = None,
     elif rotation == 1:
         #mesh = slice.swapAxisWithZ(mesh, 1)
         vol = np.swapaxes(vol, 0, 2)
+
+
+    # At the very end here fix the [z][x][y] back to [x][y][z]
+    vol = np.swapaxes(vol, 0, 2)
+    vol = np.swapaxes(vol, 0, 1)
 
     return (vol, (scale, shift, domain, bounding_box))
 

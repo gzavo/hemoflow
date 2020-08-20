@@ -111,8 +111,10 @@ def calculateScaleAndShift(mesh, targetElements):
     #domain = map(int, [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]]) 
     domain = [int(x) for x in [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]]] 
     shift = [-minimum for minimum in mins]
-    xyscale = (domain[0] - 1.0) / ds[0]
-    scale = [xyscale, xyscale, xyscale]
+    
+    #xyscale = (domain[0] - 1.0) / ds[0]
+    xyscale = domain[0] / ds[0]
+    scale = [xyscale, xyscale, xyscale] #TODO Something is fishy here, what is this xyscale???
 
     return (scale, shift, domain, bounding_box)
 

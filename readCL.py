@@ -83,7 +83,7 @@ def getOpeningsFromCenterline(fileName):
             rTanData.append((r1, pArray[0], -v1))  # The inlet should point inwards
         
         # All other tangents are pointing outwards
-        v2 = pArray[-2]-pArray[-3] # Note, the last 2 points are the same for some reason
+        v2 = pArray[-1]-pArray[-3] # Note, the last 2 points are sometimes the same for some reason
         rTanData.append((r2, pArray[-1], v2))
     
         # print("Line: ", ll)

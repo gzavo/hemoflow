@@ -107,21 +107,20 @@ def detect_inlets_outlets(data):
         - All outlets are smaller in diameter than the inlets.
         - The inlets and outlets are cut parallel to the x, y or z plane.
     """
-    print("Detecting all fluid voxels surround by an unused voxel...")
+    print("Detecting all fluid voxels surrounded by an unused voxel...")
     #print(len(data) * len(data[0]) * len(data[0][0]))
     wall_voxels = zip(*np.where(data == CONSTANTS.WALL_VOXEL))
     found_fluid_voxels = list(get_all_inlet_outlet_fluid_voxels(wall_voxels, data))
     # voxel_count = len(found_fluid_voxels)
     inlets_outlets = []
-    count = 1
+
     z = 0
     for z, x, y in found_fluid_voxels: 
-        #show_progress(count, voxel_count)
         if (voxel_is_not_yet_processed(x, y, z, inlets_outlets)):
             plane = get_neighbouring_unused_voxel_plane(x, y, z, data)
             inlet_outlet = find_inlet_outlet(x, y, z, data, plane)
+            # if(inlet_outlet is not None):
             inlets_outlets.append(inlet_outlet)
-        count += 1
 
     return paint_inlets_outlets(inlets_outlets, data)
 
@@ -136,10 +135,18 @@ def paint_inlets_outlets(inlets_outlets, data):
 
     data_result = np.copy(data)
     
-    inlet = max(inlets_outlets, key=len)
-    pressureOutlet = min(inlets_outlets, key=len)
+    # Length of the opening lists
+    areas = np.array([len(x) for x in inlets_outlets])
+    inletIdx = np.argmax(areas)
+    inlet = inlets_outlets.pop(inletIdx)
 
-    velocityOutlets = [o for o in inlets_outlets if o != inlet and o != pressureOutlet]
+    # Length of the remaining opening lists
+    areas = np.array([len(x) for x in inlets_outlets])
+    pressureOutletIdx = np.argmin(areas)
+    # pressureOutlet = min(inlets_outlets, key=len)
+    pressureOutlet = inlets_outlets.pop(pressureOutletIdx)
+
+    velocityOutlets = inlets_outlets # [o for o in inlets_outlets if (o != inlet and o != pressureOutlet)]
 
     print("Number of inlets: 1")
     print("Number of pressure outlets: 1")

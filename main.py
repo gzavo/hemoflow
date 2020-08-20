@@ -16,7 +16,7 @@ DEBUG_MODE = False # This will enable additional intermediate nrrd output to che
 #############################
 
 if DEBUG_MODE:
-	import nrrd
+    import nrrd
 
 def inRange(value, rangeValue, distance):
     if np.abs(rangeValue-value) < distance:
@@ -33,22 +33,28 @@ def inRange3D(value3D, rangeValue3D, distance):
 def generateCutList(voxelDomainSize, radiusTangentVoxelList):
     sidesToCut = np.zeros(6)
     
+    # If centerline point is within this distance of the boundary it is considered an opening
     distance = 4  # 4 voxel distance: note, cutting away unused layers might influence this!
+
+    if DEBUG_MODE:
+            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize) 
     
     for o in radiusTangentVoxelList:
         pos = o[1]
+
+        if DEBUG_MODE:
+            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)    
+
         for j in range(3):
             if inRange(pos[j], 0, distance):
-                sidesToCut[j*2+1]=1
-            if inRange(pos[j], voxelDomainSize[j], distance):
                 sidesToCut[j*2]=1
+            if inRange(pos[j], voxelDomainSize[j], distance):
+                sidesToCut[j*2+1]=1
             
     return np.where(sidesToCut == 1)[0]
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        # print("Usage:", sys.argv[0], "input.stl output targetElements \"<optional list of sides to cut>\"  <optional stent_mesh>")
-        # print("    e.g.:", sys.argv[0], "input.stl output 6000000 \"0 5\" ")
         print("Usage:", sys.argv[0], "input.config")
         sys.exit(-1) 
 
@@ -86,8 +92,14 @@ if __name__ == "__main__":
 
     print("\n### Voxelizing vessel geometry ###")
     voxelVol, domainData = voxelize(vesselGeomFile, targetElem)
+
+    if DEBUG_MODE:
+        print("-> (DEBUG) Saving voxelization result")    
+        nrrd.write(outputBaseName+"fluid_only.nrrd", voxelVol)
+
     sx,sy,sz = domainData[0]
     tx,ty,tz = domainData[1]
+    
     print("Voxelized domain size:", voxelVol.shape)
     print("Domain:", domainData[2])
     print("Bounding box:", domainData[3])
@@ -101,6 +113,8 @@ if __name__ == "__main__":
 
     print("\n### Extracting information on openings from centerline ###")
     radiusTangentList = getOpeningsFromCenterline(centerLineFile)
+    print("scale", domainData[0])
+    print("translate", domainData[1])
     radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
     
     cutList = generateCutList(domainData[2], radiusTangentVoxelList)
@@ -111,8 +125,8 @@ if __name__ == "__main__":
     volWithWalls, sliced = createWalls(voxelVol, cutList, cutWidth)
 
     if DEBUG_MODE:
-    	print("\n### Saving nrrd wall geometry ###")    
-    	nrrd.write(outputBaseName+"wall_fluid_only.nrrd", volWithWalls)
+        print("\n-> (DEBUG) Saving nrrd wall geometry ###")    
+        nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
 
     print("Size after cutting layers for openings:", volWithWalls.shape)
     volume = np.product(volWithWalls.shape)
@@ -147,19 +161,18 @@ if __name__ == "__main__":
             rCL = radiusTangentVoxelList[ccCL]
             cCL = rCL[1]
 
-            # Values from the centerline must be rotated to the same coordinate system as the voxelized geometry
-            # Z, X, Y  -> TODO: I think this was for efficiency reason, should be checked at some point
-            if inRange3D(cVox, (cCL[2], cCL[0], cCL[1]), distance) is True:
+            if inRange3D(cVox, (cCL[0], cCL[1], cCL[2]), distance) is True:
                 openingIndex.append(openingIdxs[ccVox])
                 openingRadius.append(rCL[0]*SI_FACTOR)
                 openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
                 openingCenter.append(cVox)
-                openingTangent.append( np.array((rCL[2][2], rCL[2][0], rCL[2][1])) )
+                openingTangent.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
 
     if DEBUG_MODE:
-    	print("\n### Saving nrrd geometry flag ###")    
-    	nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
-
+        print("-> (DEBUG) Saving nrrd geometry flag")    
+        nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
+        if len(openingIndex) != len(openingCenters):
+            print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
 
     if haveStent:
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
@@ -177,19 +190,19 @@ if __name__ == "__main__":
 
         sdomain_full = sdomain_full[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
 
-        # Cut outer layer (z,y,x)
+
         if 0 in cutList:
-            sdomain_full = sdomain_full[:,:,cutWidth:]
+            sdomain_full = sdomain_full[cutWidth:,:,:]
         if 1 in cutList:
-            sdomain_full = sdomain_full[:,:,:-cutWidth]
+            sdomain_full = sdomain_full[:-cutWidth,:,:]
         if 2 in cutList:
             sdomain_full = sdomain_full[:,cutWidth:,:]
         if 3 in cutList:
             sdomain_full = sdomain_full[:,:-cutWidth,:]
         if 4 in cutList:
-            sdomain_full = sdomain_full[cutWidth:,:,:]
+            sdomain_full = sdomain_full[:,:,cutWidth:]
         if 5 in cutList:
-            sdomain_full = sdomain_full[:-cutWidth,:,:]
+            sdomain_full = sdomain_full[:,:,:-cutWidth]
 
         # TODO: why would this be needed, some old bug?
         # voxel_stent_final = sdomain_full[1:-1, 1:-1, 1:-1]
@@ -198,13 +211,11 @@ if __name__ == "__main__":
         print("Flow diverter domain size after cutting layers for openings:", voxel_stent_final.shape)
 
         if DEBUG_MODE:
-        	print("\n### Saving voxelized flow diverter ###") 
-        	nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))  
+            print("-> (DEBUG) Saving voxelized flow diverter") 
+            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))  
 
     print("\n### Saving final output ###")
     print("File:", outputBaseName+"c.npz")
-
-    # TODO - change into SI + save dx
 
     #np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
     np.savez_compressed(outputBaseName+"c.npz", geometryFlag=paintedOpenings, 

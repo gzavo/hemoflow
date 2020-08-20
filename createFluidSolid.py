@@ -84,29 +84,31 @@ def removeUnusedOuterLayers(data):
 
     print("Original bounds:", sliced)
 
-    while(np.sum(data[0,:,:]) == 0):
+    while(np.max(data[sliced[0],:,:]) == 0):
         sliced[0] = sliced[0]+1
-        data = data[1:,:,:]
+        #data = data[1:,:,:]
     
-    while(np.sum(data[-1,:,:]) == 0):
+    while(np.max(data[sliced[1]-1,:,:]) == 0):
         sliced[1] = sliced[1]-1
-        data = data[:-1,:,:]
+        #data = data[:-1,:,:]
     
-    while(np.sum(data[:,0,:]) == 0):
+    while(np.max(data[:,sliced[2],:]) == 0):
         sliced[2] = sliced[2]+1
-        data = data[:,1:,:]
+        #data = data[:,1:,:]
 
-    while(np.sum(data[:,-1,:]) == 0):
+    while(np.max(data[:,sliced[3]-1,:]) == 0):
         sliced[3] = sliced[3]-1
-        data = data[:,:-1,:]
+        #data = data[:,:-1,:]
     
-    while(np.sum(data[:,:,0]) == 0):
+    while(np.max(data[:,:,sliced[4]]) == 0):
         sliced[4] = sliced[4]+1
-        data = data[:,:,1:]
+        #data = data[:,:,1:]
 
-    while(np.sum(data[:,:,-1]) == 0):
+    while(np.max(data[:,:,sliced[5]-1]) == 0):
         sliced[5] = sliced[5]-1
-        data = data[:,:,:-1]
+        #data = data[:,:,:-1]
+
+    data = data[sliced[0]:sliced[1],sliced[2]:sliced[3],sliced[4]:sliced[5]]
 
     print("Bounds after removing unused layers:", sliced)
 
@@ -116,8 +118,8 @@ def removeUnusedOuterLayers(data):
 def createWalls(inputArray, cutList, cutWidth = 1):
     
     data1 = inputArray
-    # Add extra layer of width 1 to allow for walls around fluid
-    #data1 = np.pad(inputArray, 1, 'constant')
+    # Add extra layer of 0 (width 1) to allow for fluid next to the domain boundary.
+    # data1 = np.pad(inputArray, 1, 'constant')
 
     #Create a cpoy
     data2 = np.copy(data1)
@@ -144,26 +146,25 @@ def createWalls(inputArray, cutList, cutWidth = 1):
 
     # Remove layers with no information
     data3, sliced = removeUnusedOuterLayers(data3)
-    
 
     # Cutlist meaning:
     # 0,1 => Xmin, Xmax
     # 2,3 => Ymin, Ymax
     # 4,5 => Zmin, Zmax
 
-    # Cut outer layer (z,y,x)
+    # Cut outer layer (x,y,z)
     if 0 in cutList:
-        data3 = data3[:,:,cutWidth:]
+        data3 = data3[cutWidth:,:,:]
     if 1 in cutList:
-        data3 = data3[:,:,:-cutWidth]
+        data3 = data3[:-cutWidth,:,:]
     if 2 in cutList:
         data3 = data3[:,cutWidth:,:]
     if 3 in cutList:
         data3 = data3[:,:-cutWidth,:]
     if 4 in cutList:
-        data3 = data3[cutWidth:,:,:]
+        data3 = data3[:,:,cutWidth:]
     if 5 in cutList:
-        data3 = data3[:-cutWidth,:,:]
+        data3 = data3[:,:,:-cutWidth]
 
     return data3.astype(np.short, copy=False), sliced
 
