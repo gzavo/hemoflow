@@ -17,8 +17,6 @@ def voxelize(inputFile, targetElements, isMeshAShell = False, domainData = None,
     else:
         scale, shift, domain, bounding_box = domainData
 
-    print(" (DEBUG) scale, shift, domain, BB", scale, shift, domain, bounding_box)
-
     mesh = list(slice.scaleAndShiftMesh(mesh, scale, shift))
     #Note: vol should be addressed with vol[z][x][y]
     
