@@ -147,4 +147,5 @@ class FlagMaskSingleDomain3D : public DomainFunctional3D {
         T_ *geometryFlags;
 };
 
+
 #endif

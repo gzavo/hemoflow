@@ -20,8 +20,8 @@ public:
     void setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, field3D &velocityArr);
     void setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, scalar3D &pressureArr);
     void createConstantPressureProfile(T density = 1.0);
-    void createPoiseauilleProfile(T u_avg = 0.1);
-    void createBluntVelocityProfile(T u_avg = 0.1);
+    void createPoiseauilleProfile(T u_avg = U_AVG_LB);
+    void createBluntVelocityProfile(T u_avg = U_AVG_LB);
 
     int getFlag() { return flag; }
     int getSurfaceSize() { return nodes.size(); }
@@ -92,4 +92,5 @@ class PressureProfile3D {
         scalar3D *pressure;
         T_ scale;
 };
+
 #endif

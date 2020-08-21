@@ -7,6 +7,9 @@
 #include <vector>
 #include <math.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 using namespace std;
 
 #include "globals.h"
@@ -46,7 +49,6 @@ cnpy::NpyArray openingTangent;
 double* otData = NULL;
 
 // Simulation parameters
-const T U_lb = 0.1;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
 T omega;
 T dt;
 T dx;
@@ -56,6 +58,7 @@ T Re;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
+string workingFolder;
 T simLength;
 T saveFreqTime;
 
@@ -75,6 +78,18 @@ T nuInf = 3.5e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 
+// Checks for a directory. Hopefuly a portable way. I want C++17...
+int dirExists(string pathName)
+{
+    struct stat info;
+
+    if( stat( pathName.c_str(), &info ) != 0 )
+        return -1; // Cannot acces path
+    else if( info.st_mode & S_IFDIR )  // S_ISDIR() doesn't exist on my windows 
+        return 1;  // Path exists
+    else
+        return 0;  // Path does not exist
+}
 
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
 void calcSimulationParameters(T D_m)
@@ -82,13 +97,15 @@ void calcSimulationParameters(T D_m)
     T D_lb = D_m  / dx;
     T U_avg = Re * nuInf / D_m;
     
-    dt =  U_lb / U_avg * dx;
+    dt =  U_AVG_LB / U_avg * dx;
 
-    T nuInf_lb = U_lb * D_lb / Re;
+    T nuInf_lb = U_AVG_LB * D_lb / Re;
     T nu_ratio = nuInf_lb / nuInf;
     T nu0_lb = nu0 * nu_ratio;
 
-    omega = 1.0 / (3*nuInf_lb+0.5);
+    T tau = 3.0*nuInf_lb+0.5;
+
+    omega = 1.0 / tau;
 
     // TODO: add sanity check on parameters here
 
@@ -105,7 +122,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
     int numOpenings = openingRadius.shape[0];
     pcout << "-> Number of openings to process: " << numOpenings << std::endl;
 
-    T Qin = U_lb * inletA;
+    T Qin = U_AVG_LB * inletA;
 
     for(int i=0; i<numOpenings; i++){
         int flag = oiData[i];
@@ -125,7 +142,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
             opening->createConstantPressureProfile();
         else {
             if(flag == INLET)
-                opening->createBluntVelocityProfile(U_lb);
+                opening->createBluntVelocityProfile(U_AVG_LB);
             else {
                 // Calculate outflow velocity based on Murray's law
                 T u_out = Qin * oqData[i] / (pow(orData[i] / dx, 2) * M_PI);
@@ -151,7 +168,10 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTens
     vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(dx*dt*dt));
     vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./dt );
     // TODO - output viscosity?
-   
+    
+    vtkOut.writeData<float>(*computeDensity(lattice), "density [LBM]", 1.0);
+    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [LBM]", 1.0);
+    
     if (field1 != NULL)
        vtkOut.writeData<float>(*field1, "field1");
 }
@@ -211,12 +231,26 @@ int main(int argc, char *argv[])
 
     XMLreader xml(paramXmlFileName);
 
+    size_t folderIdx = paramXmlFileName.find_last_of("/\\");
+    workingFolder = paramXmlFileName.substr(0, folderIdx);
+
     // *** Load in data files
     try {
         pcout << "Loading in data file..." << std::endl;
 
         xml["simulation"]["outputDir"].read(outputFolder);
-        global::directories().setOutputDir(outputFolder+"/");
+        
+        if (dirExists(workingFolder + "/" + outputFolder) == -1) {
+        	pcout << "Output folder: " << workingFolder + "/" + outputFolder << " is not accessible! Exiting..." << std::endl;
+        	return -1;
+        }
+        else if (dirExists(workingFolder + "/" + outputFolder) == 0) {
+        	pcout << "Output folder needs to be created first! " << workingFolder + "/" + outputFolder << std::endl;
+        }
+
+        pcout << "Output folder: " << workingFolder + "/" + outputFolder+"/" << std::endl;
+
+        global::directories().setOutputDir(workingFolder + "/" + outputFolder+"/");
 
         xml["simulation"]["Re"].read(Re);
         xml["simulation"]["blockSize"].read(blockSize);
@@ -226,7 +260,7 @@ int main(int argc, char *argv[])
         // Loading the input file
         string npzFileName;
         xml["geometry"]["file"].read(npzFileName);
-        cnpy::npz_t geom_npz = cnpy::npz_load(npzFileName);
+        cnpy::npz_t geom_npz = cnpy::npz_load(workingFolder + "/" + npzFileName);
         pcout << "Input data elements: " << geom_npz.size() << std::endl;
         for (auto const& array : geom_npz) 
             pcout << "->" << array.first << std::endl;
@@ -283,12 +317,10 @@ int main(int argc, char *argv[])
 
         string inletFlowrateFunc;
         xml["geometry"]["inletFlowrateFunc"].read(inletFlowrateFunc);
-        processOpenings(inletFlowrateFunc, inletA);
+        processOpenings(workingFolder + "/" + inletFlowrateFunc, inletA);
 
         pcout << "Setting LBM parameters..." << std::endl;
         calcSimulationParameters(inletD);
-
-
     }
     catch (PlbIOException& exception) {
         pcout << "Error while processing input file " << paramXmlFileName
@@ -299,12 +331,14 @@ int main(int argc, char *argv[])
     pcout   << "********************************* " << endl
             << "*     Simulation parameters     * " << endl
             << "********************************* " << endl
-            << "size:   " << Nx << "x" << Ny << "x" << Nz << endl
-            << "dx[m]:  " << dx << endl
-            << "dt[s]:  " << dt << endl
+            << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
+            << "dx [m]:  " << dx << endl
+            << "dt [s]:  " << dt << endl
             << "omega:  " << omega << endl
-            << "Re_max: " << Re << endl
-            << "U_max,lbm: " << U_lb << endl << endl;
+            << "nu:     " << 1./3. * (1./omega - 0.5) << endl
+            << "Re_inlet: " << Re << endl
+            << "U_avg(inlet) [lbm]: " << U_AVG_LB << endl 
+            << "U_avg [m/s]: " << U_AVG_LB * dx / dt << endl << endl;
 
     int saveFrequency;
     saveFrequency = (int)round(saveFreqTime/dt);
@@ -332,8 +366,8 @@ int main(int argc, char *argv[])
 
     }
     else {
-        // lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega) );
-        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new ForcedCarreauDynamics<T, DESCRIPTOR>(omega) );
+        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega) );
+        // lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new ForcedCarreauDynamics<T, DESCRIPTOR>(omega) );
     }
 
 
@@ -342,7 +376,7 @@ int main(int argc, char *argv[])
     // If there is data on porosity, set up porous layer in the simulation   
     if(sfData != NULL) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
-        // TODO: calculate LB Darcy coefficient
+        // TODO: calculate LB Darcy coefficient from config file values
         T DarcyCoeff = 0.5;
 
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
@@ -356,15 +390,15 @@ int main(int argc, char *argv[])
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 0), new NoDynamics<T, DESCRIPTOR>);
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
 
+    // TODO: add some reparallelize here
+
     pcout << "Setting values on openings..." << std::endl;
     for(auto &o: openings){
         o->setBC(lattice, boundaryCondition);
     }
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
-    Array<T,3> u0(0,0,0);
-    initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, u0 );
-
+    initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
 
     pcout << "Finalizing lattice..." << std::endl;
     lattice->initialize();
@@ -376,11 +410,11 @@ int main(int argc, char *argv[])
     int convergenceSteps = 10*max(max(Nx, Ny), Nz);
     T minDE = 1e-11; T dE = 100; T prevE = 0;
 
+    for(auto &o: openings)
+    	o->imposeBC(lattice, 0.0);
+
     while(abs(dE) > minDE && stat_cycle < convergenceSteps )
     {
-        for(auto &o: openings)
-            o->imposeBC(lattice, 0.0);
-
         lattice->collideAndStream();
 
         T cE = computeAverageEnergy(*lattice);
@@ -414,8 +448,8 @@ int main(int argc, char *argv[])
         }
 
         // Impose boundary conditions
-        for(uint i = 0; i < openings.size(); i++)
-            openings[i]->imposeBC(lattice, dt);
+        for(auto &o: openings)
+    		o->imposeBC(lattice, dt);
 
         // Calculate next step
         lattice->collideAndStream();

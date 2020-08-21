@@ -46,7 +46,7 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb,
 
 void OpeningHandler::printOpeningDetails()
 {
-    pcout << "Opening parameters:";
+    pcout << "Opening parameters:" << std::endl;
     
     if(flag == INLET)
         pcout << "=> This is the inlet." << std::endl;
@@ -59,7 +59,7 @@ void OpeningHandler::printOpeningDetails()
     pcout << "-> Center [lb]: " << center.x << " " << center.y << " " << center.z << std::endl;
     pcout << "-> Normal: " << direction.x << " " << direction.y << " " << direction.z << std::endl;
     pcout << "-> Area [lb]: " << nodes.size() << std::endl;
-    pcout << "-> Scale function length: " << scaleSignal.size() << std::endl;
+    pcout << "-> Scale function: " << hasScaleFunction << " length: " << scaleSignal.size() << std::endl;
 
 }
 
@@ -104,6 +104,13 @@ void OpeningHandler::loadScaleFunction(string fileName)
     plb_ifstream finSign(fileName.c_str());
     //istream &finSign = pfinSign.getOriginalStream();
 
+    if(!finSign.good()) {
+        pcout << "WARNING!!! Scale file " << fileName << " is not readable!" << std::endl;
+        hasScaleFunction = false;
+        return;
+    }
+
+
     T time, value;
     int Ns;
 
@@ -129,10 +136,12 @@ void OpeningHandler::loadScaleFunction(string fileName)
 
 void OpeningHandler::setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc)
 {
-    if (flag == FIRST_OUTLET)
+    if (flag == FIRST_OUTLET) {
         bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
-    else
+    }
+    else {
         bc->setVelocityConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
+    }
 }
 
 void OpeningHandler::setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, field3D &velocityArr)
@@ -184,11 +193,12 @@ void OpeningHandler::imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
         //scale /= scaleDivider;    // WTF is this?
     }
 
-    if (flag==FIRST_OUTLET)
-        setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale));
-    else
+    if (flag != FIRST_OUTLET)
         setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
-    
+    else {
+        setBoundaryDensity(*lattice, *boundingBox, 1.0);
+        // setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale)); // For time dependent pressure boundary
+    }
 }
 
 OpeningHandler::~OpeningHandler()

@@ -9,6 +9,9 @@ using namespace plb;
 typedef double T;
 
 #define DESCRIPTOR descriptors::ForcedD3Q19Descriptor
+#define CELLDESCRIPTOR descriptors::D3Q7Descriptor
+
+const T U_AVG_LB = 0.05;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
 
 // Geometry labels
 const int UNUSED = 0;
