@@ -51,7 +51,7 @@ class vec3d
 {
 public:
     double x, y, z;
-    vec3d() {}
+    vec3d() {set(0,0,0);}
     vec3d(double x, double y, double z) {set(x,y,z);}
     
     void set(double X, double Y, double Z) {x=X; y=Y; z=Z;}
@@ -72,7 +72,7 @@ class symMtx3
 {
 public:
     double m1,m2,m3,m4,m5,m6;
-    symMtx3() {}
+    symMtx3() {set(0,0,0,0,0,0);}
     symMtx3(double M1, double M2, double M3, double M4, double M5, double M6)
     {set(M1,M2,M3,M4,M5,M6);}
 

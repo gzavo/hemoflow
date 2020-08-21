@@ -105,9 +105,8 @@ void OpeningHandler::loadScaleFunction(string fileName)
     //istream &finSign = pfinSign.getOriginalStream();
 
     if(!finSign.good()) {
-        pcout << "WARNING!!! Scale file " << fileName << " is not readable!" << std::endl;
-        hasScaleFunction = false;
-        return;
+        pcout << "WARNING!!! Flow rate scale file " << fileName << " is not readable!" << std::endl;
+        // hasScaleFunction = false;
     }
 
 
@@ -193,11 +192,13 @@ void OpeningHandler::imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
         //scale /= scaleDivider;    // WTF is this?
     }
 
-    if (flag != FIRST_OUTLET)
-        setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
-    else {
-        setBoundaryDensity(*lattice, *boundingBox, 1.0);
+    
+    if (flag == FIRST_OUTLET) {
+        setBoundaryDensity(*lattice, *boundingBox, 1.0);        
         // setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale)); // For time dependent pressure boundary
+    }
+    else {
+        setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
     }
 }
 

@@ -126,7 +126,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
 
     for(int i=0; i<numOpenings; i++){
         int flag = oiData[i];
-        pcout << "-> Processing flag: " << flag << std::endl;
+        pcout << "Processing flag: " << flag << std::endl;
 
         if(flag < INLET){
             pcout << "WARNING! Wrong flag for an opening: " << flag << std::endl;
@@ -168,9 +168,6 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTens
     vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(dx*dt*dt));
     vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./dt );
     // TODO - output viscosity?
-    
-    vtkOut.writeData<float>(*computeDensity(lattice), "density [LBM]", 1.0);
-    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [LBM]", 1.0);
     
     if (field1 != NULL)
        vtkOut.writeData<float>(*field1, "field1");
@@ -262,6 +259,7 @@ int main(int argc, char *argv[])
         xml["geometry"]["file"].read(npzFileName);
         cnpy::npz_t geom_npz = cnpy::npz_load(workingFolder + "/" + npzFileName);
         pcout << "Input data elements: " << geom_npz.size() << std::endl;
+        
         for (auto const& array : geom_npz) 
             pcout << "->" << array.first << std::endl;
 
@@ -361,8 +359,8 @@ int main(int argc, char *argv[])
                                                           defaultMultiBlockPolicy3D().getBlockCommunicator(),
                                                           defaultMultiBlockPolicy3D().getCombinedStatistics(),
                                                           defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                          // new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega));
-                                                          new ForcedCarreauDynamics<T, DESCRIPTOR>(omega));
+                                                          new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega));
+                                                          // new ForcedCarreauDynamics<T, DESCRIPTOR>(omega));
 
     }
     else {
@@ -377,7 +375,7 @@ int main(int argc, char *argv[])
     if(sfData != NULL) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
         // TODO: calculate LB Darcy coefficient from config file values
-        T DarcyCoeff = 0.5;
+        T DarcyCoeff = 0.1;
 
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
         applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData, DarcyCoeff), porosityField->getBoundingBox(), *porosityField);
@@ -413,6 +411,9 @@ int main(int argc, char *argv[])
     for(auto &o: openings)
     	o->imposeBC(lattice, 0.0);
 
+    pcout << "Saving initial state with flow diverter..." << endl;
+    writeVTK(*lattice, -1, porosityField);
+
     while(abs(dE) > minDE && stat_cycle < convergenceSteps )
     {
         lattice->collideAndStream();
@@ -430,8 +431,8 @@ int main(int argc, char *argv[])
 
     pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
 
-    pcout << "Saving initial state..." << endl;
-    writeVTK(*lattice, 0, porosityField);
+    pcout << "Saving time step 0..." << endl;
+    writeVTK(*lattice, 0);
     // writeNPZ(*lattice, 0);
     //writeHDF5(*lattice, 0, porosityField);
 
