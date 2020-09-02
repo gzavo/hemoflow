@@ -32,9 +32,14 @@ int Nz=0;
 cnpy::NpyArray geometryFlag;
 unsigned short* gfData = NULL;
 
-// Stent geometry data
+// Flow diverter (stent) data
 cnpy::NpyArray stentFlag;
 unsigned short* sfData = NULL;
+T linCoeff = 0.0;
+T quadCoeff = 0.0;
+T linCoeff_lb = 0.0;
+T quadCoeff_lb = 0.0;
+
 
 // Info on openings
 cnpy::NpyArray openingIndex;
@@ -106,6 +111,10 @@ void calcSimulationParameters(T D_m)
     T tau = 3.0*nuInf_lb+0.5;
 
     omega = 1.0 / tau;
+
+    // TODO: convert linCoeff and quadCoeff
+    linCoeff_lb = linCoeff;
+    quadCoeff_lb = quadCoeff;
 
     // TODO: add sanity check on parameters here
 
@@ -283,6 +292,9 @@ int main(int argc, char *argv[])
         if(stentFlag.shape.size() > 1) {    // Check if there is data on FD
             pcout << "Found flow diverter information to load." << std::endl;
             sfData = stentFlag.data<unsigned short>();
+            // Also look for corresponding data in xml
+            xml["flowdiverter"]["linCoeff"].read(linCoeff);
+            xml["flowdiverter"]["quadCoeff"].read(quadCoeff);
         }
 
         // Loading information on openings
@@ -374,12 +386,9 @@ int main(int argc, char *argv[])
     // If there is data on porosity, set up porous layer in the simulation   
     if(sfData != NULL) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
-        // TODO: calculate LB Darcy coefficient from config file values
-        T DarcyCoeff = 0.1;
-
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
-        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData, DarcyCoeff), porosityField->getBoundingBox(), *porosityField);
-        integrateProcessingFunctional( new DarcyPorousForceFunctional<T, DESCRIPTOR>, lattice->getBoundingBox(), *lattice, *porosityField);
+        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData), porosityField->getBoundingBox(), *porosityField);
+        integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
     }
 
     boundaryCondition = createLocalBoundaryCondition3D<T,DESCRIPTOR>();

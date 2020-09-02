@@ -8,7 +8,7 @@
 template<typename T, typename T_>
 class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
     public:
-        InitializePorousField(T_ *porousGeometryData, T DarcyCoefficient) : porousData(porousGeometryData), DarcyCoeff(DarcyCoefficient)
+        InitializePorousField(T_ *porousGeometryData) : porousData(porousGeometryData)
         { }
 
     virtual void process(Box3D domain, NTensorField3D<T>& field)
@@ -22,12 +22,12 @@ class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
                     plint absY = offset.y + iY;
                     plint absZ = offset.z + iZ;
 
-                    // if(absX==100)
-                    //     *field.get(iX, iY, iZ) = 0.5;
-
                     T porosity = porousData[gT(absX, absY, absZ)];
                     if(porosity > 0.0) {
-                        *field.get(iX, iY, iZ) = porousData[gT(absX, absY, absZ)] * DarcyCoeff;
+                        *field.get(iX, iY, iZ) = porosity;
+                    }
+                    else {
+                    	*field.get(iX, iY, iZ) = 0;
                     }
                 }  
     }
@@ -47,14 +47,17 @@ class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
 
     private:
         T_ *porousData;
-        T DarcyCoeff;
 };
 
 
 
-/// Apply Darcy forcing
+/// Apply macroscopic porous material forcing
 template<typename T, template<typename U> class Descriptor>
-struct DarcyPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor, T> {
+struct PorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor, T> {
+
+	public:
+        PorousForceFunctional(T linCoeff_, T quadCoeff_) : linCoeff(linCoeff_), quadCoeff(quadCoeff_)
+        { }
 
     virtual void process(Box3D domain, BlockLattice3D<T,Descriptor>& lattice,
                                        NTensorField3D<T>& field)
@@ -80,15 +83,15 @@ struct DarcyPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descr
             	// Calculate the force (momentum loss)
             	for (pluint iD = 0; iD < Descriptor<T>::d; ++iD) 
             	{
-                	force[iD] = -porosity * vel[iD];
+                	force[iD] = -porosity * (linCoeff * vel[iD] + quadCoeff * copysign(vel[iD] * vel[iD], vel[iD]) );
             	}
             }
         
     }
 
-    virtual DarcyPorousForceFunctional<T, Descriptor>* clone() const
+    virtual PorousForceFunctional<T, Descriptor>* clone() const
     {
-        return new DarcyPorousForceFunctional<T, Descriptor>(*this);
+        return new PorousForceFunctional<T, Descriptor>(*this);
     }
 
     virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const {
@@ -99,6 +102,9 @@ struct DarcyPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descr
         return BlockDomain::bulkAndEnvelope;
     }
 
+	private:
+		T linCoeff;
+		T quadCoeff;
 };
 
 
