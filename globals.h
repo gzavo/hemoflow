@@ -25,4 +25,7 @@ extern int Nx;
 extern int Ny;
 extern int Nz;
 
+// Physical units
+const double BLOOD_DENSITY = 1060;  // [kg/m3]
+
 #endif

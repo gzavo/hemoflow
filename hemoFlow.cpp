@@ -55,8 +55,11 @@ double* otData = NULL;
 
 // Simulation parameters
 T omega;
-T dt;
-T dx;
+T C_l;  // Length conversion factor
+T C_t;  // Time conversion factor
+T C_r;  // Density conversion factor
+T C_p;  // Pressure conversion factor (derived)
+T C_m;  // Mass conversion factor (derived)
 T Re;   
 
 // Technical simulation parameters
@@ -99,10 +102,10 @@ int dirExists(string pathName)
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
 void calcSimulationParameters(T D_m)
 {   
-    T D_lb = D_m  / dx;
+    T D_lb = D_m  / C_l;
     T U_avg = Re * nuInf / D_m;
     
-    dt =  U_AVG_LB / U_avg * dx;
+    C_t =  U_AVG_LB / U_avg * C_l;
 
     T nuInf_lb = U_AVG_LB * D_lb / Re;
     T nu_ratio = nuInf_lb / nuInf;
@@ -112,9 +115,14 @@ void calcSimulationParameters(T D_m)
 
     omega = 1.0 / tau;
 
+    C_r = BLOOD_DENSITY;    // TODO IF we are simulating blood.... Note: only changes pressure output values, the simulation results are independent!
+
+    C_p = C_r * C_l * C_l / (C_t * C_t);
+    C_m = C_r * C_l * C_l * C_l;
+
     // TODO: convert linCoeff and quadCoeff
-    linCoeff_lb = linCoeff;
-    quadCoeff_lb = quadCoeff;
+    linCoeff_lb = linCoeff * C_l*C_l * C_t / C_m;       // [ kg / (m2 s) ]
+    quadCoeff_lb = quadCoeff * C_l*C_l * C_l / C_m;     // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
 
@@ -145,7 +153,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
         int s = openingTangent.shape[1];
         vec3d dir(otData[gT2D(s,i,0)], otData[gT2D(s,i,1)], otData[gT2D(s,i,2)]);
 
-        OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / dx, dir);
+        OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / C_l, dir);
         
         if(flag == FIRST_OUTLET)
             opening->createConstantPressureProfile();
@@ -154,7 +162,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
                 opening->createBluntVelocityProfile(U_AVG_LB);
             else {
                 // Calculate outflow velocity based on Murray's law
-                T u_out = Qin * oqData[i] / (pow(orData[i] / dx, 2) * M_PI);
+                T u_out = Qin * oqData[i] / (pow(orData[i] / C_l, 2) * M_PI);
                 opening->createBluntVelocityProfile(u_out);
             }
             
@@ -171,11 +179,11 @@ void processOpenings(string inletFlowrateFunc, T inletA)
 // Write out data in vtk format
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTensorField3D<T> *field1 = NULL)
 {
-    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), dx);
-    vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3.* dx*dx/dt/dt);
-    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", dx/dt);
-    vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(dx*dt*dt));
-    vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./dt );
+    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), C_l);
+    vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3. * C_p );
+    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", C_l/C_t);
+    vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(C_l*C_t*C_t));
+    vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./C_t );
     // TODO - output viscosity?
     
     if (field1 != NULL)
@@ -280,11 +288,11 @@ int main(int argc, char *argv[])
         Nz = geometryFlag.shape[2];
         pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
 
-        // Reading dx
+        // Reading dx = C_l
         cnpy::NpyArray dxA = geom_npz["dx"];
-        dx = (dxA.data<double>())[0];
+        C_l = (dxA.data<double>())[0];
 
-        pcout << "Resolution [m]: " << dx << std::endl;
+        pcout << "Resolution [m]: " << C_l << std::endl;
 
         // Loading stent geometry
         stentFlag = geom_npz["stent"];
@@ -322,7 +330,7 @@ int main(int argc, char *argv[])
         pcout << "-> Inlet radius [m]: " << orData[0] << std::endl;
 
         // Inlet area in lattice units
-        T inletA = pow(orData[0] / dx, 2) * M_PI;
+        T inletA = pow(orData[0] / C_l, 2) * M_PI;
 
 
         string inletFlowrateFunc;
@@ -342,16 +350,16 @@ int main(int argc, char *argv[])
             << "*     Simulation parameters     * " << endl
             << "********************************* " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
-            << "dx [m]:  " << dx << endl
-            << "dt [s]:  " << dt << endl
+            << "dx [m]:  " << C_l << endl
+            << "dt [s]:  " << C_t << endl
             << "omega:  " << omega << endl
             << "nu:     " << 1./3. * (1./omega - 0.5) << endl
             << "Re_inlet: " << Re << endl
             << "U_avg(inlet) [lbm]: " << U_AVG_LB << endl 
-            << "U_avg [m/s]: " << U_AVG_LB * dx / dt << endl << endl;
+            << "U_avg [m/s]: " << U_AVG_LB * C_l / C_t << endl << endl;
 
     int saveFrequency;
-    saveFrequency = (int)round(saveFreqTime/dt);
+    saveFrequency = (int)round(saveFreqTime/C_t);
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
     // TODO: IMPORTANT! - Work out proper sparse mode, we waste up to 90% numerical cells. Take a hint from HemoCell.
@@ -449,23 +457,23 @@ int main(int argc, char *argv[])
 
     stat_cycle = 0;
     T currentTime = 0;
-    while(currentTime <= simLength + dt)
+    while(currentTime <= simLength + C_t)
     {
         
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << currentTime << "s / " << simLength << "s" << " [" << stat_cycle << " / " << (int)(simLength/dt) << "] " << " - Energy: " << cE <<"         ";
+            pcout << "\rTime: " << currentTime << "s / " << simLength << "s" << " [" << stat_cycle << " / " << (int)(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
         }
 
         // Impose boundary conditions
         for(auto &o: openings)
-    		o->imposeBC(lattice, dt);
+    		o->imposeBC(lattice, C_t);
 
         // Calculate next step
         lattice->collideAndStream();
 
         // Advance time
-        currentTime += dt; 
+        currentTime += C_t; 
         stat_cycle++;
 
         // Save VTK output
