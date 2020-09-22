@@ -159,11 +159,13 @@ void processOpenings(string inletFlowrateFunc, T inletA)
             opening->createConstantPressureProfile();
         else {
             if(flag == INLET)
-                opening->createBluntVelocityProfile(U_AVG_LB);
+                opening->createPoiseauilleProfile(U_AVG_LB);
+                // opening->createBluntVelocityProfile(U_AVG_LB);
             else {
                 // Calculate outflow velocity based on Murray's law
                 T u_out = Qin * oqData[i] / (pow(orData[i] / C_l, 2) * M_PI);
-                opening->createBluntVelocityProfile(u_out);
+                opening->createPoiseauilleProfile(u_out);
+                // opening->createBluntVelocityProfile(u_out);
             }
             
             if(!inletFlowrateFunc.empty())
@@ -190,12 +192,14 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTens
        vtkOut.writeData<float>(*field1, "field1");
 }
 
+#ifdef HDF5
 void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTensorField3D<T> *field1 = NULL)
 {
     ParallelXdmfDataWriter3D xdmfOut(createFileName("hemoFlow_out", iter, 6));
     xdmfOut.writeDataField<float>(*computeDensity(lattice), "density");
     xdmfOut.writeDataField<float>(*computeVelocity(lattice), "velocity");
 }
+#endif
 
 void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter)
 {

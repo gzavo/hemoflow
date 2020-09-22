@@ -26,7 +26,7 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb,
         return;
     }
 
-    pcout << "-> Getting bounding box, reduced radius, center... " << std::endl;
+    pcout << "-> Calculating bounding box and center point... " << std::endl;
     boundingBox = new Box3D(*min_element(xCoord.begin(), xCoord.end()),
                             *max_element(xCoord.begin(), xCoord.end()),
                             *min_element(yCoord.begin(), yCoord.end()),
@@ -35,12 +35,14 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb,
                             *max_element(zCoord.begin(), zCoord.end()) );
     
 
-    R = radius_lb; //sqrt(nodes.size() / M_PI);
+    R = radius_lb; // Radius data from the voxelizer code (comes from the centerline caluclation).
 
+    // Geometric centerpoint of the opening
     center.x = accumulate( xCoord.begin(), xCoord.end(), 0.0) / xCoord.size();
     center.y = accumulate( yCoord.begin(), yCoord.end(), 0.0) / yCoord.size();
     center.z = accumulate( zCoord.begin(), zCoord.end(), 0.0) / zCoord.size();
 
+    // Direction in which the opening faces
     direction.x = dirVec.x; direction.y = dirVec.y; direction.z = dirVec.z;
 }
 
@@ -65,7 +67,57 @@ void OpeningHandler::printOpeningDetails()
 
 void OpeningHandler::createPoiseauilleProfile(T u_avg)
 {
-    // TODO: Implement.
+    pcout << "-> Creating direction-corrected Pouseuille velocity profile on flag: " << flag << std::endl;
+
+    // Sanity check
+    if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) ) {
+        pcout << "!!! ERROR: The opening is not parallel to any major plane! This functionality is not implemented, the opening will not funxtion!" << std::endl;
+    }
+
+    // Paraboloid height from average
+    T u_max = 3./2. * u_avg;
+
+    // Search for the farthest point from the centerpoint of the opening.
+    T l_max = 0.0;
+    vec3d v_max(0,0,0);
+
+    for(auto const& v: nodes) {
+        vec3d dist(v.x-center.x, v.y-center.y, v.z-center.z); 
+        T length = dist.norm();
+
+        if(length > l_max) {
+            l_max = length;
+            v_max.set(dist.x, dist.y, dist.z);
+        }
+    }
+
+    // The normal radial direction should be perpendicular to it
+    vec3d v_min = v_max.cross(direction);
+    v_min.normalize();
+    v_min = v_min * this->R;
+
+    pcout << "The scaling coordinate system (R=" << this->R << "): " << v_min.norm() << ", " << l_max << std::endl;
+
+    // Now use the closes and farthest points as coordinate system to scale the paraboloid.
+    // Note: these two direction vectors are supposed to be perpendicular!
+    for(auto const& v: nodes) {
+        vec3d cR(v.x-center.x, v.y-center.y, v.z-center.z); 
+
+        T l_min = v_min.norm();
+
+        T proj_r_min = cR.dot(v_min) / l_min;
+        T proj_r_max = cR.dot(v_max) / l_max * (l_min /l_max); // Scale it to r_min
+
+        // At this point both projections are in (0,l_min == R), so the projected vector length will also be in (0, R)
+
+        T proj_r_len2 = proj_r_max * proj_r_max + proj_r_min * proj_r_min;
+        T r_min2 = l_min*l_min;
+
+        vec3d vel = direction * (u_max / r_min2 * (r_min2 - proj_r_len2));
+        
+        velArr[v.x][v.y][v.z].set(vel.x, vel.y, vel.z);
+    }
+
 }
 
 void OpeningHandler::createBluntVelocityProfile(T u_avg)

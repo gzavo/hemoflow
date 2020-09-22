@@ -40,12 +40,23 @@ inline T interpolate(T x1, T x2, T xi, T y1, T y2)
 }
 
 
-// *** Data structures
+// *** Data structures and functions
 
 struct Index3D 
 { 
    int x, y, z; 
 }; 
+
+inline T idxLength(Index3D const &a)
+{
+    return sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+}
+
+inline T idxDistance(Index3D const &a, Index3D const &b)
+{
+    Index3D dist({b.x-a.x, b.y-a.y, b.z-a.z}); 
+    return idxLength(dist);
+}
 
 class vec3d 
 {
