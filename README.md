@@ -9,6 +9,14 @@ The code supports MPI execution.
 # Note
 - All input parameters should be either SI or non-dimensional!
 
+# Setup
+The code builds on the Palabos open-source code. If not present, copy it to the 'palabos' directory, or use the 'setup.sh' script to clone it from the repository.
+Afterwards use CMake to build the executable, e.g.:
+> mkdir build
+> cd build
+> cmake ..
+> make -j 4
+
 ## Shortcomings
 - Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.
 - An opening cannot fall to an edge or corner of the AA bounding box (or it can be detected on the wrong side).
