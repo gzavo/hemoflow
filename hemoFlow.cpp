@@ -81,8 +81,9 @@ MultiNTensorField3D<T> *porosityField = NULL;
 // Carreau parameters
 //  B.M.  Johnston,  P.R.  Johnson,  S.  Corney,  and  D. Kilpatrick, “Non-Newtonian blood flow in human  right  coronary  arteries:  steady  state  simulations,” Journal  of  Biomechanics, 37, 709 – 720 (2004)
 //  Y.I.  Cho  and  K.R.  Kensey,  “Effects  of  the  non-Newtonian viscosity of blood on flows in a   diseased   arterial   vessel.   Part   1:   steady   flows,” Biorheology28, 241 (1991)
+// nu0 = 5.6e-5; nuInf = 3.5e-6;
 T nu0 = 5.6e-5;     // [m^2/s]
-T nuInf = 3.5e-6;   // [m^2/s]
+T nuInf = 3.22e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 

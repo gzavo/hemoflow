@@ -75,7 +75,7 @@ void OpeningHandler::createPoiseauilleProfile(T u_avg)
     }
 
     // Paraboloid height from average
-    T u_max = 3./2. * u_avg;
+    T u_max = 2. * u_avg;
 
     // Search for the farthest point from the centerpoint of the opening.
     T l_max = 0.0;
