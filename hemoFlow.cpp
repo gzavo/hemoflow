@@ -7,8 +7,13 @@
 #include <vector>
 #include <math.h>
 
+// For directory manipulations
 #include <sys/types.h>
 #include <sys/stat.h>
+
+// #include <sys/types.h>
+// #include <sys/stat.h>
+// #include <unistd.h>
 
 using namespace std;
 
@@ -87,6 +92,13 @@ T nuInf = 3.22e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 
+
+//
+// Directory handling routines here
+//
+// WARNING, really ugly! We need portable I/O
+
+
 // Checks for a directory. Hopefuly a portable way. I want C++17...
 int dirExists(string pathName)
 {
@@ -98,6 +110,62 @@ int dirExists(string pathName)
         return 1;  // Path exists
     else
         return 0;  // Path does not exist
+}
+
+/**
+** mkpath - ensure all directories in path exist
+** Algorithm takes the pessimistic view and works top-down to ensure
+** each directory in path exists, rather than optimistically creating
+** the last element and working backwards. It uses the custom makedir function below.
+*/
+
+// TODO: Unix specific, look for portable solution!
+int do_mkdir(const char *path, mode_t mode)
+{
+    //Stat            st;
+    struct stat st = {0};
+    int    status = 0;
+
+    if (stat(path, &st) != 0)
+    {
+        /* Directory does not exist. EEXIST for race condition */
+        if (mkdir(path, mode) != 0 && errno != EEXIST)
+            status = -1;
+    }
+    else if (!S_ISDIR(st.st_mode))
+    {
+        errno = ENOTDIR;
+        status = -1;
+    }
+
+    return(status);
+}
+
+// mkpath(argv[i], 0777);
+int mkpath(const char *path, mode_t mode)
+{
+    char           *pp;
+    char           *sp;
+    int             status;
+    char           *copypath = strdup(path);
+
+    status = 0;
+    pp = copypath;
+    while (status == 0 && (sp = strchr(pp, '/')) != 0)
+    {
+        if (sp != pp)
+        {
+            /* Neither root nor double slash in path */
+            *sp = '\0';
+            status = do_mkdir(copypath, mode);
+            *sp = '/';
+        }
+        pp = sp + 1;
+    }
+    if (status == 0)
+        status = do_mkdir(path, mode);
+    free(copypath);
+    return (status);
 }
 
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
@@ -237,6 +305,10 @@ int main(int argc, char *argv[])
 {
     plbInit(&argc, &argv);
 
+    pcout   << "********************************* " << endl
+            << "*       hemoFlowCFD  v0.1       * " << endl
+            << "********************************* " << endl;
+
     // *** Reading in command line arguments
     string paramXmlFileName;
     try {
@@ -250,8 +322,12 @@ int main(int argc, char *argv[])
 
     XMLreader xml(paramXmlFileName);
 
+    // This also checks if there are folders in the path or not!
     size_t folderIdx = paramXmlFileName.find_last_of("/\\");
-    workingFolder = paramXmlFileName.substr(0, folderIdx);
+    if (std::string::npos == folderIdx)
+        workingFolder = ".";
+    else
+        workingFolder = paramXmlFileName.substr(0, folderIdx);
 
     // *** Load in data files
     try {
@@ -259,17 +335,24 @@ int main(int argc, char *argv[])
 
         xml["simulation"]["outputDir"].read(outputFolder);
         
-        if (dirExists(workingFolder + "/" + outputFolder) == -1) {
-        	pcout << "Output folder: " << workingFolder + "/" + outputFolder << " is not accessible! Exiting..." << std::endl;
-        	return -1;
-        }
-        else if (dirExists(workingFolder + "/" + outputFolder) == 0) {
-        	pcout << "Output folder needs to be created first! " << workingFolder + "/" + outputFolder << std::endl;
+        string outDir = workingFolder + "/" + outputFolder;
+
+        // Check if output dir exists and accessible
+        if (dirExists(outDir) <= 0) {
+        	
+            pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
+
+            if (global::mpi().isMainProcessor())
+                mkpath(outDir.c_str(), 0777);
+
         }
 
-        pcout << "Output folder: " << workingFolder + "/" + outputFolder+"/" << std::endl;
+        // Sync up after creating the directory by the master process.
+        //global::mpi().barrier();
 
-        global::directories().setOutputDir(workingFolder + "/" + outputFolder+"/");
+        pcout << "Output folder: " << outDir+"/" << std::endl;
+
+        global::directories().setOutputDir(outDir+"/");
 
         xml["simulation"]["Re"].read(Re);
         xml["simulation"]["blockSize"].read(blockSize);
@@ -351,9 +434,7 @@ int main(int argc, char *argv[])
         return -1;
     }
     
-    pcout   << "********************************* " << endl
-            << "*     Simulation parameters     * " << endl
-            << "********************************* " << endl
+    pcout   << "*********** Simulation parameters *********** " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
             << "dx [m]:  " << C_l << endl
             << "dt [s]:  " << C_t << endl
@@ -384,15 +465,11 @@ int main(int argc, char *argv[])
                                                           defaultMultiBlockPolicy3D().getBlockCommunicator(),
                                                           defaultMultiBlockPolicy3D().getCombinedStatistics(),
                                                           defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                          new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega));
-                                                          // new ForcedCarreauDynamics<T, DESCRIPTOR>(omega));
-
+                                                          new BackgroundDynamics(omega));
     }
     else {
-        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega) );
-        // lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new ForcedCarreauDynamics<T, DESCRIPTOR>(omega) );
+        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(omega) );
     }
-
 
     pcout << getMultiBlockInfo(*lattice) << endl;
 
