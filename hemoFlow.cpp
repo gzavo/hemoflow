@@ -80,7 +80,6 @@ vector<OpeningHandler*> openings;
 
 // Simulation data structures
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = NULL;
-OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *boundaryCondition = NULL;
 MultiNTensorField3D<T> *porosityField = NULL;
 
 // Carreau parameters
@@ -481,8 +480,6 @@ int main(int argc, char *argv[])
         integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
     }
 
-    boundaryCondition = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
-
     pcout << "Defining walls..." << std::endl;
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 0), new NoDynamics<T, DESCRIPTOR>);
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
@@ -491,7 +488,7 @@ int main(int argc, char *argv[])
 
     pcout << "Setting values on openings..." << std::endl;
     for(auto &o: openings){
-        o->setBC(lattice, boundaryCondition);
+        o->setBC(lattice);
     }
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;

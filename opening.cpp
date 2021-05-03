@@ -184,18 +184,23 @@ void OpeningHandler::loadScaleFunction(string fileName)
     pcout << fileName << " loaded with " << scaleTime.size() << " data points." << std::endl;
 }
 
-
-void OpeningHandler::setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc)
+void OpeningHandler::setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
 {
-    if (flag == FIRST_OUTLET) {
-        bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
+    // The first outlet is the smallest, set as a constant pressure outlet
+    if (flag == INLET) {
+        OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
+        // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
+        bc->setVelocityConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
     }
     else {
-        bc->setVelocityConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
+        // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
+        // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
+        OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createInterpBoundaryCondition3D<T,DESCRIPTOR>();
+        bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
     }
 }
 
-void OpeningHandler::setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, field3D &velocityArr)
+void OpeningHandler::setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr)
 {
     // For flowrate, additional measurements required after lattice initialization
     if(flag==INLET || flag > FIRST_OUTLET) {
@@ -207,7 +212,7 @@ void OpeningHandler::setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *latt
     }
 }
 
-void OpeningHandler::setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, scalar3D &pressureArr)
+void OpeningHandler::setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr)
 {
     // For flowrate, additional measurements required after lattice initialization
     if(flag==FIRST_OUTLET) {

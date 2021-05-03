@@ -15,10 +15,10 @@ public:
 
     void printOpeningDetails();
     void loadScaleFunction(string fileName);
-    void setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc);
+    void setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);
     void imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);
-    void setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, field3D &velocityArr);
-    void setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc, scalar3D &pressureArr);
+    void setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);
+    void setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);
     void createConstantPressureProfile(T density = 1.0);
     void createPoiseauilleProfile(T u_avg = U_AVG_LB);
     void createBluntVelocityProfile(T u_avg = U_AVG_LB);
