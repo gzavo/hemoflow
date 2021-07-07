@@ -91,12 +91,15 @@ T nuInf = 3.22e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 
-
 //
 // Directory handling routines here
 //
 // WARNING, really ugly! We need portable I/O
 
+bool fileExists (const std::string& name) {
+    ifstream f(name.c_str());
+    return f.good();
+}
 
 // Checks for a directory. Hopefuly a portable way. I want C++17...
 int dirExists(string pathName)
@@ -305,19 +308,47 @@ int main(int argc, char *argv[])
     plbInit(&argc, &argv);
 
     pcout   << "********************************* " << endl
-            << "*       hemoFlowCFD  v0.1       * " << endl
+            << "*       hemoFlowCFD  v0.2       * " << endl
             << "********************************* " << endl;
 
     // *** Reading in command line arguments
+    if(global::argc() < 2) {
+        pcout << "Not enough arguments; the syntax is: "
+              << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
+        return -1;
+    }
+
+    // Reading in the config file name
     string paramXmlFileName;
     try {
         global::argv(1).read(paramXmlFileName);
     }
     catch (PlbIOException& exception) {
-        pcout << "Wrong parameters; the syntax is: "
-              << (std::string)global::argv(0) << " parameter-input-file.xml" << std::endl;
+        pcout << "Wrong input XML; the syntax is: "
+              << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
         return -1;
     }
+    
+    // Check if we have the checkpoint flag
+    string checkpointFlag;
+    bool saveCheckpoint = false;
+    bool isCheckpointed = false;
+    if(global::argc() > 2) {
+        try {
+            global::argv(2).read(checkpointFlag);
+            if(checkpointFlag.compare("-r")==0) {
+                isCheckpointed = true;
+                pcout << std::endl << "Restart from checkpoint is requested! The checkpoint data will be loaded after the geometry setup." << std::endl << std::endl;
+            }
+            else
+                pcout << "Unknown command line argument: " << checkpointFlag << std::endl;
+        }
+        catch (PlbIOException& exception) {
+            // No flag, nothing to do
+        }
+    }
+
+    string outDir; // Output directory
 
     XMLreader xml(paramXmlFileName);
 
@@ -327,23 +358,21 @@ int main(int argc, char *argv[])
         workingFolder = ".";
     else
         workingFolder = paramXmlFileName.substr(0, folderIdx);
-
+    
     // *** Load in data files
     try {
         pcout << "Loading in data file..." << std::endl;
 
         xml["simulation"]["outputDir"].read(outputFolder);
         
-        string outDir = workingFolder + "/" + outputFolder;
+        outDir = workingFolder + "/" + outputFolder;
 
         // Check if output dir exists and accessible
         if (dirExists(outDir) <= 0) {
-        	
             pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
 
             if (global::mpi().isMainProcessor())
                 mkpath(outDir.c_str(), 0777);
-
         }
 
         // Sync up after creating the directory by the master process.
@@ -357,6 +386,14 @@ int main(int argc, char *argv[])
         xml["simulation"]["blockSize"].read(blockSize);
         xml["simulation"]["simLength"].read(simLength);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
+        
+        // Check for optional checkpoint argument
+        try {
+            xml["simulation"]["saveCheckpoint"].read(saveCheckpoint);
+        }
+        catch (PlbIOException& exception) {
+            pcout << "Warning: checkpointing tag was not found in config, checkpointing will be disabled!" << std::endl;
+        }
 
         // Loading the input file
         string npzFileName;
@@ -446,6 +483,12 @@ int main(int argc, char *argv[])
     int saveFrequency;
     saveFrequency = (int)round(saveFreqTime/C_t);
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
+    
+    // Checkpoint file names relative to the output folder
+    string chkParamFile = outDir+"/checkpoint_parameters.dat";
+    string chkDataFile = outDir+"/checkpoint_lattice.dat";
+    string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
+    string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
     // TODO: IMPORTANT! - Work out proper sparse mode, we waste up to 90% numerical cells. Take a hint from HemoCell.
     bool sparse = false;
@@ -484,7 +527,7 @@ int main(int argc, char *argv[])
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 0), new NoDynamics<T, DESCRIPTOR>);
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
 
-    // TODO: add some reparallelize here
+    // TODO: add some reparallelize here, check if it plays nice with checkpointing
 
     pcout << "Setting values on openings..." << std::endl;
     for(auto &o: openings){
@@ -497,70 +540,115 @@ int main(int argc, char *argv[])
     pcout << "Finalizing lattice..." << std::endl;
     lattice->initialize();
 
-
-    pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
-    
+    // iteration counter
     int stat_cycle = 0;
-    int convergenceSteps = 10*max(max(Nx, Ny), Nz);
-    T minDE = 1e-11; T dE = 100; T prevE = 0;
-
-    for(auto &o: openings)
-    	o->imposeBC(lattice, 0.0);
-
-    pcout << "Saving initial state with flow diverter..." << endl;
-    writeVTK(*lattice, -1, porosityField);
-
-    while(abs(dE) > minDE && stat_cycle < convergenceSteps )
-    {
-        lattice->collideAndStream();
-
-        T cE = computeAverageEnergy(*lattice);
-        dE = cE - prevE; prevE = cE;
-
-        if(stat_cycle % 500 == 0) {
-            pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
+    
+    // Check if the simulation was checkpointed
+    if(isCheckpointed) {
+        pcout << endl << "*********** Restoring checkpoint ***********" << endl;
+        
+        // Load in the iteration counter
+        string chkParamFile = outDir+"/checkpoint_parameters.dat";
+        plb_ifstream ifile(chkParamFile.c_str());
+        if(ifile.is_open()) {
+            ifile >> stat_cycle;
+            global::mpi().bCast(&stat_cycle, 1); // Broadcast the iteration counter
+        }
+        else {
+            pcout << "ERROR reading from the checkpoint parameter file: checkpoint_parameters.dat! Exiting..." << std::endl;
+            return -1;
         }
         
-        stat_cycle++;
+        // Load the lattice
+        loadBinaryBlock(*lattice, outDir+"/checkpoint_lattice.dat");
+        
+        pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
-    pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-
-    pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
-
-    pcout << "Saving time step 0..." << endl;
-    writeVTK(*lattice, 0);
-    // writeNPZ(*lattice, 0);
-    //writeHDF5(*lattice, 0, porosityField);
-
+    else { // If not, then let's do a warm up.
+        pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
+           
+        int convergenceSteps = 10*max(max(Nx, Ny), Nz);
+        T minDE = 1e-11; T dE = 100; T prevE = 0;
+    
+        for(auto &o: openings)
+        	o->imposeBC(lattice, 0.0);
+    
+        pcout << "Saving initial state with flow diverter..." << endl;
+        writeVTK(*lattice, -1, porosityField);
+    
+        while(abs(dE) > minDE && stat_cycle < convergenceSteps )
+        {
+            lattice->collideAndStream();
+    
+            T cE = computeAverageEnergy(*lattice);
+            dE = cE - prevE; prevE = cE;
+    
+            if(stat_cycle % 500 == 0) {
+                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
+            }
+            
+            stat_cycle++;
+        }
+        pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
+    
+        pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
+    
+        pcout << "Saving time step 0..." << endl;
+        writeVTK(*lattice, 0);
+        // writeNPZ(*lattice, 0);
+        //writeHDF5(*lattice, 0, porosityField);
+        
+        // Set the counter back
+        stat_cycle = 0;
+    }
+    
     pcout << "Starting computation..." << endl;
 
-    stat_cycle = 0;
-    T currentTime = 0;
-    while(currentTime <= simLength + C_t)
+    while(stat_cycle*C_t <= simLength + C_t)
     {
         
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << currentTime << "s / " << simLength << "s" << " [" << stat_cycle << " / " << (int)(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
+            pcout << "\rTime: " << stat_cycle*C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << (int)(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
         }
 
         // Impose boundary conditions
         for(auto &o: openings)
-    		o->imposeBC(lattice, C_t);
+            o->imposeBC(lattice, C_t);
 
         // Calculate next step
         lattice->collideAndStream();
 
         // Advance time
-        currentTime += C_t; 
         stat_cycle++;
 
-        // Save VTK output
+        // Save VTK output & checkpoint
         if(stat_cycle % saveFrequency == 0) {
-            pcout << "Writing output at: " << stat_cycle << " (" << currentTime << " s)." << endl;
+            pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*C_t << " s)." << endl;
             writeVTK(*lattice, stat_cycle);
             // writeNPZ(*lattice, stat_cycle);
-            //writeHDF5(*lattice, stat_cycle);
+            // writeHDF5(*lattice, stat_cycle);
+            
+            if(saveCheckpoint) {
+                // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
+                if(global::mpi().isMainProcessor()) {
+                    if(fileExists(chkDataFile)){
+                        // Remove prev-previous checkpoint            
+                        if(fileExists(chkDataFileOld)){
+                            if( ( std::remove( chkDataFileOld.c_str() ) + std::remove( chkParamFileOld.c_str() ) ) != 0 )
+                                pcout << "WARNING: cannot remove old chekpoint file!" << std::endl;
+                        }
+                        // Rename previous checkpoint
+                        if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() )) 
+                            pcout << "WARNING: cannot rename old chekpoint file!" << std::endl;
+                    }
+                }
+
+                global::mpi().barrier();
+                
+                plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
+                saveBinaryBlock(*lattice, chkDataFile);
+            }
         }
     }
 
