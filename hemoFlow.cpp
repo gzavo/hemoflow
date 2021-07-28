@@ -74,6 +74,7 @@ string outputFolder;
 string workingFolder;
 T simLength;
 T saveFreqTime;
+T checkpointFreqTime;
 
 // Openings
 vector<OpeningHandler*> openings;
@@ -331,7 +332,6 @@ int main(int argc, char *argv[])
     
     // Check if we have the checkpoint flag
     string checkpointFlag;
-    bool saveCheckpoint = false;
     bool isCheckpointed = false;
     if(global::argc() > 2) {
         try {
@@ -387,12 +387,14 @@ int main(int argc, char *argv[])
         xml["simulation"]["simLength"].read(simLength);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
         
+        
         // Check for optional checkpoint argument
         try {
-            xml["simulation"]["saveCheckpoint"].read(saveCheckpoint);
+            xml["simulation"]["checkpointFrequency"].read(checkpointFreqTime);
         }
         catch (PlbIOException& exception) {
             pcout << "Warning: checkpointing tag was not found in config, checkpointing will be disabled!" << std::endl;
+            saveFreqTime = 100000;
         }
 
         // Loading the input file
@@ -482,7 +484,9 @@ int main(int argc, char *argv[])
 
     int saveFrequency;
     saveFrequency = (int)round(saveFreqTime/C_t);
+    int checkpointFrequency = (int)round(checkpointFreqTime/C_t);
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
+    pcout << "Chakpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
     
     // Checkpoint file names relative to the output folder
     string chkParamFile = outDir+"/checkpoint_parameters.dat";
@@ -622,33 +626,33 @@ int main(int argc, char *argv[])
         // Advance time
         stat_cycle++;
 
-        // Save VTK output & checkpoint
+        // Save VTK output 
         if(stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*C_t << " s)." << endl;
             writeVTK(*lattice, stat_cycle);
             // writeNPZ(*lattice, stat_cycle);
-            // writeHDF5(*lattice, stat_cycle);
-            
-            if(saveCheckpoint) {
-                // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
-                if(global::mpi().isMainProcessor()) {
-                    if(fileExists(chkDataFile)){
-                        // Remove prev-previous checkpoint            
-                        if(fileExists(chkDataFileOld)){
-                            if( ( std::remove( chkDataFileOld.c_str() ) + std::remove( chkParamFileOld.c_str() ) ) != 0 )
-                                pcout << "WARNING: cannot remove old chekpoint file!" << std::endl;
-                        }
-                        // Rename previous checkpoint
-                        if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() )) 
-                            pcout << "WARNING: cannot rename old chekpoint file!" << std::endl;
+            // writeHDF5(*lattice, stat_cycle);   
+        }
+        
+        if(stat_cycle % checkpointFrequency == 0) {
+            // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
+            if(global::mpi().isMainProcessor()) {
+                if(fileExists(chkDataFile)){
+                    // Remove prev-previous checkpoint            
+                    if(fileExists(chkDataFileOld)){
+                        if( ( std::remove( chkDataFileOld.c_str() ) + std::remove( chkParamFileOld.c_str() ) ) != 0 )
+                            pcout << "WARNING: cannot remove old chekpoint file!" << std::endl;
                     }
+                    // Rename previous checkpoint
+                    if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() )) 
+                        pcout << "WARNING: cannot rename old chekpoint file!" << std::endl;
                 }
-
-                global::mpi().barrier();
-                
-                plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
-                saveBinaryBlock(*lattice, chkDataFile);
             }
+
+            global::mpi().barrier();
+            
+            plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
+            saveBinaryBlock(*lattice, chkDataFile);
         }
     }
 
