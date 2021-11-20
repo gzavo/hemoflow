@@ -68,6 +68,7 @@ T C_m;  // Mass conversion factor (derived)
 T Re;   
 
 // Technical simulation parameters
+bool useCheckpoint = true;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
@@ -394,7 +395,7 @@ int main(int argc, char *argv[])
         }
         catch (PlbIOException& exception) {
             pcout << "Warning: checkpointing tag was not found in config, checkpointing will be disabled!" << std::endl;
-            saveFreqTime = 100000;
+            useCheckpoint = false;
         }
 
         // Loading the input file
@@ -484,9 +485,12 @@ int main(int argc, char *argv[])
 
     int saveFrequency;
     saveFrequency = (int)round(saveFreqTime/C_t);
-    int checkpointFrequency = (int)round(checkpointFreqTime/C_t);
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
-    pcout << "Chakpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
+
+    int checkpointFrequency = (int)round(checkpointFreqTime/C_t);
+    
+    if(useCheckpoint)     
+        pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
     
     // Checkpoint file names relative to the output folder
     string chkParamFile = outDir+"/checkpoint_parameters.dat";
@@ -613,7 +617,7 @@ int main(int argc, char *argv[])
         
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << stat_cycle*C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << (int)(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
+            pcout << "\rTime: " << stat_cycle*C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
         }
 
         // Impose boundary conditions
@@ -634,7 +638,7 @@ int main(int argc, char *argv[])
             // writeHDF5(*lattice, stat_cycle);   
         }
         
-        if(stat_cycle % checkpointFrequency == 0) {
+        if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {
             // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
             if(global::mpi().isMainProcessor()) {
                 if(fileExists(chkDataFile)){
@@ -654,7 +658,7 @@ int main(int argc, char *argv[])
             plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
             saveBinaryBlock(*lattice, chkDataFile);
         }
-    }
+    } // End of main loop
 
     pcout << endl << "Simulation done successfully :)" << endl;
 
