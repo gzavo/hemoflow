@@ -69,6 +69,7 @@ T Re;
 
 // Technical simulation parameters
 bool useCheckpoint = true;
+bool saveInitState = true;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
@@ -580,9 +581,10 @@ int main(int argc, char *argv[])
     
         for(auto &o: openings)
         	o->imposeBC(lattice, 0.0);
-    
-        pcout << "Saving initial state with flow diverter..." << endl;
-        writeVTK(*lattice, -1, porosityField);
+
+        if(saveInitState)
+            pcout << "Saving initial state with flow diverter..." << endl;
+            writeVTK(*lattice, -1, porosityField);
     
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
         {
