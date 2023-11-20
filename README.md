@@ -1,31 +1,55 @@
-# HemoFlow
+#### New fetures:
 
-Macroscopic flow simulation, aimed at vessel simulations. It relies on the 'preprocessorlbm' package to prepare the voxelized simulation domain.
+##### Pre-processing:
 
-The input parameters are read from an XML descriptor file. By default every path is relative to the XML file location.
+1. Added parallel processing to the voxelize() function.
 
-The code supports MPI execution.
+2. Added the connected-component analysis method to detect the opening voxels.
+   
+   Aadvntage: very fast, execution time does not scale with problem size.
+   
+   Drawbacks: has problem detecting opening voxels on the boundary edge.
 
-# Note
-- All input parameters should be either SI or non-dimensional!
+3. Added the feature to detect multiple inlets. However, hardcoded. One can change the following lines according to the specific geometry.
+   
+   Line 61 in `readCL.py` is used to define the inlets so that the direction of the inflow points inside.
+   
+   Line 216 ~ 249 in `detectOpenings.py` are used to paint the openings with different labels.
 
-# Setup
-The code builds on the Palabos open-source code. If not present, copy it to the 'palabos' directory, or use the 'setup.sh' script to clone it from the repository.
-Afterwards use CMake to build the executable, e.g.:
-> mkdir build
-> cd build
-> cmake ..
-> make -j 4
+4. Seperated the opening information from the geometry flag. Now the opening information is stored in a npz file and the geometry flag is stored in a compressed HDF5 file.
 
-## Shortcomings
-- Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.
-- An opening cannot fall to an edge or corner of the AA bounding box (or it can be detected on the wrong side).
+##### HemoFlow:
 
+1. Changed the XML structure, the details can be found in the `ExampleXML.xml`. 
 
-## TODO
-- [X] New inlet scale function (a more realistic one)
-- [X] New outlet pressure distribution based on Murray-law (smallest outlet -> p=0)
-- [X] Pass the angle of the openings based on centerline calculations (new ID / opening, every centerline goes from the inlet to an opening)
-- [X] Calculate proper axis aligned Pouseuille profile even if the boundary is not perpendicular.
-- [] Validate and verify
+2. Added the support of multiple inlets geometry. However, still hardcoded. Change the following lines according to the geometry.
+   
+   Line 247 ~ 268 in `hemoFlow.cpp` are used to define the boundary velocity/pressure profile and load the corresponding flowrate function.
+   
+   Line 731 ~ 740 in `hemoFlow.cpp` are used to read the flowrate functions.
+   
+   Line 52, 54, 198, 216, 228, 264 in `opening.cpp` are used to determine the pressure outlet.
 
+3. Optimized the RAM utilization by MPI shared memory.
+
+4. Added the Smagorinsky model to implement LES.
+
+5. Improve the Output efficiency significantly by utilizing HDF5 and Xdmf3
+
+#### TODO
+
+##### Pre-processing:
+
+1. Improve the efficiency of pre-processor, possibly needs a re-write in C or C++.
+
+2. Improve the applicability of opening detection for multiple inlets and outlets, preferably with a graphicl interface.
+
+3. Find a solution to deal with non-perpendicular openings.
+
+##### HemoFlow:
+
+1. Improve the applicability of opening detection, so that no hardcoded is needed.
+
+2. Only read necessary geometry flag voxels to each MPI thread to prevent RAM waste.
+
+3. Remove Xdmf3 since it is not actively maintained. Utilize the VTK HDF Reader ([VTK HDF Reader (kitware.com)](https://www.kitware.com/vtk-hdf-reader/)).

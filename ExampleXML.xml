@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+
+<simulation>
+	<blockSize>20</blockSize>
+	<outputDir>/projects/0/einf3061/1e8_RBGK_1.0vel</outputDir>
+	<simLength>1.4</simLength>
+	<saveFrequency>0.01</saveFrequency>
+	<saveInitState>1</saveInitState>
+	<saveZeroState>1</saveZeroState>
+	<write2hdf5>1</write2hdf5>
+</simulation>
+
+<fluid>
+	<Re>4200</Re>
+	<U_AVG_LB>0.15</U_AVG_LB>
+	<tau_LB>0.6</tau_LB>
+	<kinematicViscosity>3.27e-6</kinematicViscosity>
+	<!-- [kg/m3] -->
+	<fluidDensity>1055</fluidDensity>
+</fluid>
+
+<geometry>
+	<NumberofFlowrateFuncs>10</NumberofFlowrateFuncs>
+	<!-- Note: Flowrate functions, not velocity functions -->
+	<inletFlowrateFunc_SVC>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/SVC.txt</inletFlowrateFunc_SVC>
+	<inletFlowrateFunc_IVC>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/IVC.txt</inletFlowrateFunc_IVC>
+	<inletFlowrateFunc_LHV>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/LHV.txt</inletFlowrateFunc_LHV>
+	<inletFlowrateFunc_MHV>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/MHV.txt</inletFlowrateFunc_MHV>
+	<inletFlowrateFunc_RHV>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/RHV.txt</inletFlowrateFunc_RHV>
+	<outletFlowrateFunc_RPA>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/RPA.txt</outletFlowrateFunc_RPA>
+	<outletFlowrateFunc_LPA>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/LPA.txt</outletFlowrateFunc_LPA>
+	<outletFlowrateFunc_SIDE_V>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/SIDE_V.txt</outletFlowrateFunc_SIDE_V>
+	<outletFlowrateFunc_SIDE_P>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/SIDE_P.txt</outletFlowrateFunc_SIDE_P>
+	<outletFlowrateFunc_OutFlow>/home/kwang/VascuTreatCFD/data/Fontan_flowrate_funcs/OutFlow.txt</outletFlowrateFunc_OutFlow>
+	<file>/home/kwang/VascuTreatCFD/data/fontan_mesh/1e8/Fontan_1e8_ops.npz</file>
+	<GeometryFlag>/home/kwang/VascuTreatCFD/data/fontan_mesh/1e8/Fontan_1e8_gf.h5</GeometryFlag>
+</geometry>
+
+<flowdiverter>
+	<linCoeff>50.0</linCoeff>
+	<quadCoeff>4200.0</quadCoeff>
+</flowdiverter>

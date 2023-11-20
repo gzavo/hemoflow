@@ -4,6 +4,13 @@
 #include "palabos3D.h"
 #include "palabos3D.hh"
 
+#include <H5DataSet.hpp>
+#include <H5DataSpace.hpp>
+#include <H5File.hpp>
+#include <H5PropertyList.hpp>
+#include <hdf5.h>
+#include <cstdint>
+
 using namespace plb;
 
 typedef double T;
@@ -12,7 +19,7 @@ typedef double T;
 //ForcedMRTD3Q19Descriptor
 //ForcedD3Q19Descriptor
 
-typedef GuoExternalForceBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
+typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
 //GuoExternalForceCompleteRegularizedBGKdynamics
 //GuoExternalForceMRTdynamics
 //GuoExternalForceBGKdynamics
@@ -20,14 +27,21 @@ typedef GuoExternalForceBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
 
 #define CELLDESCRIPTOR descriptors::D3Q7Descriptor
 
-const T U_AVG_LB = 0.05;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
+// const T U_AVG_LB = 0.1;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
 
 // Geometry labels
 const int UNUSED = 0;
 const int WALL = 1;
 const int FLUID = 2;
-const int INLET = 10;			// This is always a velocity inlet
-const int FIRST_OUTLET = 11;	// This is always the smallest outlet defined as pressure
+const int INLET_SVC = 10;
+const int INLET_IVC = 11;
+const int INLET_RHV = 12;
+const int INLET_MHV = 13;
+const int INLET_LHV = 14;
+const int OUTLET_RPA = 15;
+const int OUTLET_LPA = 16;
+const int OUTLET_SIDE_V = 17;
+const int OUTLET_SIDE_P = 18;	// Smallest outlet has zero pressure BC
 
 // Simulation domain size
 extern int Nx;

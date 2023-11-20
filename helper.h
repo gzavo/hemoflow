@@ -13,13 +13,13 @@ using namespace std;
 
 // *** Function to convert array coordinates
 
-// Fortran ordering - numpy
-inline int gT(int x, int y, int z) {
-    return x*Nz*Ny + y*Nz + z;
+// Fortran ordering - numpy     */ Why long long? -> Very large indexing!
+inline long long gT(int x, int y, int z) {
+    return (long long)x*(long long)Nz*(long long)Ny + (long long)y*(long long)Nz + (long long)z;
 }
 
-inline int gT2D(int size_y ,int x, int y){
-    return x*size_y + y;
+inline long long gT2D(int size_y ,int x, int y){
+    return (long long)x*(long long)size_y + (long long)y;
 }
 
 // C ordering
@@ -117,11 +117,14 @@ typedef map<int, map<int, map<int, symMtx3 > > > tensor3D;
 template<typename T_>
 class FlagMaskDomain3D : public DomainFunctional3D {
     public:
-        FlagMaskDomain3D(T_ *allGeometryFlags, int flagToMaskAbove = 0) : maskFlag(flagToMaskAbove), geometryFlags(allGeometryFlags)
+        FlagMaskDomain3D(T_ *allGeometryFlags, int flagToMask = 0) : maskFlag(flagToMask), geometryFlags(allGeometryFlags)
         { }
 
         virtual bool operator () (plint iX, plint iY, plint iZ) const {
-            if(geometryFlags[gT(iX,iY,iZ)] > maskFlag)
+
+            int Flagvalue = geometryFlags[gT(iX,iY,iZ)];
+
+            if(Flagvalue > maskFlag)
                 return true;
             return false;
         }
@@ -144,7 +147,10 @@ class FlagMaskSingleDomain3D : public DomainFunctional3D {
         { }
 
         virtual bool operator () (plint iX, plint iY, plint iZ) const {
-            if(geometryFlags[gT(iX,iY,iZ)] == maskFlag)
+
+            int Flagvalue = geometryFlags[gT(iX,iY,iZ)];
+
+            if(Flagvalue == maskFlag)
                 return true;
             return false;
         }

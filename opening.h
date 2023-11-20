@@ -10,18 +10,18 @@
 class OpeningHandler
 {
 public:
-    OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb, vec3d direction);
+    OpeningHandler(int8_t* flagAray, int8_t flag_, T radius_lb, vec3d direction);
     ~OpeningHandler();
 
     void printOpeningDetails();
-    void loadScaleFunction(string fileName);
+    void loadScaleFunction(string fileName, T C_l);
     void setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);
     void imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);
     void setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);
     void setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);
     void createConstantPressureProfile(T density = 1.0);
-    void createPoiseauilleProfile(T u_avg = U_AVG_LB);
-    void createBluntVelocityProfile(T u_avg = U_AVG_LB);
+    void createPoiseauilleProfile(T u_avg);
+    void createBluntVelocityProfile(T u_avg);
 
     int getFlag() { return flag; }
     int getSurfaceSize() { return nodes.size(); }
@@ -34,7 +34,7 @@ public:
 
 private:
 
-    int flag;
+    int8_t flag;
     bool hasScaleFunction;
     
     vector<Index3D> nodes;
