@@ -62,6 +62,8 @@ double* ocData = NULL;
 cnpy::NpyArray openingTangent;
 double* otData = NULL;
 
+string* FlowrateFuncs = NULL;
+
 // Simulation parameters
 T omega;
 T C_l;  // Length conversion factor
@@ -241,10 +243,10 @@ void processOpenings(string * FlowrateFuncs)
 
         OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / C_l, dir);
 
-        // LPA, RPA, and RPA side branches are all zero pressure outlets
+        // LPA, RPA, and RPA side branches are all outlets
         // IVC, SVC, RHV, MHV, LHV have own flowrate funcs
         
-        if (flag >= INLET_SVC && flag <= INLET_LHV) {   // Inlets
+        if (flag >= INLET_SVC && flag <= OUTLET_SIDE_V) {   // Inlets
             opening->createPoiseauilleProfile(U_AVG_LB);
             // opening->createBluntVelocityProfile(U_AVG_LB);
             if(flag==INLET_SVC)
@@ -257,15 +259,19 @@ void processOpenings(string * FlowrateFuncs)
                 opening->loadScaleFunction(FlowrateFuncs[3], C_l);
             else if(flag==INLET_LHV)
                 opening->loadScaleFunction(FlowrateFuncs[4], C_l);
-            // else if(flag==OUTLET_RPA)
-            //     opening->loadScaleFunction(FlowrateFuncs[5], C_l);
-            // else if(flag==OUTLET_LPA)
-            //     opening->loadScaleFunction(FlowrateFuncs[6], C_l);
-            // else if(flag==OUTLET_SIDE_V)
-            //     opening->loadScaleFunction(FlowrateFuncs[7], C_l);
+            else if(flag==OUTLET_RPA)
+                opening->loadScaleFunction(FlowrateFuncs[5], C_l);
+            else if(flag==OUTLET_LPA)
+                opening->loadScaleFunction(FlowrateFuncs[6], C_l);
+            else if(flag==OUTLET_SIDE_V)
+                opening->loadScaleFunction(FlowrateFuncs[7], C_l);
         }
-        else   // Set pressure outlets with 1.0 pressure
-            opening->createConstantPressureProfile(1.0);
+        else
+            // // Set pressure outlets with 1.0 pressure
+            // opening->createConstantPressureProfile(1.0);
+
+            // Set virtual outlet (copy velocity from last time step)
+            opening->createVirtualOutletProfile(lattice);
         
         opening->printOpeningDetails();
         pcout << " " << std::endl;
@@ -729,7 +735,7 @@ int main(int argc, char *argv[])
         int num_funcs;
         xml["geometry"]["NumberofFlowrateFuncs"].read(num_funcs);
 
-        string * FlowrateFuncs = new string[num_funcs];
+        FlowrateFuncs = new string[num_funcs];
         xml["geometry"]["inletFlowrateFunc_SVC"].read(FlowrateFuncs[0]);
         xml["geometry"]["inletFlowrateFunc_IVC"].read(FlowrateFuncs[1]);
         xml["geometry"]["inletFlowrateFunc_RHV"].read(FlowrateFuncs[2]);
@@ -795,8 +801,6 @@ int main(int argc, char *argv[])
         pcout << "Setting LBM parameters..." << std::endl;
         calcSimulationParameters(inletD);
         
-        pcout << "Processing openings..." << std::endl;
-        processOpenings(FlowrateFuncs);
 
     }
     catch (PlbIOException& exception) {
@@ -886,6 +890,11 @@ int main(int argc, char *argv[])
     MPI_Win_free(&win);
 
     // TODO: add some reparallelize here, check if it plays nice with checkpointing
+
+    // ********************************************** Openings **********************************************
+
+    pcout << "Processing openings..." << std::endl;
+    processOpenings(FlowrateFuncs);
 
     pcout << "Setting values on openings..." << std::endl;
     for(auto &o: openings){
