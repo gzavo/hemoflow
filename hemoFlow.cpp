@@ -622,8 +622,10 @@ int main(int argc, char *argv[])
 
     MPI_Win win;
     
-    // **************** Load in xml file and opening data
+    // **************** Load in xml file
     try{
+
+        // **************** Load in opening data
         pcout << "Loading in data file..." << std::endl;
 
         xml["simulation"]["outputDir"].read(outputFolder);
@@ -739,24 +741,8 @@ int main(int argc, char *argv[])
         xml["geometry"]["outletFlowrateFunc_SIDE_P"].read(FlowrateFuncs[8]); // pressure outlet
         xml["geometry"]["outletFlowrateFunc_OutFlow"].read(FlowrateFuncs[9]);
 
-        T inletD = 2.0 * orData[6]; // SVC [m]
 
-        pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(inletD);
-        
-        pcout << "Processing openings..." << std::endl;
-        processOpenings(FlowrateFuncs);
-
-    }
-    catch (PlbIOException& exception) {
-        pcout << "Error while processing input opening file " << paramXmlFileName
-              << ": " << exception.what() << std::endl;
-        return -1;
-    }
-
-    
-    // *** Load in geometry flag data
-    try{
+        // **************** Load in geometry flag data
         int world_rank, world_size;
         MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -804,9 +790,17 @@ int main(int argc, char *argv[])
 
         global::mpi().barrier();
 
+        T inletD = 2.0 * orData[6]; // SVC [m]
+
+        pcout << "Setting LBM parameters..." << std::endl;
+        calcSimulationParameters(inletD);
+        
+        pcout << "Processing openings..." << std::endl;
+        processOpenings(FlowrateFuncs);
+
     }
     catch (PlbIOException& exception) {
-        pcout << "Error while processing geometry data " << paramXmlFileName
+        pcout << "Error while processing input opening file " << paramXmlFileName
               << ": " << exception.what() << std::endl;
         return -1;
     }

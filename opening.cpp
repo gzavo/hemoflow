@@ -205,8 +205,24 @@ void OpeningHandler::setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createInterpBoundaryCondition3D<T,DESCRIPTOR>();
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createEquilibriumBoundaryCondition3D<T,DESCRIPTOR>();
-        OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createInterpBoundaryCondition3D<T,DESCRIPTOR>();
-        bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
+        // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createInterpBoundaryCondition3D<T,DESCRIPTOR>();
+        // bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
+
+        // Virtual outlet
+        MultiScalarField3D<T> *rhoBar = generateMultiScalarField<T>((MultiBlock3D&) *lattice, 2).release();
+        rhoBar->toggleInternalStatistics(false);
+
+        MultiTensorField3D<T,3> *j = generateMultiTensorField<T,3>((MultiBlock3D&) *lattice, 2).release();
+        j->toggleInternalStatistics(false);
+
+        std::vector<MultiBlock3D*> bcargs;
+        bcargs.push_back(lattice);
+        bcargs.push_back(rhoBar);
+        bcargs.push_back(j);
+
+        integrateProcessingFunctional(new VirtualOutlet<T,DESCRIPTOR>(1.0, lattice->getBoundingBox(), 1),
+                *boundingBox, bcargs, 2);
+        setBoundaryVelocity(*lattice, *boundingBox, Array<T,3>((T) 0, (T) 0, (T) 0));
     }
 }
 
@@ -262,8 +278,9 @@ void OpeningHandler::imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
     // pcout << "scale: " << scale << std::endl;
     
     if (flag >= OUTLET_RPA) {
-        setBoundaryDensity(*lattice, *boundingBox, 1.0);
+        // setBoundaryDensity(*lattice, *boundingBox, 1.0);
         // setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale)); // For time dependent pressure boundary
+                
     }
     else {
         setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
