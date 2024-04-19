@@ -107,6 +107,8 @@ target_sources(${PROJECT_NAME} PRIVATE "opening.cpp")
 include_directories("external/cnpy")
 target_sources(${PROJECT_NAME} PRIVATE "external/cnpy/cnpy.cpp")
 
+include_directories("external/HighFive/include")
+
 
 # Link with the following libraries
 if(BUILD_HDF5)

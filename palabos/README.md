@@ -4,6 +4,19 @@
 On this page you can download the source code, [access examples](https://gitlab.com/unigespc/palabos/tree/master/examples) and resources, 
 and [interact with the user base](http://palabos-forum.unige.ch/).
 
+## How to cite Palabos
+
+```
+@article{Palabos2020,
+    title = "Palabos: Parallel Lattice Boltzmann Solver",
+    journal = "Computers & Mathematics with Applications",
+    year = "2020",
+    issn = "0898-1221",
+    doi = "https://doi.org/10.1016/j.camwa.2020.03.022",
+    author = "Jonas Latt and Orestis Malaspinas and Dimitrios Kontaxakis and Andrea Parmigiani and Daniel Lagrava and Federico Brogi and Mohamed Ben Belgacem and Yann Thorimbert and Sébastien Leclaire and Sha Li and Francesco Marson and Jonathan Lemus and Christos Kotsalos and Raphaël Conradin and Christophe Coreixas and Rémy Petkantchin and Franck Raynaud and Joël Beny and Bastien Chopard",
+}
+```
+
 # Installation
 
 Palabos is very easy to install since it does not depend on any external dependencies.
@@ -13,13 +26,14 @@ Palabos is very easy to install since it does not depend on any external depende
 The mandatory packages are the following:
 
 - A modern C++ compiler `gcc` or `clang`
+- `clang-format` version 14
 - `make`
 - `cmake`
 
 ### For Debian based distributions
 
 ```
-$ sudo apt install gcc clang cmake make
+$ sudo apt install gcc clang clang-format cmake make
 ```
 
 ### For Arch based distributions
@@ -54,11 +68,34 @@ of [Paraview](https://www.paraview.org/) for their visualization.
 
 ## Windows Prerequisites
 
-- Microsoft Visual Studio (VS).
+- Microsoft Visual Studio (VS). VS2019 is recommended, due to its integration with CMake project management.
 - Microsoft C++ compiler, installed with Visual Studio (make sure to enable the installation of C++ compiler in the custom installation option of VS). This step can be done even after installing VS for the first time in your system. Simply, re-run the installer and customize it to include the extra features. For more information on how to install C/C++ support in Visual Studio follow [link1](https://docs.microsoft.com/en-us/cpp/build/vscpp-step-0-installation?view=vs-2019) & [link2](https://visualstudio.microsoft.com/vs/features/cplusplus/).
-- Microsoft Message Passing Interface (MPI). To install MPI follow this [link](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
-- [CMake](https://cmake.org/download/) (preferably latest version).
+- Optionally the Microsoft Message Passing Interface (MPI). To install MPI follow this [link](https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
 - Optionally the [HDF5](https://www.hdfgroup.org/downloads/hdf5/) library.
+- If you use Visual Studio older than VS2019, you may want to install [CMake](https://cmake.org/download/), preferably the latest version, to generate a Visual Studio project file (.sln) from Palabos' CMakeLists.txt
+
+### For Visual Studio 2019
+Start Visual Studio 2019 and select "Clone a repository" from the "Get
+started" section. Provide the following repository location:
+
+```
+https://gitlab.com/unigespc/palabos
+```
+
+and click "clone". Watch the messages that unfold in the "Output
+messages" window for potential errors. If there is no error, select an
+example program from the "Select Startup Item" button in the toolbar.
+Click the little arrow next to the selected example to build and
+execute it.
+
+You may get error messages in the "Output messages" window if MPI
+and/or HDF5 are not installed on your system. In these cases,
+deactivate MPI and/or HDF5 by selecting "Manage Configurations" in the
+"Configuration" button in the toolbar. In the section "CMake variables
+and cache", you should be able to un-click ENABLE_MPI and/or
+BUILD_HDF5 (you may need to wait a bit for these to appear). After
+this, click "Save and generate CMake cache to load variables" and
+proceed as indicated above.
 
 ## The installation steps
 
@@ -167,9 +204,36 @@ you can use the CMakeLists.txt provided in any of the examples. With some minor 
 
 In palabos root directory, we provide a CMakeLists.txt file that compiles palabos library and all the available examples.
 
+# Code formatting
+
+To format the code run 
+
+```bash
+./run-clang-format.sh -i
+```
+
+that formats the code in place. To make a dry run of formatting 
+
+```bash
+./run-clang-format.sh -n
+```
+
+must be run. Note that for the CI to succeed one needs version 14 of `clang-format`.
+
+In order to help you with code formatting there is a `docker-compose`
+configuration at the root of the palabos repository (this requires `docker` and `docker-compose`
+to be installed). To format the code
+through docker, run:
+
+```bash
+CURRENT_UID=$(id -u):$(id -g) docker-compose run clang_format
+```
+
+On some linux distributions one might need to run this command as root via `sudo`.
+
 # Documentation
 
-The documentation of Palabos can be found following this [link](http://www.palabos.org/documentation/userguide/).
+The documentation of Palabos can be found following this [link](https://palabos.unige.ch/get-started/palabos-documentation/).
 
 # Getting help
 
@@ -194,17 +258,24 @@ By alphabetic order
 * @ccoreixas
 * @daniel-lagrava-niwa
 * @dkdk
+* @constracktor
 * @helenmo
+* @izumiko
 * @jfburdet
+* @jolinjolin
 * @kotsaloscv
+* @liuanjun
 * @Latt
 * @msguskova
 * @omalaspinas
 * @onmars
 * @parmigiani
 * @rconradin
+* @remy.pet
 * @swang251 
+* @vmapelli
 * @YannThorimbert
 * @ysagon
+* @Yulan-Fang
 
 

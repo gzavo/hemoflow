@@ -13,13 +13,15 @@ using namespace std;
 
 // *** Function to convert array coordinates
 
-// Fortran ordering - numpy
-inline int gT(int x, int y, int z) {
-    return x*Nz*Ny + y*Nz + z;
+// Fortran ordering - numpy - long long enables large DNS 
+inline long long gT(int x, int y, int z) {
+    //return x*Nz*Ny + y*Nz + z;
+    return (long long)x*(long long)Nz*(long long)Ny + (long long)y*(long long)Nz + (long long)z;
 }
 
-inline int gT2D(int size_y ,int x, int y){
-    return x*size_y + y;
+inline long long gT2D(int size_y ,int x, int y){
+    //return x*size_y + y;
+    return (long long)x*(long long)size_y + (long long)y;
 }
 
 // C ordering

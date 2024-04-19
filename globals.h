@@ -4,6 +4,15 @@
 #include "palabos3D.h"
 #include "palabos3D.hh"
 
+// HDF5 and HighFive includes
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5File.hpp>
+#include <highfive/H5PropertyList.hpp>
+#include <hdf5.h>
+
+#include <cstdint>
+
 using namespace plb;
 
 typedef double T;
@@ -12,13 +21,16 @@ typedef double T;
 //ForcedMRTD3Q19Descriptor
 //ForcedD3Q19Descriptor
 
-typedef GuoExternalForceBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
+//typedef GuoExternalForceBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
+typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundDynamics;
 //GuoExternalForceCompleteRegularizedBGKdynamics
 //GuoExternalForceMRTdynamics
 //GuoExternalForceBGKdynamics
 //ForcedCarreauDynamics
 
 #define CELLDESCRIPTOR descriptors::D3Q7Descriptor
+
+#define LES 0
 
 const T U_AVG_LB = 0.05;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
 

@@ -5,7 +5,7 @@
  * own the IP rights for most of the code base. Since October 2019, the
  * Palabos project is maintained by the University of Geneva and accepts
  * source code contributions from the community.
- * 
+ *
  * Contact:
  * Jonas Latt
  * Computer Science Department
@@ -14,7 +14,7 @@
  * 1227 Carouge, Switzerland
  * jonas.latt@unige.ch
  *
- * The most recent release of Palabos can be downloaded at 
+ * The most recent release of Palabos can be downloaded at
  * <https://palabos.unige.ch/>
  *
  * The library Palabos is free software: you can redistribute it and/or
@@ -29,7 +29,7 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #ifndef MULTI_GRID_DATA_FIELD_2D_HH
 #define MULTI_GRID_DATA_FIELD_2D_HH
@@ -38,290 +38,318 @@
 #include "multiGrid/multiGridDataField2D.h"
 #include "multiGrid/multiGridGenerator2D.h"
 
-
 namespace plb {
 
-template<typename T>
-MultiGridScalarField2D<T>::MultiGridScalarField2D (
-                        MultiGridManagement2D management_,
-                        std::vector<BlockCommunicator2D* > communicators_,
-                        std::vector<CombinedStatistics*> combinedStatistics_, 
-                        plint behaviorLevel_ )
-            : MultiGrid2D(management_, behaviorLevel_)
+template <typename T>
+MultiGridScalarField2D<T>::MultiGridScalarField2D(
+    MultiGridManagement2D management_, std::vector<BlockCommunicator2D *> communicators_,
+    std::vector<CombinedStatistics *> combinedStatistics_, plint behaviorLevel_) :
+    MultiGrid2D(management_, behaviorLevel_)
 {
-    allocateFields(communicators_,combinedStatistics_);
+    allocateFields(communicators_, combinedStatistics_);
 }
 
-template<typename T>
-MultiGridScalarField2D<T>::MultiGridScalarField2D (
-                        MultiGridManagement2D management_,
-                        plint behaviorLevel_ )
-    : MultiGrid2D(management_, behaviorLevel_)
+template <typename T>
+MultiGridScalarField2D<T>::MultiGridScalarField2D(
+    MultiGridManagement2D management_, plint behaviorLevel_) :
+    MultiGrid2D(management_, behaviorLevel_)
 {
     allocateFields();
 }
 
-template<typename T>
-MultiGridScalarField2D<T>::MultiGridScalarField2D(MultiGridScalarField2D<T> const& rhs)
-    : MultiGrid2D(rhs)
+template <typename T>
+MultiGridScalarField2D<T>::MultiGridScalarField2D(MultiGridScalarField2D<T> const &rhs) :
+    MultiGrid2D(rhs)
 {
     allocateFields();
 }
 
-template<typename T>
-MultiGridScalarField2D<T>::MultiGridScalarField2D(MultiGrid2D const& rhs, Box2D subDomain, bool crop)
-    : MultiGrid2D(extractManagement(rhs.getMultiGridManagement(),subDomain,crop),rhs.getBehaviorLevel())
+template <typename T>
+MultiGridScalarField2D<T>::MultiGridScalarField2D(
+    MultiGrid2D const &rhs, Box2D subDomain, bool crop) :
+    MultiGrid2D(
+        extractManagement(rhs.getMultiGridManagement(), subDomain, crop), rhs.getBehaviorLevel())
 {
     allocateFields();
 }
 
-
-template<typename T>
-MultiGridScalarField2D<T>::~MultiGridScalarField2D(){
-    for (plint iLevel=0; iLevel<(plint)fields.size(); ++iLevel){
+template <typename T>
+MultiGridScalarField2D<T>::~MultiGridScalarField2D()
+{
+    for (plint iLevel = 0; iLevel < (plint)fields.size(); ++iLevel) {
         delete fields[iLevel];
     }
 }
 
-template<typename T>
-void MultiGridScalarField2D<T>::reset(){
-    for (plint iLevel=0; iLevel<(plint)fields.size(); ++iLevel){
+template <typename T>
+void MultiGridScalarField2D<T>::reset()
+{
+    for (plint iLevel = 0; iLevel < (plint)fields.size(); ++iLevel) {
         fields[iLevel]->reset();
     }
 }
 
-template<typename T>
-T& MultiGridScalarField2D<T>::get(plint iX, plint iY){
-    return fields[this->getBehaviorLevel()]->get(iX,iY);
+template <typename T>
+T &MultiGridScalarField2D<T>::get(plint iX, plint iY)
+{
+    return fields[this->getBehaviorLevel()]->get(iX, iY);
 }
 
-template<typename T>
-T const& MultiGridScalarField2D<T>::get(plint iX, plint iY) const {
-    return fields[this->getBehaviorLevel()]->get(iX,iY);
+template <typename T>
+T const &MultiGridScalarField2D<T>::get(plint iX, plint iY) const
+{
+    return fields[this->getBehaviorLevel()]->get(iX, iY);
 }
 
-template<typename T>
-MultiScalarField2D<T>& MultiGridScalarField2D<T>::getComponent(plint level){
-    PLB_PRECONDITION(level<(plint)fields.size());
+template <typename T>
+MultiScalarField2D<T> &MultiGridScalarField2D<T>::getComponent(plint level)
+{
+    PLB_PRECONDITION(level < (plint)fields.size());
     return *fields[level];
 }
 
-template<typename T>
-MultiScalarField2D<T> const& MultiGridScalarField2D<T>::getComponent(plint level) const{
-    PLB_PRECONDITION(level<(plint)fields.size());
+template <typename T>
+MultiScalarField2D<T> const &MultiGridScalarField2D<T>::getComponent(plint level) const
+{
+    PLB_PRECONDITION(level < (plint)fields.size());
     return *fields[level];
 }
 
 /// Using the management object, create the corresponding fields for each level
-template<typename T>
-void MultiGridScalarField2D<T>::allocateFields(){
-    fields = generateScalarFields<T>( this->getMultiGridManagement(),
-                                      defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
-                                      defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()) );
+template <typename T>
+void MultiGridScalarField2D<T>::allocateFields()
+{
+    fields = generateScalarFields<T>(
+        this->getMultiGridManagement(),
+        defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
+        defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()));
 }
 
-template<typename T>
-void MultiGridScalarField2D<T>::allocateFields( std::vector<BlockCommunicator2D* > communicators,
-                                                std::vector<CombinedStatistics*> combinedStatistics ){
-    fields = generateScalarFields<T>( this->getMultiGridManagement(),
-                                      communicators, combinedStatistics );
+template <typename T>
+void MultiGridScalarField2D<T>::allocateFields(
+    std::vector<BlockCommunicator2D *> communicators,
+    std::vector<CombinedStatistics *> combinedStatistics)
+{
+    fields =
+        generateScalarFields<T>(this->getMultiGridManagement(), communicators, combinedStatistics);
 }
 
-
-
-template<typename T>
-int MultiGridScalarField2D<T>::getBlockId() const {
+template <typename T>
+int MultiGridScalarField2D<T>::getBlockId() const
+{
     return fields[0]->getStaticId();
 }
 
-template<typename T>
-std::unique_ptr<MultiScalarField2D<T> > MultiGridScalarField2D<T>::convertToCoarsest(plint dimDx, plint dimDt){
-    
-//TODO: modify avec new functions
-//     plint levels = this->getNumLevels();
-// 
-//     MultiScalarField2D<T> *copy, *tmp;
-//     copy = joinMultiScalarInCoarsest(
-//         *fields[levels-2],*fields[levels-1], dimDx, dimDt );
-// 
-//     tmp=copy;
-// 
-//     for (plint iLevel=levels-2; iLevel>0; --iLevel){
-//         copy = joinMultiScalarInCoarsest(
-//                     *fields[iLevel-1],*tmp, dimDx, dimDt );
-//         delete tmp; // erase the old value of copy
-//         tmp = copy; // keep always a pointer over copy
-//     }
-//     
-//     return std::unique_ptr<MultiScalarField2D<T> >(copy);
+// QUESTION: This function does nothing. Remove?
+template <typename T>
+std::unique_ptr<MultiScalarField2D<T> > MultiGridScalarField2D<T>::convertToCoarsest(
+    [[maybe_unused]] plint dimDx, [[maybe_unused]] plint dimDt)
+{
+    PLB_ASSERT(false);
+
+    // TODO: modify avec new functions
+    //      plint levels = this->getNumLevels();
+    //
+    //      MultiScalarField2D<T> *copy, *tmp;
+    //      copy = joinMultiScalarInCoarsest(
+    //          *fields[levels-2],*fields[levels-1], dimDx, dimDt );
+    //
+    //      tmp=copy;
+    //
+    //      for (plint iLevel=levels-2; iLevel>0; --iLevel){
+    //          copy = joinMultiScalarInCoarsest(
+    //                      *fields[iLevel-1],*tmp, dimDx, dimDt );
+    //          delete tmp; // erase the old value of copy
+    //          tmp = copy; // keep always a pointer over copy
+    //      }
+    //
+    //      return std::unique_ptr<MultiScalarField2D<T> >(copy);
 }
 
-template<typename T>
-std::unique_ptr<MultiScalarField2D<T> > MultiGridScalarField2D<T>::convertToFinest(plint dimDx, plint dimDt){
-    
-//TODO: modify avec new functions
-//     MultiScalarField2D<T> *copy, *tmp;
-//     copy = joinMultiScalarInFinest(
-//         *fields[0],*fields[1], dimDx, dimDt );
-//         
-//     tmp=copy;
-//                     
-//     for (plint iLevel=2; iLevel<(plint)fields.size(); ++iLevel){
-//         copy = joinMultiScalarInFinest(
-//                     *tmp,*fields[iLevel], dimDx, dimDt );
-//         delete tmp; // erase the old value of copy
-//         tmp = copy; // keep always a pointer over copy
-//     }
-//         
-//     return std::unique_ptr<MultiScalarField2D<T> >(copy);
+// QUESTION: This function does nothing, why? Remove?
+template <typename T>
+std::unique_ptr<MultiScalarField2D<T> > MultiGridScalarField2D<T>::convertToFinest(
+    [[maybe_unused]] plint dimDx, [[maybe_unused]] plint dimDt)
+{
+    PLB_ASSERT(false);
+    // TODO: modify avec new functions
+    //      MultiScalarField2D<T> *copy, *tmp;
+    //      copy = joinMultiScalarInFinest(
+    //          *fields[0],*fields[1], dimDx, dimDt );
+    //
+    //      tmp=copy;
+    //
+    //      for (plint iLevel=2; iLevel<(plint)fields.size(); ++iLevel){
+    //          copy = joinMultiScalarInFinest(
+    //                      *tmp,*fields[iLevel], dimDx, dimDt );
+    //          delete tmp; // erase the old value of copy
+    //          tmp = copy; // keep always a pointer over copy
+    //      }
+    //
+    //      return std::unique_ptr<MultiScalarField2D<T> >(copy);
 }
-
 
 /* ************** MultiGridTensorField2D ******************* */
 
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::MultiGridTensorField2D ( MultiGridManagement2D management_,
-                                                    std::vector<BlockCommunicator2D* > communicators_,
-                                                    std::vector<CombinedStatistics*> combinedStatistics_, 
-                                                    plint behaviorLevel_ )
+// QUESTION: Unused management_ and behaviorLevel_. Remove?
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::MultiGridTensorField2D(
+    [[maybe_unused]] MultiGridManagement2D management_,
+    std::vector<BlockCommunicator2D *> communicators_,
+    std::vector<CombinedStatistics *> combinedStatistics_, [[maybe_unused]] plint behaviorLevel_)
 {
-    allocateFields(communicators_,combinedStatistics_);
+    allocateFields(communicators_, combinedStatistics_);
 }
 
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::MultiGridTensorField2D (
-                MultiGridManagement2D management_,
-                plint behaviorLevel_ )
+// QUESTION: Unused management_ and behaviorLevel_, remove it maybe?
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::MultiGridTensorField2D(
+    [[maybe_unused]] MultiGridManagement2D management_, [[maybe_unused]] plint behaviorLevel_)
 {
-    allocateFields( defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
-                    defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()) );
-}
-                
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::MultiGridTensorField2D(MultiGridTensorField2D<T,nDim> const& rhs)
-{
-    allocateFields();
+    allocateFields(
+        defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
+        defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()));
 }
 
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::MultiGridTensorField2D(MultiGrid2D const& rhs)
-        : MultiGrid2D(rhs.getMultiGridManagement(),rhs.getBehaviorLevel())
+// QUESTION: Unused rhs why?
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::MultiGridTensorField2D(
+    [[maybe_unused]] MultiGridTensorField2D<T, nDim> const &rhs)
 {
     allocateFields();
 }
 
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::MultiGridTensorField2D(
-                        MultiGrid2D const& rhs, 
-                        Box2D subDomain, bool crop)
-        : MultiGrid2D(extractManagement(rhs.getMultiGridManagement(),subDomain,crop),rhs.getBehaviorLevel())
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::MultiGridTensorField2D(MultiGrid2D const &rhs) :
+    MultiGrid2D(rhs.getMultiGridManagement(), rhs.getBehaviorLevel())
 {
     allocateFields();
 }
 
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::MultiGridTensorField2D(
+    MultiGrid2D const &rhs, Box2D subDomain, bool crop) :
+    MultiGrid2D(
+        extractManagement(rhs.getMultiGridManagement(), subDomain, crop), rhs.getBehaviorLevel())
+{
+    allocateFields();
+}
 
-template<typename T, int nDim>
-MultiGridTensorField2D<T,nDim>::~MultiGridTensorField2D(){
-    for (pluint iLevel=0; iLevel<fields.size(); ++iLevel){
+template <typename T, int nDim>
+MultiGridTensorField2D<T, nDim>::~MultiGridTensorField2D()
+{
+    for (pluint iLevel = 0; iLevel < fields.size(); ++iLevel) {
         delete fields[iLevel];
     }
 }
 
-
-template<typename T, int nDim>
-void MultiGridTensorField2D<T,nDim>::reset(){
-    for (pluint iLevel=0; iLevel<fields.size(); ++iLevel){
+template <typename T, int nDim>
+void MultiGridTensorField2D<T, nDim>::reset()
+{
+    for (pluint iLevel = 0; iLevel < fields.size(); ++iLevel) {
         fields[iLevel]->reset();
     }
 }
 
-template<typename T, int nDim>
-Array<T,nDim>& MultiGridTensorField2D<T,nDim>::get(plint iX, plint iY){
-    return fields[this->getBehaviorLevel()]->get(iX,iY);
+template <typename T, int nDim>
+Array<T, nDim> &MultiGridTensorField2D<T, nDim>::get(plint iX, plint iY)
+{
+    return fields[this->getBehaviorLevel()]->get(iX, iY);
 }
 
-template<typename T, int nDim>
-Array<T,nDim> const& MultiGridTensorField2D<T,nDim>::get(plint iX, plint iY) const{
-    return fields[this->getBehaviorLevel()]->get(iX,iY);
+template <typename T, int nDim>
+Array<T, nDim> const &MultiGridTensorField2D<T, nDim>::get(plint iX, plint iY) const
+{
+    return fields[this->getBehaviorLevel()]->get(iX, iY);
 }
 
-template<typename T, int nDim>
-MultiTensorField2D<T,nDim>& MultiGridTensorField2D<T,nDim>::getComponent(plint level){
-    PLB_PRECONDITION(level<(plint)fields.size());
+template <typename T, int nDim>
+MultiTensorField2D<T, nDim> &MultiGridTensorField2D<T, nDim>::getComponent(plint level)
+{
+    PLB_PRECONDITION(level < (plint)fields.size());
     return *fields[level];
 }
 
-template<typename T, int nDim>
-MultiTensorField2D<T,nDim> const& MultiGridTensorField2D<T,nDim>::getComponent(plint level) const{
-    PLB_PRECONDITION(level<(plint)fields.size());
+template <typename T, int nDim>
+MultiTensorField2D<T, nDim> const &MultiGridTensorField2D<T, nDim>::getComponent(plint level) const
+{
+    PLB_PRECONDITION(level < (plint)fields.size());
     return *fields[level];
 }
 
-template<typename T, int nDim>
-int MultiGridTensorField2D<T,nDim>::getBlockId() const{
+template <typename T, int nDim>
+int MultiGridTensorField2D<T, nDim>::getBlockId() const
+{
     return fields[this->getBehaviorLevel()]->getStaticId();
 }
 
 /// Using the management object, create the corresponding fields for each level
-template<typename T, int nDim>
-void MultiGridTensorField2D<T,nDim>::allocateFields(){
-    fields = generateTensorFields<T,nDim>( this->getMultiGridManagement(),
-                                      defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
-                                      defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()) );
+template <typename T, int nDim>
+void MultiGridTensorField2D<T, nDim>::allocateFields()
+{
+    fields = generateTensorFields<T, nDim>(
+        this->getMultiGridManagement(),
+        defaultMultiGridPolicy2D().getBlockCommunicator<T>(this->getNumLevels()),
+        defaultMultiGridPolicy2D().getCombinedStatistics(this->getNumLevels()));
 }
 
-template<typename T, int nDim>
-void MultiGridTensorField2D<T,nDim>::allocateFields( std::vector<BlockCommunicator2D* > communicators,
-                                                std::vector<CombinedStatistics*> combinedStatistics ){
-    fields = generateTensorFields<T,nDim>(  this->getMultiGridManagement(),
-                                            communicators, combinedStatistics );
+template <typename T, int nDim>
+void MultiGridTensorField2D<T, nDim>::allocateFields(
+    std::vector<BlockCommunicator2D *> communicators,
+    std::vector<CombinedStatistics *> combinedStatistics)
+{
+    fields = generateTensorFields<T, nDim>(
+        this->getMultiGridManagement(), communicators, combinedStatistics);
 }
 
-
-template<typename T, int nDim>
-std::unique_ptr<MultiTensorField2D<T,nDim> > MultiGridTensorField2D<T,nDim>::convertToCoarsest(plint dimDx, plint dimDt){
-//TODO: modify avec new functions
-//     plint levels = this->getNumLevels();
-// 
-//     MultiTensorField2D<T,nDim> *copy, *tmp;
-//     copy = joinMultiTensorInCoarsest(
-//         *fields[levels-2],*fields[levels-1], dimDx, dimDt );
-// 
-//     tmp=copy;
-// 
-//     for (plint iLevel=levels-2; iLevel>0; --iLevel){
-//         copy = joinMultiTensorInCoarsest(
-//                     *fields[iLevel-1],*tmp, dimDx, dimDt );
-//         delete tmp; // erase the old value of copy
-//         tmp = copy; // keep always a pointer over copy
-//     }
-//     
-//     return std::unique_ptr<MultiTensorField2D<T,nDim> >(copy);
+// QUESTION: This function does nothing should be remove it?
+template <typename T, int nDim>
+std::unique_ptr<MultiTensorField2D<T, nDim> > MultiGridTensorField2D<T, nDim>::convertToCoarsest(
+    [[maybe_unused]] plint dimDx, [[maybe_unused]] plint dimDt)
+{
+    PLB_ASSERT(false);
+    // TODO: modify avec new functions
+    //      plint levels = this->getNumLevels();
+    //
+    //      MultiTensorField2D<T,nDim> *copy, *tmp;
+    //      copy = joinMultiTensorInCoarsest(
+    //          *fields[levels-2],*fields[levels-1], dimDx, dimDt );
+    //
+    //      tmp=copy;
+    //
+    //      for (plint iLevel=levels-2; iLevel>0; --iLevel){
+    //          copy = joinMultiTensorInCoarsest(
+    //                      *fields[iLevel-1],*tmp, dimDx, dimDt );
+    //          delete tmp; // erase the old value of copy
+    //          tmp = copy; // keep always a pointer over copy
+    //      }
+    //
+    //      return std::unique_ptr<MultiTensorField2D<T,nDim> >(copy);
 }
 
-template<typename T, int nDim>
-std::unique_ptr<MultiTensorField2D<T,nDim> > MultiGridTensorField2D<T,nDim>::convertToFinest(plint dimDx, plint dimDt){
-//TODO: modify avec new functions
-//     MultiTensorField2D<T,nDim> *copy, *tmp;
-//     copy = joinMultiTensorInFinest(
-//         *fields[0],*fields[1], dimDx, dimDt );
-//         
-//     tmp=copy;
-//                     
-//     for (plint iLevel=2; iLevel<(plint)fields.size(); ++iLevel){
-//         copy = joinMultiTensorInFinest(
-//                     *tmp,*fields[iLevel], dimDx, dimDt );
-//         delete tmp; // erase the old value of copy
-//         tmp = copy; // keep always a pointer over copy
-//     }
-//         
-//     return std::unique_ptr<MultiTensorField2D<T,nDim> >(copy);
+// QUESTION: This function does nothing should be remove it?
+template <typename T, int nDim>
+std::unique_ptr<MultiTensorField2D<T, nDim> > MultiGridTensorField2D<T, nDim>::convertToFinest(
+    [[maybe_unused]] plint dimDx, [[maybe_unused]] plint dimDt)
+{
+    PLB_ASSERT(false);
+    // TODO: modify avec new functions
+    //      MultiTensorField2D<T,nDim> *copy, *tmp;
+    //      copy = joinMultiTensorInFinest(
+    //          *fields[0],*fields[1], dimDx, dimDt );
+    //
+    //      tmp=copy;
+    //
+    //      for (plint iLevel=2; iLevel<(plint)fields.size(); ++iLevel){
+    //          copy = joinMultiTensorInFinest(
+    //                      *tmp,*fields[iLevel], dimDx, dimDt );
+    //          delete tmp; // erase the old value of copy
+    //          tmp = copy; // keep always a pointer over copy
+    //      }
+    //
+    //      return std::unique_ptr<MultiTensorField2D<T,nDim> >(copy);
 }
 
-
-
-
-} // namespace plb
+}  // namespace plb
 
 #endif  // MULTI_GRID_DATA_FIELD_2D_HH
-
