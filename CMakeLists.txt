@@ -103,6 +103,7 @@ add_library(palabos STATIC ${PALABOS_SRC} ${EXT_SRC})
 set(EXECUTABLE_NAME "hemoFlow")
 add_executable(${EXECUTABLE_NAME} "${EXECUTABLE_NAME}.cpp")
 target_sources(${PROJECT_NAME} PRIVATE "opening.cpp")
+target_sources(${PROJECT_NAME} PRIVATE "io.cpp")
 
 include_directories("external/cnpy")
 target_sources(${PROJECT_NAME} PRIVATE "external/cnpy/cnpy.cpp")

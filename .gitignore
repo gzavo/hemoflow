@@ -40,6 +40,9 @@
 # Build
 build/
 
+# Cases
+cases/
+
 # Python related
 __pycache__/
 

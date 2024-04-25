@@ -7,24 +7,14 @@
 #include <vector>
 #include <math.h>
 
-// For directory manipulations
-#include <sys/types.h>
-#include <sys/stat.h>
-
-// #include <sys/types.h>
-// #include <sys/stat.h>
-// #include <unistd.h>
-
 using namespace std;
 
 #include "globals.h"
 #include "helper.h"
 #include "opening.h"
 #include "porous.h"
+#include "io.h"
 
-// I/O
-#include "cnpy.h"
-#include "io/xdmfDataOutput.h"
 
 /* ********** GLOBAL VARIABLES ************/
 
@@ -45,7 +35,6 @@ T quadCoeff = 0.0;
 T linCoeff_lb = 0.0;
 T quadCoeff_lb = 0.0;
 
-
 // Info on openings
 cnpy::NpyArray openingIndex;
 unsigned short* oiData = NULL;
@@ -58,14 +47,8 @@ double* ocData = NULL;
 cnpy::NpyArray openingTangent;
 double* otData = NULL;
 
-// Simulation parameters
-T omega;
-T C_l;  // Length conversion factor
-T C_t;  // Time conversion factor
-T C_r;  // Density conversion factor
-T C_p;  // Pressure conversion factor (derived)
-T C_m;  // Mass conversion factor (derived)
-T Re;   
+// Simulation parameters structure
+SimPar sim;
 
 // Technical simulation parameters
 bool useCheckpoint = true;
@@ -78,7 +61,7 @@ T simLength;
 T saveFreqTime;
 T checkpointFreqTime;
 
-// Openings
+// Vector of openings
 vector<OpeningHandler*> openings;
 
 // Simulation data structures
@@ -94,109 +77,30 @@ T nuInf = 3.22e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 
-//
-// Directory handling routines here
-//
-// WARNING, really ugly! We need portable I/O
-
-bool fileExists (const std::string& name) {
-    ifstream f(name.c_str());
-    return f.good();
-}
-
-// Checks for a directory. Hopefuly a portable way. I want C++17...
-int dirExists(string pathName)
-{
-    struct stat info;
-
-    if( stat( pathName.c_str(), &info ) != 0 )
-        return -1; // Cannot acces path
-    else if( info.st_mode & S_IFDIR )  // S_ISDIR() doesn't exist on my windows 
-        return 1;  // Path exists
-    else
-        return 0;  // Path does not exist
-}
-
-/**
-** mkpath - ensure all directories in path exist
-** Algorithm takes the pessimistic view and works top-down to ensure
-** each directory in path exists, rather than optimistically creating
-** the last element and working backwards. It uses the custom makedir function below.
-*/
-
-// TODO: Unix specific, look for portable solution!
-int do_mkdir(const char *path, mode_t mode)
-{
-    //Stat            st;
-    struct stat st = {0};
-    int    status = 0;
-
-    if (stat(path, &st) != 0)
-    {
-        /* Directory does not exist. EEXIST for race condition */
-        if (mkdir(path, mode) != 0 && errno != EEXIST)
-            status = -1;
-    }
-    else if (!S_ISDIR(st.st_mode))
-    {
-        errno = ENOTDIR;
-        status = -1;
-    }
-
-    return(status);
-}
-
-// mkpath(argv[i], 0777);
-int mkpath(const char *path, mode_t mode)
-{
-    char           *pp;
-    char           *sp;
-    int             status;
-    char           *copypath = strdup(path);
-
-    status = 0;
-    pp = copypath;
-    while (status == 0 && (sp = strchr(pp, '/')) != 0)
-    {
-        if (sp != pp)
-        {
-            /* Neither root nor double slash in path */
-            *sp = '\0';
-            status = do_mkdir(copypath, mode);
-            *sp = '/';
-        }
-        pp = sp + 1;
-    }
-    if (status == 0)
-        status = do_mkdir(path, mode);
-    free(copypath);
-    return (status);
-}
-
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
-void calcSimulationParameters(T D_m)
+void calcSimulationParameters(T D_m, SimPar &sim)
 {   
-    T D_lb = D_m  / C_l;
-    T U_avg = Re * nuInf / D_m;
+    T D_lb = D_m  / sim.C_l;
+    T U_avg = sim.Re * nuInf / D_m;
     
-    C_t =  U_AVG_LB / U_avg * C_l;
+    sim.C_t =  U_AVG_LB / U_avg * sim.C_l;
 
-    T nuInf_lb = U_AVG_LB * D_lb / Re;
+    T nuInf_lb = U_AVG_LB * D_lb / sim.Re;
     T nu_ratio = nuInf_lb / nuInf;
     T nu0_lb = nu0 * nu_ratio;
 
     T tau = 3.0*nuInf_lb+0.5;
 
-    omega = 1.0 / tau;
+    sim.omega = 1.0 / tau;
 
-    C_r = BLOOD_DENSITY;    // TODO IF we are simulating blood.... Note: only changes pressure output values, the simulation results are independent!
+    sim.C_r = BLOOD_DENSITY;    // TODO IF we are simulating blood.... Note: only changes pressure output values, the simulation results are independent!
 
-    C_p = C_r * C_l * C_l / (C_t * C_t);
-    C_m = C_r * C_l * C_l * C_l;
+    sim.C_p = sim.C_r * sim.C_l * sim.C_l / (sim.C_t * sim.C_t);
+    sim.C_m = sim.C_r * sim.C_l * sim.C_l * sim.C_l;
 
     // TODO: convert linCoeff and quadCoeff
-    linCoeff_lb = linCoeff * C_l*C_l * C_t / C_m;       // [ kg / (m2 s) ]
-    quadCoeff_lb = quadCoeff * C_l*C_l * C_l / C_m;     // [ kg / m3 ]
+    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ]
+    quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
 
@@ -227,7 +131,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
         int s = openingTangent.shape[1];
         vec3d dir(otData[gT2D(s,i,0)], otData[gT2D(s,i,1)], otData[gT2D(s,i,2)]);
 
-        OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / C_l, dir);
+        OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / sim.C_l, dir);
         
         if(flag == FIRST_OUTLET)
             opening->createConstantPressureProfile();
@@ -237,7 +141,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
                 // opening->createBluntVelocityProfile(U_AVG_LB);
             else {
                 // Calculate outflow velocity based on Murray's law
-                T u_out = Qin * oqData[i] / (pow(orData[i] / C_l, 2) * M_PI);
+                T u_out = Qin * oqData[i] / (pow(orData[i] / sim.C_l, 2) * M_PI);
                 opening->createPoiseauilleProfile(u_out);
                 // opening->createBluntVelocityProfile(u_out);
             }
@@ -250,352 +154,6 @@ void processOpenings(string inletFlowrateFunc, T inletA)
         openings.push_back(opening);
     }
 
-}
-
-// Write out data in vtk format
-void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, MultiNTensorField3D<T> *field1 = NULL)
-{
-    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), C_l);
-    vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3. * C_p );
-    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", C_l/C_t);
-    vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(C_l*C_t*C_t));
-    vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./C_t );
-    // TODO - output viscosity?
-    
-    if (field1 != NULL)
-       vtkOut.writeData<float>(*field1, "field1");
-}
-
-void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter, string outDir, MultiNTensorField3D<T> *field1 = NULL)
-{
-
-    T SaveTime = T();
-    global::timer("SaveTime").restart();
-
-    // Compute velocity in 3 dims, shear stress in 6 dims
-    // Note the velovities are distributed on every processor
-    MultiTensorField3D<double,3> DistributedVelocity = *computeVelocity(lattice);
-    MultiScalarField3D<double> DistributedDensity = *computeDensity(lattice);
-    MultiTensorField3D<double,6> DistributedShearStress = *computeShearStress(lattice);
-    MultiScalarField3D<double> DistributedS_Norm = *computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice));
-    MultiScalarField3D<double> DistributedField1 = *field1; // Used for additional fields, e.g. porosity
-
-    // Density/Velocity/... shared the same atomic block distribution!
-    MultiBlockManagement3D VelocityBlockManagement = DistributedVelocity.getMultiBlockManagement();
-
-    vector<plint> LocalBlockIDs = VelocityBlockManagement.getLocalInfo().getBlocks();
-
-    // Start to count the writing time
-    T FindAttributesTime = T();
-    global::timer("FindAttributes").restart();
-
-    // Again, Density/Velocity/Shear stress/S_norm... share the same distribution, so one ID vector is enough
-    vector<vector<long unsigned int>> GlobalID;
-    vector<float> VelocityX; vector<float> VelocityY; vector<float> VelocityZ; vector<float> Density;
-    vector<float> SS1; vector<float> SS2; vector<float> SS3; vector<float> SS4; vector<float> SS5; vector<float> SS6;
-    vector<float> SNorm;
-    vector<float> Field1;
-    vector<int> this_rank;
-
-    int RankID = global::mpi().getRank();
-
-    // Now we loop through all local blocks on current MPI thread
-    for(pluint iBlock=0; iBlock < LocalBlockIDs.size(); ++iBlock) {
-        plint blockId = LocalBlockIDs[iBlock];
-
-        // The "SmartBulk3D" object represents local atomic block in a global view, i.e. its bounding box coordinates are in global scale.
-        // If you do not understand, go check the source codes of "MultiBlockManagement3D::findAllLocalRepresentations()"
-        // Why we use it? Because we need to know which atomic blocks are stored on current MPI thread!
-        SmartBulk3D LocalBulk(VelocityBlockManagement.getSparseBlockStructure(), VelocityBlockManagement.getEnvelopeWidth(), blockId);
-
-        for(unsigned int i = LocalBulk.getBulk().x0; i <= LocalBulk.getBulk().x1; i++)
-            for(unsigned int j = LocalBulk.getBulk().y0; j <= LocalBulk.getBulk().y1; j++)
-                for(unsigned int k = LocalBulk.getBulk().z0; k <= LocalBulk.getBulk().z1; k++){
-                    
-                    // Now we convert the global scale coordinates to block local coordinates
-                    unsigned int LocalX = LocalBulk.toLocalX(i);
-                    unsigned int LocalY = LocalBulk.toLocalY(j);
-                    unsigned int LocalZ = LocalBulk.toLocalZ(k);
-
-                    GlobalID.push_back({k,j,i});
-
-                    // Velocity
-                    Array<double,3> const& foundVelocity = DistributedVelocity.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    // Note: Scale to physical unit before saving
-                    float vel_scale = float(C_l/C_t);
-                    VelocityX.push_back(float(foundVelocity[0])*vel_scale); VelocityY.push_back(float(foundVelocity[1])*vel_scale); VelocityZ.push_back(float(foundVelocity[2])*vel_scale);
-                    // Density
-                    double foundDensity = DistributedDensity.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    // Density.push_back(float(foundDensity)*1./3.*float(C_p));
-                    Density.push_back(float(foundDensity));
-                    // Shear Stress
-                    Array<double,6> const& foundSS = DistributedShearStress.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    float SS_scale = C_m / (C_l*C_t*C_t);
-                    SS1.push_back(float(foundSS[0])*SS_scale); SS2.push_back(float(foundSS[1])*SS_scale); SS3.push_back(float(foundSS[2])*SS_scale);
-                    SS4.push_back(float(foundSS[3])*SS_scale); SS5.push_back(float(foundSS[4])*SS_scale); SS6.push_back(float(foundSS[5])*SS_scale);
-                    // S_Norm
-                    double foundS_Norm = DistributedS_Norm.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    SNorm.push_back(foundS_Norm*float(1./C_t));
-                    // Additional field - No unit conversion!
-                    if (field1 != NULL) {
-                        double foundField1 = DistributedField1.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                        Field1.push_back(foundField1); 
-                    }    
-                    // Rank of current mpi thread
-                    this_rank.push_back(RankID);
-
-                }
-    }
-
-    FindAttributesTime = global::timer("FindAttributes").stop();
-    pcout << "Finding attributes time: " << FindAttributesTime << " sec" << endl;
-
-    assert(GlobalID.size() > 0);
-
-    ///////////////////////////// Saving HDF5 /////////////////////////////
-
-    // Now save the partial local data to hdf5, if you dont understand, 
-    // check (https://github.com/BlueBrain/HighFive/blob/master/src/examples/parallel_hdf5_collective_io.cpp)
-    using namespace HighFive;
-    
-    FileAccessProps fapl;
-    // Tell HDF5 to use MPI-IO
-    fapl.add(MPIOFileAccess{MPI_COMM_WORLD, MPI_INFO_NULL});
-    // Specify that we want all meta-data related operations to use MPI collective operations,
-    // that is, all MPI ranks must participate in any HDF5 operations.
-    fapl.add(MPIOCollectiveMetadata{});
-
-    // Create the file as usual.
-    std::string file_name = createFileName(outDir + "/output_", iter, 6);
-    File file(file_name + ".h5", File::Truncate, fapl);
-
-    // For compression
-    DataSetCreateProps props;
-    // Use chunking
-    props.add(Chunking(std::vector<hsize_t>{100, 100, 100}));
-    // Enable shuffle
-    props.add(Shuffle());
-    // Enable deflate
-    props.add(Deflate(9));
-
-    // Create the dataset as usual
-    std::vector<size_t> Dims{(long unsigned int)Nz, (long unsigned int)Ny, (long unsigned int)Nx};
-    DataSet velocity_x = file.createDataSet<float>("velocity_x", DataSpace(Dims), props);
-    DataSet velocity_y = file.createDataSet<float>("velocity_y", DataSpace(Dims), props);
-    DataSet velocity_z = file.createDataSet<float>("velocity_z", DataSpace(Dims), props);
-    // Shear Stress
-    DataSet SS_1 = file.createDataSet<float>("sigma_1", DataSpace(Dims), props);
-    DataSet SS_2 = file.createDataSet<float>("sigma_2", DataSpace(Dims), props);
-    DataSet SS_3 = file.createDataSet<float>("sigma_3", DataSpace(Dims), props);
-    DataSet SS_4 = file.createDataSet<float>("sigma_4", DataSpace(Dims), props);
-    DataSet SS_5 = file.createDataSet<float>("sigma_5", DataSpace(Dims), props);
-    DataSet SS_6 = file.createDataSet<float>("sigma_6", DataSpace(Dims), props);
-    // Density
-    DataSet density = file.createDataSet<float>("density", DataSpace(Dims), props);
-    // S_Norm
-    DataSet S_Norm = file.createDataSet<float>("S_norm", DataSpace(Dims), props);
-    // Field1
-    DataSet Field1_data = file.createDataSet<float>("Field1", DataSpace(Dims), props);
-    // MPI rank
-    DataSet Rank = file.createDataSet<int>("MPI_rank", DataSpace(Dims), props);
-
-    auto xfer_props = DataTransferProps{};
-    xfer_props.add(UseCollectiveIO{});
-
-    // Each process writes the local attributes to the file
-    velocity_x.select(ElementSet(GlobalID)).write(VelocityX, xfer_props);
-    velocity_y.select(ElementSet(GlobalID)).write(VelocityY, xfer_props);
-    velocity_z.select(ElementSet(GlobalID)).write(VelocityZ, xfer_props);
-    // Shear Stress
-    SS_1.select(ElementSet(GlobalID)).write(SS1, xfer_props);
-    SS_2.select(ElementSet(GlobalID)).write(SS2, xfer_props);
-    SS_3.select(ElementSet(GlobalID)).write(SS3, xfer_props);
-    SS_4.select(ElementSet(GlobalID)).write(SS4, xfer_props);
-    SS_5.select(ElementSet(GlobalID)).write(SS5, xfer_props);
-    SS_6.select(ElementSet(GlobalID)).write(SS6, xfer_props);
-    // Density
-    density.select(ElementSet(GlobalID)).write(Density, xfer_props);
-    // S_Norm
-    S_Norm.select(ElementSet(GlobalID)).write(SNorm, xfer_props);
-    // Field1
-    if (field1 != NULL) {
-        Field1_data.select(ElementSet(GlobalID)).write(Field1, xfer_props);
-    }
-    // MPI Rank
-    Rank.select(ElementSet(GlobalID)).write(this_rank, xfer_props);
-
-    global::mpi().barrier();
-
-    SaveTime = global::timer("SaveTime").stop();
-    pcout << "Saving HDF5 time: " << SaveTime << " sec" << endl;
-
-    T XDMFtime = T();
-    global::timer("XDMFTime").restart();
-
-    ///////////////////////////// Writing Xdmf /////////////////////////////
-    if (global::mpi().isMainProcessor())
-    {
-        FILE *xmf = 0;
-
-        /*
-        * Open the file and write the header.
-        */
-        std::string xmf_name = createFileName(outDir + "/output_", iter, 6) + ".xmf";
-        xmf = fopen(xmf_name.c_str(), "w");
-
-        // HDF5 name
-        // Find the last occurrence of the directory separator '/'
-        size_t lastSlash = file_name.find_last_of('/');
-        // Return the substring after the last '/'
-        std::string h5_name = file_name.substr(lastSlash + 1);
-
-        fprintf(xmf, "<?xml version=\"1.0\" ?>\n");
-        fprintf(xmf, "<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>\n");
-        fprintf(xmf, "<Xdmf Version=\"2.0\">\n");
-
-        /*
-        * Write the mesh description and the variables defined on the mesh.
-        */
-        fprintf(xmf, " <Domain>\n");
-
-        fprintf(xmf, "   <Grid Name=\"mesh\" GridType=\"Uniform\">\n");
-        // Regular mesh
-        fprintf(xmf, "     <Topology TopologyType=\"3DCoRectMesh\" NumberOfElements=\"%d %d %d\"/>\n", Nz, Ny, Nx);
-        fprintf(xmf, "     <Geometry GeometryType=\"Origin_DxDyDz\">\n");
-        fprintf(xmf, "       <DataItem Name=\"Origin\" Dimensions=\"%d\" NumberType=\"Float\" Precision=\"4\" Format=\"XML\">\n", 3);
-        fprintf(xmf, "          0 0 0\n");
-        fprintf(xmf, "       </DataItem>\n");
-        // Discretization step size
-        fprintf(xmf, "       <DataItem Name=\"Spacing\" Dimensions=\"%d\" NumberType=\"Float\" Precision=\"4\" Format=\"XML\">\n", 3);
-        fprintf(xmf, "          %f %f %f\n", C_l, C_l, C_l);
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Geometry>\n");
-        fprintf(xmf, "     \n");
-        // Density
-        fprintf(xmf, "     <Attribute Name=\"Density [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/density\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-        // Velocities
-        fprintf(xmf, "     <Attribute Name=\"Velocity-X [m/s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/velocity_x\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Velocity-Y [m/s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/velocity_y\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Velocity-Z [m/s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/velocity_z\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-        // Shear Stress
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 1 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_1\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 2 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_2\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 3 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_3\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 4 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_4\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 5 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_5\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 6 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/sigma_6\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-        // S_Norm
-        fprintf(xmf, "     <Attribute Name=\"S_Norm [1/s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/S_norm\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-        // Field1
-        if (field1 != NULL) {
-            fprintf(xmf, "     <Attribute Name=\"Additional Field [-]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-            fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-            fprintf(xmf, "          %s.h5:/Field1\n", h5_name.c_str());
-            fprintf(xmf, "       </DataItem>\n");
-            fprintf(xmf, "     </Attribute>\n");
-            fprintf(xmf, "     \n");
-        }
-        // MPI Rank
-        fprintf(xmf, "     <Attribute Name=\"MPI Rank\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
-        fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Int\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
-        fprintf(xmf, "          %s.h5:/MPI_rank\n", h5_name.c_str());
-        fprintf(xmf, "       </DataItem>\n");
-        fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     \n");
-
-        fprintf(xmf, "   </Grid>\n");
-        fprintf(xmf, " </Domain>\n");
-
-        /*
-        * Write the footer and close the file.
-        */
-        fprintf(xmf, "</Xdmf>\n");
-        fclose(xmf);
-    }
-
-    global::mpi().barrier();
-
-    XDMFtime = global::timer("XDMFTime").stop();
-    pcout << "Saving XDMF time: " << XDMFtime << " sec" << endl;
-
-}
-
-void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter)
-{
-    Box3D bb = lattice.getBoundingBox();
-    long unsigned int nx = bb.getNx();
-    long unsigned int ny = bb.getNy();
-    long unsigned int nz = bb.getNz();
-
-    TensorField3D<T,3> localVelocity(nx, ny, nz);
-    copySerializedBlock(*computeVelocity(lattice), localVelocity);
-
-    if(global::mpi().isMainProcessor()) {
-        double *data = new double[3*nx*ny*nz];
-
-        for(unsigned int i = 0; i < nx; i++) 
-            for(unsigned int j = 0; j < ny; j++)
-                for(unsigned int k = 0; k < nz; k++) {
-                int idx = (i*nx*nz+j*nz+k)*3;
-
-                data[idx]   = localVelocity.get(i, j, k)[0];
-                data[idx+1] = localVelocity.get(i, j, k)[1];
-                data[idx+2] = localVelocity.get(i, j, k)[2];
-            }
-
-        cnpy::npz_save(createFileName("output_", iter, 6) + ".npz", "velocity",&data[0],{3,nz,ny,nx},"w"); 
-    }
-
-    global::mpi().barrier();
 }
 
 
@@ -678,7 +236,7 @@ int main(int argc, char *argv[])
 
         global::directories().setOutputDir(outDir+"/");
 
-        xml["simulation"]["Re"].read(Re);
+        xml["simulation"]["Re"].read(sim.Re);
         xml["simulation"]["blockSize"].read(blockSize);
         xml["simulation"]["simLength"].read(simLength);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
@@ -712,9 +270,9 @@ int main(int argc, char *argv[])
 
         // Reading dx = C_l
         cnpy::NpyArray dxA = geom_npz["dx"];
-        C_l = (dxA.data<double>())[0];
+        sim.C_l = (dxA.data<double>())[0];
 
-        pcout << "Resolution [m]: " << C_l << std::endl;
+        pcout << "Resolution [m]: " << sim.C_l << std::endl;
 
         // Loading stent geometry
         stentFlag = geom_npz["stent"];
@@ -752,7 +310,7 @@ int main(int argc, char *argv[])
         pcout << "-> Inlet radius [m]: " << orData[0] << std::endl;
 
         // Inlet area in lattice units
-        T inletA = pow(orData[0] / C_l, 2) * M_PI;
+        T inletA = pow(orData[0] / sim.C_l, 2) * M_PI;
 
 
         string inletFlowrateFunc;
@@ -760,7 +318,7 @@ int main(int argc, char *argv[])
         processOpenings(workingFolder + "/" + inletFlowrateFunc, inletA);
 
         pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(inletD);
+        calcSimulationParameters(inletD, sim);
     }
     catch (PlbIOException& exception) {
         pcout << "Error while processing input file " << paramXmlFileName
@@ -770,19 +328,19 @@ int main(int argc, char *argv[])
     
     pcout   << "*********** Simulation parameters *********** " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
-            << "dx [m]:  " << C_l << endl
-            << "dt [s]:  " << C_t << endl
-            << "omega:  " << omega << endl
-            << "nu:     " << 1./3. * (1./omega - 0.5) << endl
-            << "Re_inlet: " << Re << endl
+            << "dx [m]:  " << sim.C_l << endl
+            << "dt [s]:  " << sim.C_t << endl
+            << "omega:  " << sim.omega << endl
+            << "nu:     " << 1./3. * (1./sim.omega - 0.5) << endl
+            << "Re_inlet: " << sim.Re << endl
             << "U_avg(inlet) [lbm]: " << U_AVG_LB << endl 
-            << "U_avg [m/s]: " << U_AVG_LB * C_l / C_t << endl << endl;
+            << "U_avg [m/s]: " << U_AVG_LB * sim.C_l / sim.C_t << endl << endl;
 
     int saveFrequency;
-    saveFrequency = (int)round(saveFreqTime/C_t);
+    saveFrequency = (int)round(saveFreqTime/sim.C_t);
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
-    int checkpointFrequency = (int)round(checkpointFreqTime/C_t);
+    int checkpointFrequency = (int)round(checkpointFreqTime/sim.C_t);
     
     if(useCheckpoint)     
         pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
@@ -811,20 +369,20 @@ int main(int argc, char *argv[])
                                                           defaultMultiBlockPolicy3D().getBlockCommunicator(),
                                                           defaultMultiBlockPolicy3D().getCombinedStatistics(),
                                                           defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                          new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(omega, cSmago)); 
+                                                          new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago)); 
         #else
             lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
                                                           defaultMultiBlockPolicy3D().getBlockCommunicator(),
                                                           defaultMultiBlockPolicy3D().getCombinedStatistics(),
                                                           defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                          new BackgroundDynamics(omega));
+                                                          new BackgroundDynamics(sim.omega));
         #endif
     }
     else {
         #if LES
-            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(omega, cSmago));
+            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago));
         #else
-            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(omega));
+            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(sim.omega));
         #endif
     }
 
@@ -894,8 +452,8 @@ int main(int argc, char *argv[])
 
         if(saveInitState) {
             pcout << "Saving initial state with flow diverter..." << endl;
-            //writeVTK(*lattice, -1, porosityField);
-            writeHDF5(*lattice, -1, outDir, porosityField);
+            // writeVTK(*lattice, sim, -1, porosityField);
+            writeHDF5(*lattice, sim, -1, outDir, porosityField);
         }
 
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
@@ -918,7 +476,7 @@ int main(int argc, char *argv[])
         pcout << "Saving time step 0..." << endl;
         // writeVTK(*lattice, 0);
         // writeNPZ(*lattice, 0);
-        writeHDF5(*lattice, 0, outDir);
+        writeHDF5(*lattice, sim, 0, outDir);
         
         // Set the counter back
         stat_cycle = 0;
@@ -926,24 +484,24 @@ int main(int argc, char *argv[])
     
     pcout << "Starting computation..." << endl;
 
-    while(stat_cycle*C_t <= simLength + C_t)
+    while(stat_cycle*sim.C_t <= simLength + sim.C_t)
     {
         
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << stat_cycle*C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/C_t) << "] " << " - Energy: " << cE <<"         ";
+            pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/sim.C_t) << "] " << " - Energy: " << cE <<"         ";
             
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
-                writeHDF5(*lattice, stat_cycle, outDir);
+                writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
                 return 0;
             } 
         }
 
         // Impose boundary conditions
         for(auto &o: openings)
-            o->imposeBC(lattice, C_t);
+            o->imposeBC(lattice, sim.C_t);
 
         // Calculate next step
         lattice->collideAndStream();
@@ -953,10 +511,10 @@ int main(int argc, char *argv[])
 
         // Save output 
         if(stat_cycle % saveFrequency == 0) {
-            pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*C_t << " s)." << endl;
-            // writeVTK(*lattice, stat_cycle);
-            // writeNPZ(*lattice, stat_cycle);
-            writeHDF5(*lattice, stat_cycle, outDir);   
+            pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
+            // writeVTK(*lattice, sim, stat_cycle);
+            // writeNPZ(*lattice, sim, stat_cycle);
+            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
         }
         
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {

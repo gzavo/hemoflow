@@ -4,13 +4,6 @@
 #include "palabos3D.h"
 #include "palabos3D.hh"
 
-// HDF5 and HighFive includes
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <highfive/H5PropertyList.hpp>
-#include <hdf5.h>
-
 #include <cstdint>
 
 using namespace plb;

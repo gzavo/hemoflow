@@ -11,6 +11,17 @@ using namespace std;
 
 #include "globals.h"
 
+// Simulation parameters
+struct SimPar{
+T omega;
+T C_l;  // Length conversion factor
+T C_t;  // Time conversion factor
+T C_r;  // Density conversion factor
+T C_p;  // Pressure conversion factor (derived)
+T C_m;  // Mass conversion factor (derived)
+T Re;
+};
+
 // *** Function to convert array coordinates
 
 // Fortran ordering - numpy - long long enables large DNS 
