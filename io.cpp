@@ -99,7 +99,9 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pli
        vtkOut.writeData<float>(*field1, "field1");
 }
 
-// Todo - too slow, optimize the arrays (MPI rank is now saved in every lattice?).
+// TODO - too slow, optimize the arrays (MPI rank is now saved in every lattice?).
+// TODO - Optimize chunk size.
+// TODO - save as vectors and matrices instead of 3D scalar arrays (also modify xdmf) - https://github.com/BlueBrain/HighFive/blob/master/src/examples/create_dataset_double.cpp
 void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1)
 {
 
@@ -213,7 +215,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
     // Enable shuffle
     props.add(Shuffle());
     // Enable deflate
-    props.add(Deflate(9));
+    props.add(Deflate(7));
 
     // Create the dataset as usual
     std::vector<size_t> Dims{(long unsigned int)Nz, (long unsigned int)Ny, (long unsigned int)Nx};

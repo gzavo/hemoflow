@@ -10,38 +10,47 @@
 class OpeningHandler
 {
 public:
-    OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb, vec3d direction);
+    OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d direction);
     ~OpeningHandler();
 
     void printOpeningDetails();
-    void loadScaleFunction(string fileName);
-    void setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);
-    void imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);
-    void setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);
-    void setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);
+    void loadScaleFunction(string fileName);    // Load in the scale function form a text file and MPI boradcast it
+    void setBCParameter(T parameter_, SimPar s);  // Set Q or p or other BC parameter, convert it to LBM units.
+    void setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);    // Sets the BC type for LBM
+    void progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);     // Progress time by dt and impose time-dependent values on the opening
+    void setExternalVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);     // Overwrites profile with external array
+    void setExternalPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);    // Overwrites profile with external array
+    void setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T scale);
     void createConstantPressureProfile(T density = 1.0);
-    void createPoiseauilleProfile(T u_avg = U_AVG_LB);
-    void createBluntVelocityProfile(T u_avg = U_AVG_LB);
+    void createPoiseauilleProfile();    // norm(v_max) = 1.0
+    void createBluntVelocityProfile();  // norm(v) = 1.0
+    void normalizeFlowRate();           // Set Q = 1.0
+    void scaleFlowRate(T scale_);       // Scale velocity
+    void scalePressure(T scale_);       // Scale pressure
 
-    int getFlag() { return flag; }
+    int getGeometryLabel() { return flag; }
+    int getOpeningType() { return type; }
     int getSurfaceSize() { return nodes.size(); }
-
+    T getFlowRate();
     T getRadius() { return R; }
-
     vec3d getCenter() { return center; }
-
     Box3D *getBoundingBox() { return boundingBox; }
 
-private:
+    void setName(string name_) {name = name_;}
+    string getName () {return name;}
 
-    int flag;
+private:
+    //int flag;
+    string name;
+    GeometryLabel flag;
+    OpeningType type;
     bool hasScaleFunction;
     
-    vector<Index3D> nodes;
-    vec3d center;       // LBM units
-    vec3d direction;    // Normal vector
-    T R;                // LBM units
-    Box3D *boundingBox; 
+    vector<Index3D> nodes;  // List of LBM nodes on the opening
+    vec3d center;           // LBM units
+    vec3d direction;        // Normal vector
+    T R;                    // LBM units (area-derived hydrodynamic radius)
+    Box3D *boundingBox;     // BB for functionals
 
     // Boundary condition values
     field3D velArr;
@@ -50,7 +59,9 @@ private:
     // Scale signal
     vector<T> scaleSignal;
     vector<T> scaleTime;
+    T parameter;    // Q or p for the BC
 
+    // Keeping track of the scale function (and looping it)
     int cTimePos;
     T cTimeVal;
 

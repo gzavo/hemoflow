@@ -23,16 +23,23 @@ typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundD
 
 #define CELLDESCRIPTOR descriptors::D3Q7Descriptor
 
+// Enable Large Eddy simulation (constant Smagorinsky)?
 #define LES 0
 
 const T U_AVG_LB = 0.05;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
+ 
+enum GeometryLabel {
+    UNUSED = 0,
+    WALL = 1,
+    FLUID = 2,
+    FIRST_OPENING = 10      // Opening IDs go up from 10. Usually 10 is an inlet, but it is not necessary anymore.
+};
 
-// Geometry labels
-const int UNUSED = 0;
-const int WALL = 1;
-const int FLUID = 2;
-const int INLET = 10;			// This is always a velocity inlet
-const int FIRST_OUTLET = 11;	// This is always the smallest outlet defined as pressure
+enum OpeningType {
+    OPENING_VELOCITY,
+    OPENING_PRESSURE,
+    OUTLET_FREEFLOW 
+};
 
 // Simulation domain size
 extern int Nx;

@@ -52,6 +52,13 @@ inline T interpolate(T x1, T x2, T xi, T y1, T y2)
     return y1+r*(y2-y1);
 }
 
+// Simple find
+int findIndex(int *array, int arraySize, int itemToFind) {
+    for(int i = 0; i < arraySize; i++)
+        if(array[i] == itemToFind)
+            return i;
+    return -1;  // Not found
+}
 
 // *** Data structures and functions
 
@@ -80,8 +87,9 @@ public:
     
     void set(double X, double Y, double Z) {x=X; y=Y; z=Z;}
     void set(vec3d v) {x=v.x; y=v.y; z=v.z;}
-    double norm() {return sqrt(x*x+y*y+z*z);}
-    void normalize() {double n = norm(); if(n==0) return; x/=n; y/=n; z/=n;}
+    double norm() {return sqrt(x*x+y*y+z*z);}       // Length of the vector
+    void normalize() {double n = norm(); if(n==0) return; x/=n; y/=n; z/=n;}   // Normalize the vector
+    vec3d getNormal() { vec3d t; double n = norm();  if(n==0) return t; t.set(x/=n, y/=n, z/=n); return t; }  // Return the normal of the vetor
     void negate() {x=-x;y=-y;z=-z;}
     double dot(vec3d v) { return x*v.x + y*v.y + z*v.z; }
     vec3d cross(vec3d v) { return vec3d(y*v.z-z*v.y, z*v.x - x*v.z, x*v.y - y*v.x);}

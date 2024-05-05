@@ -35,18 +35,6 @@ T quadCoeff = 0.0;
 T linCoeff_lb = 0.0;
 T quadCoeff_lb = 0.0;
 
-// Info on openings
-cnpy::NpyArray openingIndex;
-unsigned short* oiData = NULL;
-cnpy::NpyArray openingRadius;
-double* orData = NULL;
-cnpy::NpyArray openingQRatio;
-double* oqData = NULL;
-cnpy::NpyArray openingCenter;
-double* ocData = NULL;
-cnpy::NpyArray openingTangent;
-double* otData = NULL;
-
 // Simulation parameters structure
 SimPar sim;
 
@@ -123,7 +111,7 @@ void processOpenings(string inletFlowrateFunc, T inletA)
         int flag = oiData[i];
         pcout << "Processing flag: " << flag << std::endl;
 
-        if(flag < INLET){
+        if(flag < FIRST_OPENING){
             pcout << "WARNING! Wrong flag for an opening: " << flag << std::endl;
             continue;
         }
@@ -260,6 +248,7 @@ int main(int argc, char *argv[])
         for (auto const& array : geom_npz) 
             pcout << "->" << array.first << std::endl;
 
+        // TODO - Consider hdf5-based input files (see the Turbulence branch)
         // Loading geometry
         geometryFlag = geom_npz["geometryFlag"];
         gfData = geometryFlag.data<unsigned short>();
@@ -285,26 +274,92 @@ int main(int argc, char *argv[])
             xml["flowdiverter"]["quadCoeff"].read(quadCoeff);
         }
 
-        // Loading information on openings
-        openingIndex = geom_npz["openingIndex"];
-        oiData = openingIndex.data<unsigned short>();
-        
-        openingRadius = geom_npz["openingRadius"];
-        orData = openingRadius.data<double>();
-        
-        openingQRatio = geom_npz["openingNormalizedQRatio"];
-        oqData = openingQRatio.data<double>();
-        
-        openingCenter = geom_npz["openingCenter"];
-        ocData = openingCenter.data<double>();
-        
-        openingTangent = geom_npz["openingTangent"];
-        otData = openingTangent.data<double>();
+        // TODO !!!!
+        // Calcualte simulation parameters here!
+        pcout << "Setting LBM parameters..." << std::endl;
+        calcSimulationParameters(inletD, sim);      // Rework this
 
-
-        pcout << "Number of openings: " << openingRadius.shape[0] << std::endl;
-
+        // **** Processing openings ****
         pcout << "Processing openings..." << std::endl;
+        
+        // Loading information on openings 
+        cnpy::NpyArray openingIndex = geom_npz["openingIndex"];
+        unsigned short* oiData = openingIndex.data<unsigned short>();
+        
+        cnpy::NpyArray openingRadius = geom_npz["openingRadius"];
+        double* orData = openingRadius.data<double>();
+        
+        /* -- Not needed atm.
+        cnpy::NpyArray openingQRatio = geom_npz["openingNormalizedQRatio"];
+        double* oqData = openingQRatio.data<double>();
+        
+        cnpy::NpyArray openingCenter = geom_npz["openingCenter"];
+        double* ocData = openingCenter.data<double>();
+        */
+
+        cnpy::NpyArray openingTangent = geom_npz["openingTangent"];
+        double* otData = openingTangent.data<double>();
+
+        // Loop through the openings in the datafile 
+        int numOpenings = openingRadius.shape[0];
+        pcout << "Number of openings in geometry: " << numOpenings << std::endl;
+        pcout << "Opening flags: ";
+        for(int o=0; o < numOpenings; o++)
+            pcout << oiData[o] << " ";
+        pcout << endl;
+
+        // Loop through the openings following the xml config
+        for(int o=0; o < numOpenings; o++){
+            pcout << "Processing opening: " << o << std::endl;
+            
+            string xmlTagOpening = "opening_"+std::to_string(o);
+     
+            string name;
+            xml["geometry"][xmlTagOpening]["name"].read(name);
+            int type; 
+            xml["geometry"][xmlTagOpening]["type"].read(type);
+            int label; 
+            xml["geometry"][xmlTagOpening]["label"].read(label);
+
+            int openingIdx = findIndex(oiData, numOpenings, label);    
+            if(openingIdx == -1) 
+                pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
+
+            // Get the direction of the opening 
+            int s = openingTangent.shape[1];
+            vec3d dir(otData[gT2D(s,openingIdx,0)], otData[gT2D(s,openingIdx,1)], otData[gT2D(s,openingIdx,2)]);
+
+            // Create the opening
+            OpeningHandler *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
+            
+            opening->setName(name);
+            opening->setBCType(lattice);
+
+            double parameter; 
+            xml["geometry"][xmlTagOpening]["parameter"].read(parameter);
+
+            opening->setBCParameter(parameter, sim);
+
+            // Load scale function (fileName from XML)
+            string flowrateFunc;
+            xml["geometry"][xmlTagOpening]["flowrateFunc"].read(flowrateFunc);
+            if(!flowrateFunc.empty())
+                opening->loadScaleFunction(flowrateFunc);
+
+            // Set profile
+            if(type == OPENING_VELOCITY){
+                opening->createPoiseauilleProfile();    // Normalized to max_vel = 1.0 (LBM units)
+                opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
+            } 
+            else if(type == OPENING_PRESSURE) {
+                opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
+            }
+
+            opening->printOpeningDetails();
+            
+            openings.push_back(opening);
+
+        }
 
         T inletD = 2.0 * orData[0]; // [m]
         pcout << "-> Inlet radius [m]: " << orData[0] << std::endl;
@@ -312,13 +367,8 @@ int main(int argc, char *argv[])
         // Inlet area in lattice units
         T inletA = pow(orData[0] / sim.C_l, 2) * M_PI;
 
-
-        string inletFlowrateFunc;
-        xml["geometry"]["inletFlowrateFunc"].read(inletFlowrateFunc);
         processOpenings(workingFolder + "/" + inletFlowrateFunc, inletA);
 
-        pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(inletD, sim);
     }
     catch (PlbIOException& exception) {
         pcout << "Error while processing input file " << paramXmlFileName
@@ -448,7 +498,7 @@ int main(int argc, char *argv[])
         T minDE = 1e-11; T dE = 100; T prevE = 0;
     
         for(auto &o: openings)
-        	o->imposeBC(lattice, 0.0);
+        	o->progressTime(lattice, 0.0);
 
         if(saveInitState) {
             pcout << "Saving initial state with flow diverter..." << endl;
@@ -501,7 +551,7 @@ int main(int argc, char *argv[])
 
         // Impose boundary conditions
         for(auto &o: openings)
-            o->imposeBC(lattice, sim.C_t);
+            o->progressTime(lattice, sim.C_t);
 
         // Calculate next step
         lattice->collideAndStream();

@@ -1,16 +1,17 @@
 #include "opening.h"
 
 
-OpeningHandler::OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb, vec3d dirVec)
+OpeningHandler::OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d dirVec)
 {
     flag = flag_;
+    type = type_;
     hasScaleFunction = false;
     cTimePos = 0;
     cTimeVal = 0;
 
     vector<int> xCoord; vector<int> yCoord; vector<int> zCoord;
     
-    pcout << "-> Looping through flag array... " << std::endl;
+    pcout << "-> Configuring LBM nodes on the opening... " << std::endl;
 
     for(int i=0; i<Nx; i++)
         for(int j=0; j<Ny; j++)
@@ -48,34 +49,86 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, int flag_, T radius_lb,
 
 void OpeningHandler::printOpeningDetails()
 {
-    pcout << "Opening parameters:" << std::endl;
-    
-    if(flag == INLET)
-        pcout << "=> This is the inlet." << std::endl;
-    if(flag == FIRST_OUTLET)
-        pcout << "=> This is the smallest pressure outlet." << std::endl;
-
-    pcout << "-> flag: " << flag << std::endl;
-    pcout << "-> radius [lb]: " << R << std::endl;
-    //pcout << "-> Q rate: " << Qr << std::endl;
+    pcout << "---- Opening parameters -----" << std::endl;
+    pcout << "-> Name: " << getName() << std::endl;
+    pcout << "-> Geometry flag: " << flag << std::endl;
+    pcout << "-> Opening type: " << type << std::endl;
+    pcout << "-> Radius [lb]: " << R << std::endl;
     pcout << "-> Center [lb]: " << center.x << " " << center.y << " " << center.z << std::endl;
     pcout << "-> Normal: " << direction.x << " " << direction.y << " " << direction.z << std::endl;
     pcout << "-> Area [lb]: " << nodes.size() << std::endl;
     pcout << "-> Scale function: " << hasScaleFunction << " length: " << scaleSignal.size() << std::endl;
+    pcout << "-> BC parameter [lb]: " << parameter << std::endl;
+}
+
+// Set Q or p or other BC parameter, convert it to LBM units.
+void OpeningHandler::setBCParameter(T parameter_, SimPar s)
+{
+
+
+    if(type == OPENING_VELOCITY){
+        // Set Q
+
+        if(parameter_ < 0.0)
+        {
+            // Set it for assumptions. E.g., Murray
+
+        }
+    }
+    else if (type == OPENING_PRESSURE) {
+        // Set p
+    }
+
+
 
 }
 
-void OpeningHandler::createPoiseauilleProfile(T u_avg)
+// Return flow rate on the opening in LBM units
+T OpeningHandler::getFlowRate()
+{
+    T velSum = 0.0;
+
+    for(auto const& v: nodes)
+        velSum += velArr[v.x][v.y][v.z].norm();
+
+    return velSum;
+}
+
+// Scale the flow velocity array
+void OpeningHandler::scaleFlowRate(T scale_)
+{
+    for(auto const& v: nodes)
+        velArr[v.x][v.y][v.z] = velArr[v.x][v.y][v.z] * scale_;
+}
+
+// Scale the pressure array
+void OpeningHandler::scalePressure(T scale_)
+{
+    for(auto const& v: nodes)
+        presArr[v.x][v.y][v.z] = presArr[v.x][v.y][v.z] * scale_;
+}
+
+void OpeningHandler::normalizeFlowRate()
+{
+  T invVelSum = 1.0 / getFlowRate();
+
+    for(auto const& v: nodes)
+        velArr[v.x][v.y][v.z] = velArr[v.x][v.y][v.z] * invVelSum;
+}
+
+// Note the peak of the profile is v_norm == 1
+void OpeningHandler::createPoiseauilleProfile()
 {
     pcout << "-> Creating direction-corrected Pouseuille velocity profile on flag: " << flag << std::endl;
 
     // Sanity check
-    if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) ) {
-        pcout << "!!! ERROR: The opening is not parallel to any major plane! This functionality is not implemented, the opening will not funxtion!" << std::endl;
-    }
+    if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) )
+        pcout << "!!! ERROR: The opening is not parallel to any principal plane! This functionality is not implemented, the opening will not work properly!" << std::endl;
+    if (type != OPENING_VELOCITY || type != OUTLET_FREEFLOW)
+        pcout << "WARNING! Setting velocity profile for a non-velocity opening! This will have no effect." << std::endl;
 
-    // Paraboloid height from average
-    T u_max = 2. * u_avg;
+    // Paraboloid height
+    T u_max = 1.0;
 
     // Search for the farthest point from the centerpoint of the opening.
     T l_max = 0.0;
@@ -120,16 +173,17 @@ void OpeningHandler::createPoiseauilleProfile(T u_avg)
 
 }
 
-void OpeningHandler::createBluntVelocityProfile(T u_avg)
+void OpeningHandler::createBluntVelocityProfile()
 {
     pcout << "-> Creating blunt velocity profile on flag: " << flag << std::endl;
 
     // Sanity check
-    if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) ) {
-        pcout << "!!! ERROR: The opening is not parallel to any major plane! This functionality is not implemented, the opening will not funxtion!" << std::endl;
-    }
+    if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) )
+        pcout << "!!! ERROR: The opening is not parallel to any principal plane! This functionality is not implemented, the opening will not work properly!" << std::endl;
+    if (type != OPENING_VELOCITY)
+        pcout << "WARNING! Setting velocity profile for a non-velocity opening! This will have no effect." << std::endl;
 
-    vec3d vel = direction * u_avg;
+    vec3d vel = direction.getNormal();
 
     for(auto const& v: nodes) {
         velArr[v.x][v.y][v.z].set(vel.x, vel.y, vel.z);
@@ -140,9 +194,8 @@ void OpeningHandler::createConstantPressureProfile(T density)
 {
     pcout << "-> Creating constant pressure on flag: " << flag << std::endl;
 
-    if(flag < FIRST_OUTLET) {
-        pcout << "WARNING! Calculating pressure profile for a non-pressure opening!" << std::endl;
-    }
+    if(type != OPENING_PRESSURE )
+        pcout << "WARNING! Setting pressure profile for a non-pressure opening! This will have no effect." << std::endl;
 
     for(auto const& v: nodes) {
         presArr[v.x][v.y][v.z] = density;
@@ -151,7 +204,7 @@ void OpeningHandler::createConstantPressureProfile(T density)
 
 void OpeningHandler::loadScaleFunction(string fileName)
 {
-    pcout << "-> Loading scale function: " << fileName << std::endl;
+    pcout << "-> Loading and scale function: " << fileName << std::endl;
 
     plb_ifstream finSign(fileName.c_str());
     //istream &finSign = pfinSign.getOriginalStream();
@@ -160,7 +213,6 @@ void OpeningHandler::loadScaleFunction(string fileName)
         pcout << "WARNING!!! Flow rate scale file " << fileName << " is not readable!" << std::endl;
         // hasScaleFunction = false;
     }
-
 
     T time, value;
     int Ns;
@@ -184,47 +236,74 @@ void OpeningHandler::loadScaleFunction(string fileName)
     pcout << fileName << " loaded with " << scaleTime.size() << " data points." << std::endl;
 }
 
-void OpeningHandler::setBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
+void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
 {
-    // The first outlet is the smallest, set as a constant pressure outlet
-    if (flag == INLET) {
+    if (type == OPENING_VELOCITY ) {
         OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
         bc->setVelocityConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
     }
-    else {
+
+    if(type == OPENING_PRESSURE) {
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
         OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createInterpBoundaryCondition3D<T,DESCRIPTOR>();
         bc->setPressureConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
     }
+
+    if(type == OUTLET_FREEFLOW) {
+        // Virtual outlet
+        MultiScalarField3D<T> *rhoBar = generateMultiScalarField<T>((MultiBlock3D&) *lattice, 2).release();
+        rhoBar->toggleInternalStatistics(false);
+
+        MultiTensorField3D<T,3> *j = generateMultiTensorField<T,3>((MultiBlock3D&) *lattice, 2).release();
+        j->toggleInternalStatistics(false);
+
+        std::vector<MultiBlock3D*> bcargs;
+        bcargs.push_back(lattice);
+        bcargs.push_back(rhoBar);
+        bcargs.push_back(j);
+
+        integrateProcessingFunctional(new VirtualOutlet<T,DESCRIPTOR>(1.0, lattice->getBoundingBox(), 1),
+                *boundingBox, bcargs, 2);
+    }
 }
 
-void OpeningHandler::setVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr)
+void OpeningHandler::setExternalVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr)
 {
-    // For flowrate, additional measurements required after lattice initialization
-    if(flag==INLET || flag > FIRST_OUTLET) {
-        // Set given profile
+    
+    if(type==OPENING_VELOCITY) {
+        // Set the predetermined profile
         setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velocityArr, 1.0));
     }
     else {
-        pcout << "WARNING, opening " << flag << " incorrectly addressed as velocity opening (instead of pressure)!" << std::endl;
+        pcout << "WARNING, opening " << flag << " is incorrectly addressed as velocity opening, while it is of type: " << type << std::endl;
     }
 }
 
-void OpeningHandler::setPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr)
+void OpeningHandler::setExternalPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr)
 {
-    // For flowrate, additional measurements required after lattice initialization
-    if(flag==FIRST_OUTLET) {
-        // Set given profile
+    if(type==OPENING_PRESSURE) {
+        // Set predetermined pressure profile
         setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&pressureArr, 1.0));
     }
     else {
-        pcout << "WARNING, opening " << flag << " incorrectly addressed as pressure opening (instead of velocity)!" << std::endl;
+        pcout << "WARNING, opening " << flag << " incorrectly addressed as pressure opening, while it is of type:" << type << std::endl;
     }
 }
 
-void OpeningHandler::imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
+void OpeningHandler::setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T scale = 1.0)
+{   
+    if(type == OPENING_VELOCITY) 
+        setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
+    else if(type == OPENING_PRESSURE)
+        setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale));
+
+    // TODO: errorhandling 'else'-case?
+
+}
+
+void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
 {
     T scale = 1.0;
 
@@ -245,18 +324,10 @@ void OpeningHandler::imposeBC(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
             scale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos+1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos+1]);
         else
             scale = interpolate(scaleTime[cTimePos], scaleTime[0], cTimeVal, scaleSignal[cTimePos], scaleSignal[0]);
-
-        //scale /= scaleDivider;    // WTF is this?
     }
 
-    
-    if (flag == FIRST_OUTLET) {
-        setBoundaryDensity(*lattice, *boundingBox, 1.0);        
-        // setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale)); // For time dependent pressure boundary
-    }
-    else {
-        setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
-    }
+    setScaledBoundaryProfile(lattice, scale);
+
 }
 
 OpeningHandler::~OpeningHandler()
