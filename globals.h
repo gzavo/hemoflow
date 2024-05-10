@@ -21,12 +21,11 @@ typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundD
 //GuoExternalForceBGKdynamics
 //ForcedCarreauDynamics
 
+// TODO: scalar field for rheModel implementation
 #define CELLDESCRIPTOR descriptors::D3Q7Descriptor
 
 // Enable Large Eddy simulation (constant Smagorinsky)?
 #define LES 0
-
-const T U_AVG_LB = 0.05;     // Re is computed in relation to this! This is the average velocity on the inlet, when the inlet flow function == 1.0
  
 enum GeometryLabel {
     UNUSED = 0,
@@ -36,9 +35,9 @@ enum GeometryLabel {
 };
 
 enum OpeningType {
-    OPENING_VELOCITY,
-    OPENING_PRESSURE,
-    OUTLET_FREEFLOW 
+    OPENING_VELOCITY = 1,
+    OPENING_PRESSURE = 2,
+    OUTLET_FREEFLOW = 3 
 };
 
 // Simulation domain size

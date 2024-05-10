@@ -13,13 +13,13 @@ using namespace std;
 
 // Simulation parameters
 struct SimPar{
-T omega;
-T C_l;  // Length conversion factor
-T C_t;  // Time conversion factor
-T C_r;  // Density conversion factor
-T C_p;  // Pressure conversion factor (derived)
-T C_m;  // Mass conversion factor (derived)
-T Re;
+    T C_l;  // Length conversion factor
+    T C_t;  // Time conversion factor
+    T C_r;  // Density conversion factor
+    T C_p;  // Pressure conversion factor (derived)
+    T C_m;  // Mass conversion factor (derived)
+    T omega; // Inverse relaxation time of LBM (1/tau). Stablest when = 1.0
+    T U_max_lb; // Maximum velocity in LB units. This will scale time-step size vs. stability. [Default=0.1]
 };
 
 // *** Function to convert array coordinates

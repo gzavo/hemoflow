@@ -56,7 +56,7 @@ vector<OpeningHandler*> openings;
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = NULL;
 MultiNTensorField3D<T> *porosityField = NULL;
 
-// Carreau parameters
+// Carreau parameters for human blood
 //  B.M.  Johnston,  P.R.  Johnson,  S.  Corney,  and  D. Kilpatrick, “Non-Newtonian blood flow in human  right  coronary  arteries:  steady  state  simulations,” Journal  of  Biomechanics, 37, 709 – 720 (2004)
 //  Y.I.  Cho  and  K.R.  Kensey,  “Effects  of  the  non-Newtonian viscosity of blood on flows in a   diseased   arterial   vessel.   Part   1:   steady   flows,” Biorheology28, 241 (1991)
 // nu0 = 5.6e-5; nuInf = 3.5e-6;
@@ -66,23 +66,28 @@ T lambda = 3.331;
 T n = 0.3568;
 
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
-void calcSimulationParameters(T D_m, SimPar &sim)
+void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 {   
-    T D_lb = D_m  / sim.C_l;
-    T U_avg = sim.Re * nuInf / D_m;
-    
-    sim.C_t =  U_AVG_LB / U_avg * sim.C_l;
+    sim.C_l = dx;
+    sim.U_max_lb = U_max_LB_;
 
-    T nuInf_lb = U_AVG_LB * D_lb / sim.Re;
-    T nu_ratio = nuInf_lb / nuInf;
-    T nu0_lb = nu0 * nu_ratio;
+    T nuInf_lb;
+    if(dt > 0.0){
+        sim.C_t = dt;
+        nuInf_lb = nuInf * sim.C_t / sim.C_l / sim.C_l;
+        T tau = 3.0*nuInf_lb+0.5;
+        sim.omega = 1.0 / tau;
+    } 
+    else {
+        sim.omega = 1.0;
+        nuInf_lb =  0.5 / 3.0;
+        sim.C_t = nuInf_lb * sim.C_l * sim.C_l / nuInf;
+    }
 
-    T tau = 3.0*nuInf_lb+0.5;
+    T nu0_lb = nu0 * sim.C_t / sim.C_l / sim.C_l;
 
-    sim.omega = 1.0 / tau;
-
+    // Derived quantities using density
     sim.C_r = BLOOD_DENSITY;    // TODO IF we are simulating blood.... Note: only changes pressure output values, the simulation results are independent!
-
     sim.C_p = sim.C_r * sim.C_l * sim.C_l / (sim.C_t * sim.C_t);
     sim.C_m = sim.C_r * sim.C_l * sim.C_l * sim.C_l;
 
@@ -91,6 +96,10 @@ void calcSimulationParameters(T D_m, SimPar &sim)
     quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
+    if(sim.U_max_lb > 0.1)
+        pcout << "** Parameter sanity WARNING ** LBM velocity seems high:" << sim.U_max_lb << endl;
+    if(sim.omega > 1.9)
+        pcout << "** Parameter sanity WARNING ** LBM omega seems high:" << sim.omega << endl;
 
     // TODO: using the Smagorinsky dynamics as a base add dynamic viscosity (Carreau and rheoModel)
     // (ps: solve the Fokker-Plank in rheoModel with finite difference?)
@@ -209,13 +218,12 @@ int main(int argc, char *argv[])
         
         outDir = workingFolder + "/" + outputFolder;
 
-        // Check if output dir exists and accessible
-        if (dirExists(outDir) <= 0) {
-            pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
-
-            if (global::mpi().isMainProcessor())
+        // Check if output dir exists and accessible on the main processor
+        if(global::mpi().isMainProcessor()) 
+            if (dirExists(outDir) <= 0) {
+                pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
                 mkpath(outDir.c_str(), 0777);
-        }
+            }
 
         // Sync up after creating the directory by the master process.
         //global::mpi().barrier();
@@ -224,11 +232,10 @@ int main(int argc, char *argv[])
 
         global::directories().setOutputDir(outDir+"/");
 
-        xml["simulation"]["Re"].read(sim.Re);
+        // Reading main simulation parameters
         xml["simulation"]["blockSize"].read(blockSize);
         xml["simulation"]["simLength"].read(simLength);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
-        
         
         // Check for optional checkpoint argument
         try {
@@ -257,16 +264,16 @@ int main(int argc, char *argv[])
         Nz = geometryFlag.shape[2];
         pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
 
-        // Reading dx = C_l
+        // Reading dx = C_l from the geometry file
         cnpy::NpyArray dxA = geom_npz["dx"];
-        sim.C_l = (dxA.data<double>())[0];
+        double sim_dx = (dxA.data<double>())[0];
 
         pcout << "Resolution [m]: " << sim.C_l << std::endl;
 
-        // Loading stent geometry
+        // Loading the geometry of the stent (if there is one)
         stentFlag = geom_npz["stent"];
         
-        if(stentFlag.shape.size() > 1) {    // Check if there is data on FD
+        if(stentFlag.shape.size() > 1) {    // Check if there is data on the FD
             pcout << "Found flow diverter information to load." << std::endl;
             sfData = stentFlag.data<unsigned short>();
             // Also look for corresponding data in xml
@@ -274,10 +281,16 @@ int main(int argc, char *argv[])
             xml["flowdiverter"]["quadCoeff"].read(quadCoeff);
         }
 
-        // TODO !!!!
+        // Check if time-step is specified
+        double sim_dt = -1.0;
+        try {
+            xml["simulation"]["dt"].read(sim_dt);
+        }
+        catch (PlbIOException& exception) {}
+
         // Calcualte simulation parameters here!
         pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(inletD, sim);      // Rework this
+        calcSimulationParameters(sim, sim_dx, sim_dt);  
 
         // **** Processing openings ****
         pcout << "Processing openings..." << std::endl;
@@ -297,7 +310,7 @@ int main(int argc, char *argv[])
         double* ocData = openingCenter.data<double>();
         */
 
-        cnpy::NpyArray openingTangent = geom_npz["openingTangent"];
+        cnpy::NpyArray openingTangent = geom_npz["openingTangent"]; // TODO: rename this to opening normal
         double* otData = openingTangent.data<double>();
 
         // Loop through the openings in the datafile 
@@ -314,12 +327,9 @@ int main(int argc, char *argv[])
             
             string xmlTagOpening = "opening_"+std::to_string(o);
      
-            string name;
-            xml["geometry"][xmlTagOpening]["name"].read(name);
-            int type; 
-            xml["geometry"][xmlTagOpening]["type"].read(type);
-            int label; 
-            xml["geometry"][xmlTagOpening]["label"].read(label);
+            string name;    xml["geometry"][xmlTagOpening]["name"].read(name);
+            int type;       xml["geometry"][xmlTagOpening]["type"].read(type);
+            int label;      xml["geometry"][xmlTagOpening]["label"].read(label);
 
             int openingIdx = findIndex(oiData, numOpenings, label);    
             if(openingIdx == -1) 
@@ -361,6 +371,8 @@ int main(int argc, char *argv[])
 
         }
 
+
+        // TODO - Rework this part, add Muray's law in process openings, that can be called multiple times. 
         T inletD = 2.0 * orData[0]; // [m]
         pcout << "-> Inlet radius [m]: " << orData[0] << std::endl;
 
@@ -380,11 +392,11 @@ int main(int argc, char *argv[])
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
             << "dx [m]:  " << sim.C_l << endl
             << "dt [s]:  " << sim.C_t << endl
+            << "dm [kg]:  " << sim.C_m << endl
             << "omega:  " << sim.omega << endl
             << "nu:     " << 1./3. * (1./sim.omega - 0.5) << endl
-            << "Re_inlet: " << sim.Re << endl
-            << "U_avg(inlet) [lbm]: " << U_AVG_LB << endl 
-            << "U_avg [m/s]: " << U_AVG_LB * sim.C_l / sim.C_t << endl << endl;
+            << "U_max [lbm]: " << sim.U_max_lb << endl 
+            << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
 
     int saveFrequency;
     saveFrequency = (int)round(saveFreqTime/sim.C_t);
