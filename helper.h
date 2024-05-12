@@ -45,20 +45,13 @@ inline int gT(int d, int x, int y, int z) {
     return d*Nx*Ny*Nz + x*Nz*Ny + y*Nz + z;
 }
 
-// *** Simple linear interpolation
+// Simple linear interpolation
 inline T interpolate(T x1, T x2, T xi, T y1, T y2)
 {
     T r = (xi-x1)/(x2-x1);
     return y1+r*(y2-y1);
 }
 
-// Simple find
-int findIndex(int *array, int arraySize, int itemToFind) {
-    for(int i = 0; i < arraySize; i++)
-        if(array[i] == itemToFind)
-            return i;
-    return -1;  // Not found
-}
 
 // *** Data structures and functions
 

@@ -74,7 +74,7 @@ void OpeningHandler::printOpeningDetails(SimPar s)
     }
     else if (type == OPENING_PRESSURE) {
         if(bcParameter < 0.5 || bcParameter > 1.5) {
-            pcout << "-> *WARNING*: LB pressure is in an unstable regime: " << parameter << ". Consider decreasing the time-step size." << std::endl;
+            pcout << "-> *WARNING*: LB pressure is in an unstable regime: " << bcParameter << ". Consider decreasing the time-step size." << std::endl;
         }        
     }
 }
@@ -88,7 +88,7 @@ void OpeningHandler::setBCParameter(T bcParameter_, SimPar s)
     }
     else if (type == OPENING_PRESSURE) {
         // p -> LB density
-        bcParameter = bcParameter_ / 3.0  / s.C_p;
+        bcParameter = bcParameter_ / 3.0  / s.C_p + 1.0;   // 1.0 is defined as density for 0 pressure
     }
     else {
         // Murray of freeflow, nothing to be done

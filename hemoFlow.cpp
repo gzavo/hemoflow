@@ -65,6 +65,14 @@ T nuInf = 3.22e-6;   // [m^2/s]
 T lambda = 3.331;
 T n = 0.3568;
 
+// Simple find index of a value in an array (where indices are unique)
+int findIndex(unsigned short *array, int arraySize, unsigned short itemToFind) {
+    for(int i = 0; i < arraySize; i++)
+        if(array[i] == itemToFind)
+            return i;
+    return -1;  // Not found
+}
+
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
 void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 {   
@@ -129,7 +137,7 @@ void imposeOpenings(T dt)
                 sumInflowRate += o->getScaledFlowRate();    // Note: can be outflow (i.e. negative, still ok)
             }
         }
-        else if(o->getOpeningType == OPENING_MURRAY) {
+        else if(o->getOpeningType() == OPENING_MURRAY) {
             murrayTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
         }            
     }
@@ -140,7 +148,7 @@ void imposeOpenings(T dt)
     // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
 
     for(auto &o: openings) {
-        if(o->getOpeningType == OPENING_MURRAY) {
+        if(o->getOpeningType() == OPENING_MURRAY) {
             
             T murrayRadius = pow(o->getSurfaceSize(), murrayExponent / 2.0); // = sqrt(pi)*radius, but the scalar multiplier does not matter
             T flowRate = murrayRadius / murrayTotalRadii * sumInflowRate;
@@ -316,7 +324,7 @@ int main(int argc, char *argv[])
         double* otData = openingTangent.data<double>();
 
         // Loop through the openings in the datafile 
-        int numOpenings = openingRadius.shape[0];
+        unsigned int numOpenings = openingRadius.shape[0];
         pcout << "Number of openings in geometry: " << numOpenings << std::endl;
         pcout << "Opening flags: ";
         for(int o=0; o < numOpenings; o++)
