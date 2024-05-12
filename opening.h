@@ -1,5 +1,5 @@
-#ifndef __OPENING_H__
-#define __OPENING_H__
+#ifndef OPENING_H
+#define OPENING_H
 
 #include "globals.h"
 #include "helper.h"
@@ -10,11 +10,11 @@
 class OpeningHandler
 {
 public:
-    OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d direction);
+    OpeningHandler(const unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d direction);
     ~OpeningHandler();
 
     void printOpeningDetails(SimPar s);
-    void loadScaleFunction(string fileName);    // Load in the scale function form a text file and MPI boradcast it
+    void loadScaleFunction(const string& fileName);    // Load in the scale function form a text file and MPI boradcast it
     void setBCParameter(T parameter_, SimPar s);  // Set Q or p or other BC parameter, convert it to LBM units.
     void setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);    // Sets the BC type for LBM
     void progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);     // Progress time by dt and impose time-dependent values on the opening
@@ -35,7 +35,7 @@ public:
     bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
     T getProfileFlowRate();
     T getScaledFlowRate();
-    T getRadius() { return R; }
+    T getRadius() const { return R; }
     vec3d getCenter() { return center; }
     Box3D *getBoundingBox() { return boundingBox; }
 

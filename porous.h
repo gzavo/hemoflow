@@ -1,5 +1,5 @@
-#ifndef __POROUS_H__
-#define __POROUS_H__
+#ifndef POROUS_H
+#define POROUS_H
 
 #include "globals.h"
 #include "helper.h"
@@ -8,7 +8,7 @@
 template<typename T, typename T_>
 class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
     public:
-        InitializePorousField(T_ *porousGeometryData) : porousData(porousGeometryData)
+        explicit InitializePorousField(T_ *porousGeometryData) : porousData(porousGeometryData)
         { }
 
     virtual void process(Box3D domain, NTensorField3D<T>& field)

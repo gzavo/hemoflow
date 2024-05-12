@@ -1,11 +1,11 @@
 #include <map>
 #include <string>
 #include <sstream>
-#include <algorithm>
+//#include <algorithm>
 #include <cstdlib>
-#include <iomanip>
+//#include <iomanip>
 #include <vector>
-#include <math.h>
+#include <cmath>
 
 using namespace std;
 
@@ -25,11 +25,11 @@ int Nz=0;
 
 // Domain data
 cnpy::NpyArray geometryFlag;
-unsigned short* gfData = NULL;
+unsigned short* gfData = nullptr;
 
 // Flow diverter (stent) data
 cnpy::NpyArray stentFlag;
-unsigned short* sfData = NULL;
+unsigned short* sfData = nullptr;
 T linCoeff = 0.0;
 T quadCoeff = 0.0;
 T linCoeff_lb = 0.0;
@@ -53,8 +53,8 @@ T checkpointFreqTime;
 vector<OpeningHandler*> openings;
 
 // Simulation data structures
-MultiBlockLattice3D<T, DESCRIPTOR> *lattice = NULL;
-MultiNTensorField3D<T> *porosityField = NULL;
+MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
+MultiNTensorField3D<T> *porosityField = nullptr;
 
 // Carreau parameters for human blood
 //  B.M.  Johnston,  P.R.  Johnson,  S.  Corney,  and  D. Kilpatrick, “Non-Newtonian blood flow in human  right  coronary  arteries:  steady  state  simulations,” Journal  of  Biomechanics, 37, 709 – 720 (2004)
@@ -66,7 +66,7 @@ T lambda = 3.331;
 T n = 0.3568;
 
 // Simple find index of a value in an array (where indices are unique)
-int findIndex(unsigned short *array, int arraySize, unsigned short itemToFind) {
+int findIndex(const unsigned short *array, int arraySize, unsigned short itemToFind) {
     for(int i = 0; i < arraySize; i++)
         if(array[i] == itemToFind)
             return i;
@@ -307,10 +307,10 @@ int main(int argc, char *argv[])
         
         // Loading information on openings 
         cnpy::NpyArray openingIndex = geom_npz["openingIndex"];
-        unsigned short* oiData = openingIndex.data<unsigned short>();
+        auto* oiData = openingIndex.data<unsigned short>();
         
         cnpy::NpyArray openingRadius = geom_npz["openingRadius"];
-        double* orData = openingRadius.data<double>();
+        auto* orData = openingRadius.data<double>();
         
         /* -- Not needed atm.
         cnpy::NpyArray openingQRatio = geom_npz["openingNormalizedQRatio"];
@@ -321,7 +321,7 @@ int main(int argc, char *argv[])
         */
 
         cnpy::NpyArray openingTangent = geom_npz["openingTangent"]; // TODO: rename this to opening normal
-        double* otData = openingTangent.data<double>();
+        auto* otData = openingTangent.data<double>();
 
         // Loop through the openings in the datafile 
         unsigned int numOpenings = openingRadius.shape[0];
@@ -350,7 +350,7 @@ int main(int argc, char *argv[])
             vec3d dir(otData[gT2D(s,openingIdx,0)], otData[gT2D(s,openingIdx,1)], otData[gT2D(s,openingIdx,2)]);
 
             // Create the opening
-            OpeningHandler *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
+            auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
             
             opening->setName(name);
             opening->setBCType(lattice);
@@ -418,11 +418,9 @@ int main(int argc, char *argv[])
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-    // TODO: IMPORTANT! - Work out proper sparse mode, we waste up to 90% numerical cells. Take a hint from HemoCell.
-    bool sparse = false;
-    if(sparse) {
+    if(SPARSE) {
         pcout << "Setting simulation domain mask for sparse decomposition..." << endl;
-        MultiScalarField3D<int> *flagMatrix = new MultiScalarField3D<int>(Nx,Ny,Nz);
+        auto *flagMatrix = new MultiScalarField3D<int>(Nx,Ny,Nz);
         setToFunction(*flagMatrix, flagMatrix->getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, 1));
 
         pcout << "Creating sparse representation ..." << endl;
@@ -460,7 +458,7 @@ int main(int argc, char *argv[])
     pcout << getMultiBlockInfo(*lattice) << endl;
 
     // If there is data on porosity, set up porous layer in the simulation   
-    if(sfData != NULL) {
+    if(sfData != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
         applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData), porosityField->getBoundingBox(), *porosityField);

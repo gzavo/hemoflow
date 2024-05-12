@@ -12,9 +12,9 @@ bool fileExists (const std::string& name) {
 }
 
 // Checks for a directory. Hopefuly a portable way. TODO: replace with C++17 method.
-int dirExists(string pathName)
+int dirExists(const string& pathName)
 {
-    struct stat info;
+    struct stat info{};
 
     if( stat( pathName.c_str(), &info ) != 0 )
         return -1; // Cannot acces path
@@ -95,7 +95,7 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pli
     vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./sim.C_t );
     // TODO - output viscosity?
     
-    if (field1 != NULL)
+    if (field1 != nullptr)
        vtkOut.writeData<float>(*field1, "field1");
 }
 
@@ -136,9 +136,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
     int RankID = global::mpi().getRank();
 
     // Now we loop through all local blocks on current MPI thread
-    for(pluint iBlock=0; iBlock < LocalBlockIDs.size(); ++iBlock) {
-        plint blockId = LocalBlockIDs[iBlock];
-
+    for(long blockId : LocalBlockIDs) {
         // The "SmartBulk3D" object represents local atomic block in a global view, i.e. its bounding box coordinates are in global scale.
         // If you do not understand, go check the source codes of "MultiBlockManagement3D::findAllLocalRepresentations()"
         // Why we use it? Because we need to know which atomic blocks are stored on current MPI thread!
@@ -173,7 +171,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
                     double foundS_Norm = DistributedS_Norm.getComponent(blockId).get(LocalX, LocalY, LocalZ);
                     SNorm.push_back(foundS_Norm*float(1./sim.C_t));
                     // Additional field - No unit conversion!
-                    if (field1 != NULL) {
+                    if (field1 != nullptr) {
                         double foundField1 = *field1->getComponent(blockId).get(LocalX, LocalY, LocalZ);
                         Field1.push_back(foundField1); 
                     }
@@ -189,7 +187,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
     FindAttributesTime = global::timer("FindAttributes").stop();
     pcout << "Finding attributes time: " << FindAttributesTime << " sec" << endl;
 
-    assert(GlobalID.size() > 0);
+    assert(!GlobalID.empty());
 
     ///////////////////////////// Saving HDF5 /////////////////////////////
 
@@ -273,7 +271,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
     ///////////////////////////// Writing Xdmf /////////////////////////////
     if (global::mpi().isMainProcessor())
     {
-        FILE *xmf = 0;
+        FILE *xmf = nullptr;
 
         /*
         * Open the file and write the header.

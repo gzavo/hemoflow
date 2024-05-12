@@ -1,7 +1,7 @@
 #include "opening.h"
 
 
-OpeningHandler::OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d dirVec)
+OpeningHandler::OpeningHandler(const unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d dirVec)
 {
     flag = flag_;
     type = type_;
@@ -24,7 +24,7 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, Op
                 }
 
 
-    if(nodes.size() == 0) {
+    if(nodes.empty()) {
         pcout << "WARNING! Non-existing opening (zero size)!" << std::endl;
         return;
     }
@@ -222,7 +222,7 @@ void OpeningHandler::createConstantPressureProfile(T density)
     }
 }
 
-void OpeningHandler::loadScaleFunction(string fileName)
+void OpeningHandler::loadScaleFunction(const string& fileName)
 {
     if(type==OPENING_MURRAY || type==OUTLET_FREEFLOW){
         pcout << "-> *WARNING*: The opening type can't have a scale function. The scale function will be disregarded." << std::endl;

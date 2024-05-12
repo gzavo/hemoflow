@@ -1,11 +1,11 @@
-#ifndef __HELPER_H__
-#define __HELPER_H__
+#ifndef HELPER_H
+#define HELPER_H
 
 #include <map>
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
-#include <math.h>
+#include <cmath>
 
 using namespace std;
 
@@ -80,17 +80,17 @@ public:
     
     void set(double X, double Y, double Z) {x=X; y=Y; z=Z;}
     void set(vec3d v) {x=v.x; y=v.y; z=v.z;}
-    double norm() {return sqrt(x*x+y*y+z*z);}       // Length of the vector
+    double norm() const {return sqrt(x*x+y*y+z*z);}       // Length of the vector
     void normalize() {double n = norm(); if(n==0) return; x/=n; y/=n; z/=n;}   // Normalize the vector
     vec3d getNormal() { vec3d t; double n = norm();  if(n==0) return t; t.set(x/=n, y/=n, z/=n); return t; }  // Return the normal of the vetor
     void negate() {x=-x;y=-y;z=-z;}
-    double dot(vec3d v) { return x*v.x + y*v.y + z*v.z; }
-    vec3d cross(vec3d v) { return vec3d(y*v.z-z*v.y, z*v.x - x*v.z, x*v.y - y*v.x);}
+    double dot(vec3d v) const { return x*v.x + y*v.y + z*v.z; }
+    vec3d cross(vec3d v) const { return vec3d(y*v.z-z*v.y, z*v.x - x*v.z, x*v.y - y*v.x);}
     double operator[] ( int i ) { if ( i == 0 ) return x; else if ( i == 1 ) return y; else return z; }
 
-    vec3d operator+ (vec3d v) {vec3d t; t.x=x+v.x; t.y=y+v.y; t.z=z+v.z; return t;}
-    vec3d operator* (double s) {vec3d t; t.x=s*x; t.y=s*y;t.z=s*z; return t;}
-    vec3d operator- (vec3d v) {vec3d t; t.x = x-v.x; t.y = y-v.y; t.z = z-v.z; return t;}
+    vec3d operator+ (vec3d v) const {vec3d t; t.x=x+v.x; t.y=y+v.y; t.z=z+v.z; return t;}
+    vec3d operator* (double s) const {vec3d t; t.x=s*x; t.y=s*y;t.z=s*z; return t;}
+    vec3d operator- (vec3d v) const {vec3d t; t.x = x-v.x; t.y = y-v.y; t.z = z-v.z; return t;}
 };
 
 class symMtx3 
@@ -111,7 +111,7 @@ public:
 
     void set(double M1, double M2, double M3, double M4, double M5, double M6) {m1=M1;m2=M2;m3=M3;m4=M4;m5=M5;m6=M6;}
 
-    vec3d vecMult(vec3d v) {
+    vec3d vecMult(vec3d v) const {
         vec3d r;
         r.x = m1*v.x + m2*v.y + m3*v.z;
         r.y = m2*v.x + m4*v.y + m5*v.z;
@@ -131,7 +131,7 @@ typedef map<int, map<int, map<int, symMtx3 > > > tensor3D;
 template<typename T_>
 class FlagMaskDomain3D : public DomainFunctional3D {
     public:
-        FlagMaskDomain3D(T_ *allGeometryFlags, int flagToMaskAbove = 0) : maskFlag(flagToMaskAbove), geometryFlags(allGeometryFlags)
+        explicit FlagMaskDomain3D(T_ *allGeometryFlags, int flagToMaskAbove = 0) : maskFlag(flagToMaskAbove), geometryFlags(allGeometryFlags)
         { }
 
         virtual bool operator () (plint iX, plint iY, plint iZ) const {
@@ -154,7 +154,7 @@ class FlagMaskDomain3D : public DomainFunctional3D {
 template<typename T_>
 class FlagMaskSingleDomain3D : public DomainFunctional3D {
     public:
-        FlagMaskSingleDomain3D(T_ *allGeometryFlags, int flagToMask = 0) : maskFlag(flagToMask), geometryFlags(allGeometryFlags)
+        explicit FlagMaskSingleDomain3D(T_ *allGeometryFlags, int flagToMask = 0) : maskFlag(flagToMask), geometryFlags(allGeometryFlags)
         { }
 
         virtual bool operator () (plint iX, plint iY, plint iZ) const {

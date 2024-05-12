@@ -1,5 +1,5 @@
-#ifndef __IO_H__
-#define __IO_H__
+#ifndef IO_H
+#define IO_H
 
 #include "globals.h"
 #include "helper.h"
@@ -20,13 +20,13 @@
 #include "io/xdmfDataOutput.h"
 
 bool fileExists (const std::string& name);
-int dirExists(string pathName);
+int dirExists(const string& pathName);
 int do_mkdir(const char *path, mode_t mode);
 int mkpath(const char *path, mode_t mode);
 
 void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter);  // Note: this output type does not do unit conversion.
-void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1 = NULL);
-void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, MultiNTensorField3D<T> *field1 = NULL);
+void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1 = nullptr);
+void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, MultiNTensorField3D<T> *field1 = nullptr);
 
 
 #endif

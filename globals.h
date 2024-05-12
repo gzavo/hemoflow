@@ -1,5 +1,5 @@
-#ifndef __GLOBALS_H__
-#define __GLOBALS_H__
+#ifndef GLOBALS_H
+#define GLOBALS_H
 
 #include "palabos3D.h"
 #include "palabos3D.hh"
@@ -26,7 +26,10 @@ typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundD
 
 // Enable Large Eddy simulation (constant Smagorinsky)?
 #define LES 0
- 
+
+// Enable or disable sparse grid decomposition
+#define SPARSE 0
+
 enum GeometryLabel {
     UNUSED = 0,
     WALL = 1,
