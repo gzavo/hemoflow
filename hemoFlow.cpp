@@ -109,46 +109,48 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
     global::CarreauParameters().setExponent(0.357);   //0.3
 }
 
-void processOpenings(string inletFlowrateFunc, T inletA)
+// Progress timer for the openings and impose BC values
+void imposeOpenings(T dt)
 {
-    int numOpenings = openingRadius.shape[0];
-    pcout << "-> Number of openings to process: " << numOpenings << std::endl;
+    T murrayExponent = 3.0;
+    T murrayTotalRadii = 0.0;
+    T sumInflowRate = 0.0;
 
-    T Qin = U_AVG_LB * inletA;
+    // Phase I - Defined BCs
+    // Get the sum defined inflowrate and the sum undefined outflow surface
 
-    for(int i=0; i<numOpenings; i++){
-        int flag = oiData[i];
-        pcout << "Processing flag: " << flag << std::endl;
+    for(auto &o: openings) {
 
-        if(flag < FIRST_OPENING){
-            pcout << "WARNING! Wrong flag for an opening: " << flag << std::endl;
-            continue;
-        }
-
-        int s = openingTangent.shape[1];
-        vec3d dir(otData[gT2D(s,i,0)], otData[gT2D(s,i,1)], otData[gT2D(s,i,2)]);
-
-        OpeningHandler *opening = new OpeningHandler(gfData, flag, orData[i] / sim.C_l, dir);
-        
-        if(flag == FIRST_OUTLET)
-            opening->createConstantPressureProfile();
-        else {
-            if(flag == INLET)
-                opening->createPoiseauilleProfile(U_AVG_LB);
-                // opening->createBluntVelocityProfile(U_AVG_LB);
-            else {
-                // Calculate outflow velocity based on Murray's law
-                T u_out = Qin * oqData[i] / (pow(orData[i] / sim.C_l, 2) * M_PI);
-                opening->createPoiseauilleProfile(u_out);
-                // opening->createBluntVelocityProfile(u_out);
-            }
+        if (o->getOpeningType() != OPENING_MURRAY) {       // All non-Murray velocity BCs
             
-            if(!inletFlowrateFunc.empty())
-                opening->loadScaleFunction(inletFlowrateFunc);
+            o->progressTime(lattice, dt);
+
+            if (o->getOpeningType() == OPENING_VELOCITY) {  // All defined velocity BCs
+                sumInflowRate += o->getScaledFlowRate();    // Note: can be outflow (i.e. negative, still ok)
+            }
         }
-        
-        opening->printOpeningDetails();
-        openings.push_back(opening);
+        else if(o->getOpeningType == OPENING_MURRAY) {
+            murrayTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
+        }            
+    }
+            
+    
+    // Phase II - Automatic BCs
+    // Set the undefined outflow rates according to Murray's law
+    // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
+
+    for(auto &o: openings) {
+        if(o->getOpeningType == OPENING_MURRAY) {
+            
+            T murrayRadius = pow(o->getSurfaceSize(), murrayExponent / 2.0); // = sqrt(pi)*radius, but the scalar multiplier does not matter
+            T flowRate = murrayRadius / murrayTotalRadii * sumInflowRate;
+
+            // The profile flow-rate is 0.5 only if we have a parabolic profile. Let's assume it for performance reasons.
+            // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
+            T profileFlowRate = 0.5;
+            o->setBCParameter(flowRate / profileFlowRate);
+            o->progressTime(lattice, dt);
+        }
     }
 
 }
@@ -160,7 +162,7 @@ int main(int argc, char *argv[])
     plbInit(&argc, &argv);
 
     pcout   << "********************************* " << endl
-            << "*       hemoFlowCFD  v0.3       * " << endl
+            << "*        hemoFlow  v0.31        * " << endl
             << "********************************* " << endl;
 
     // *** Reading in command line arguments
@@ -357,29 +359,24 @@ int main(int argc, char *argv[])
                 opening->loadScaleFunction(flowrateFunc);
 
             // Set profile
-            if(type == OPENING_VELOCITY){
+            if(type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW){
                 opening->createPoiseauilleProfile();    // Normalized to max_vel = 1.0 (LBM units)
-                opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
+                // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
             } 
             else if(type == OPENING_PRESSURE) {
                 opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
             }
 
-            opening->printOpeningDetails();
-            
+            opening->printOpeningDetails(sim);
+                
             openings.push_back(opening);
 
         }
 
-
-        // TODO - Rework this part, add Muray's law in process openings, that can be called multiple times. 
-        T inletD = 2.0 * orData[0]; // [m]
-        pcout << "-> Inlet radius [m]: " << orData[0] << std::endl;
-
-        // Inlet area in lattice units
-        T inletA = pow(orData[0] / sim.C_l, 2) * M_PI;
-
-        processOpenings(workingFolder + "/" + inletFlowrateFunc, inletA);
+        // Sanity check
+        if(numOpenings != openings.size()) {
+            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl; 
+        }
 
     }
     catch (PlbIOException& exception) {
@@ -468,9 +465,9 @@ int main(int argc, char *argv[])
 
     // TODO: add some reparallelize here, check if it plays nice with checkpointing
 
-    pcout << "Setting values on openings..." << std::endl;
+    pcout << "Setting up boundary nodes..." << std::endl;
     for(auto &o: openings){
-        o->setBC(lattice);
+        o->setBCType(lattice);
     }
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
@@ -478,6 +475,9 @@ int main(int argc, char *argv[])
 
     pcout << "Finalizing lattice..." << std::endl;
     lattice->initialize();
+
+    // Set all the boundaries in the initialized lattice
+    imposeOpenings(0.0);
 
     // iteration counter
     int stat_cycle = 0;
@@ -509,8 +509,7 @@ int main(int argc, char *argv[])
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
         T minDE = 1e-11; T dE = 100; T prevE = 0;
     
-        for(auto &o: openings)
-        	o->progressTime(lattice, 0.0);
+        // imposeOpenings(0.0);
 
         if(saveInitState) {
             pcout << "Saving initial state with flow diverter..." << endl;
@@ -561,9 +560,8 @@ int main(int argc, char *argv[])
             } 
         }
 
-        // Impose boundary conditions
-        for(auto &o: openings)
-            o->progressTime(lattice, sim.C_t);
+        // Impose boundary conditions with dt progress in time
+        imposeOpenings(sim.C_t);
 
         // Calculate next step
         lattice->collideAndStream();

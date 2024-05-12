@@ -8,6 +8,8 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, Op
     hasScaleFunction = false;
     cTimePos = 0;
     cTimeVal = 0;
+    cScale = 1.0;
+    bcParameter = 1.0;
 
     vector<int> xCoord; vector<int> yCoord; vector<int> zCoord;
     
@@ -47,44 +49,55 @@ OpeningHandler::OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, Op
     direction.x = dirVec.x; direction.y = dirVec.y; direction.z = dirVec.z;
 }
 
-void OpeningHandler::printOpeningDetails()
+void OpeningHandler::printOpeningDetails(SimPar s)
 {
     pcout << "---- Opening parameters -----" << std::endl;
     pcout << "-> Name: " << getName() << std::endl;
     pcout << "-> Geometry flag: " << flag << std::endl;
     pcout << "-> Opening type: " << type << std::endl;
-    pcout << "-> Radius [lb]: " << R << std::endl;
+    pcout << "-> Radius [m]: " << R * s.C_l << std::endl;
     pcout << "-> Center [lb]: " << center.x << " " << center.y << " " << center.z << std::endl;
     pcout << "-> Normal: " << direction.x << " " << direction.y << " " << direction.z << std::endl;
     pcout << "-> Area [lb]: " << nodes.size() << std::endl;
     pcout << "-> Scale function: " << hasScaleFunction << " length: " << scaleSignal.size() << std::endl;
-    pcout << "-> BC parameter [lb]: " << parameter << std::endl;
-}
+    pcout << "-> BC parameter [lb]: " << bcParameter << std::endl;
 
-// Set Q or p or other BC parameter, convert it to LBM units.
-void OpeningHandler::setBCParameter(T parameter_, SimPar s)
-{
+    if(type == OPENING_VELOCITY) {
+        T flowRate = 0.5 * bcParameter * nodes.size() * s.C_l * s.C_l * s.C_l / s.C_t; 
+        pcout << "-> BC Q [m^3/s]: " << flowRate << std::endl;
 
-
-    if(type == OPENING_VELOCITY){
-        // Set Q
-
-        if(parameter_ < 0.0)
-        {
-            // Set it for assumptions. E.g., Murray
-
+        T maxVel = bcParameter * s.C_l / s.C_t;
+        pcout << "-> BC max vel. [m/s]: " << maxVel << std::endl;
+        if(bcParameter > s.U_max_lb) {
+            pcout << "-> *WARNING*: Maximum velocity exeeds expected maximum velocity: " << s.U_max_lb * s.C_l / s.C_t << std::endl;
         }
     }
     else if (type == OPENING_PRESSURE) {
-        // Set p
+        if(bcParameter < 0.5 || bcParameter > 1.5) {
+            pcout << "-> *WARNING*: LB pressure is in an unstable regime: " << parameter << ". Consider decreasing the time-step size." << std::endl;
+        }        
     }
-
-
-
 }
 
-// Return flow rate on the opening in LBM units
-T OpeningHandler::getFlowRate()
+// Set Q or p or other BC parameter, convert it to LBM units.
+void OpeningHandler::setBCParameter(T bcParameter_, SimPar s)
+{
+    if(type == OPENING_VELOCITY){
+        // [m/s] -> LB max velocity
+        bcParameter = bcParameter_ * s.C_t / s.C_l;
+    }
+    else if (type == OPENING_PRESSURE) {
+        // p -> LB density
+        bcParameter = bcParameter_ / 3.0  / s.C_p;
+    }
+    else {
+        // Murray of freeflow, nothing to be done
+        return;
+    }
+}
+
+// Return flow rate on the opening in LBM units of the predefined profile
+T OpeningHandler::getProfileFlowRate()
 {
     T velSum = 0.0;
 
@@ -92,6 +105,13 @@ T OpeningHandler::getFlowRate()
         velSum += velArr[v.x][v.y][v.z].norm();
 
     return velSum;
+}
+
+// Get the current flowrate on a defined velocity boundary
+T OpeningHandler::getScaledFlowRate()
+{
+    T profileFlowRate = getProfileFlowRate();
+    return profileFlowRate * bcParameter * cScale;
 }
 
 // Scale the flow velocity array
@@ -110,7 +130,7 @@ void OpeningHandler::scalePressure(T scale_)
 
 void OpeningHandler::normalizeFlowRate()
 {
-  T invVelSum = 1.0 / getFlowRate();
+  T invVelSum = 1.0 / getProfileFlowRate();
 
     for(auto const& v: nodes)
         velArr[v.x][v.y][v.z] = velArr[v.x][v.y][v.z] * invVelSum;
@@ -119,12 +139,12 @@ void OpeningHandler::normalizeFlowRate()
 // Note the peak of the profile is v_norm == 1
 void OpeningHandler::createPoiseauilleProfile()
 {
-    pcout << "-> Creating direction-corrected Pouseuille velocity profile on flag: " << flag << std::endl;
+    pcout << "-> Creating direction-corrected Pouseuille velocity profile on label: " << flag << std::endl;
 
     // Sanity check
     if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) )
         pcout << "!!! ERROR: The opening is not parallel to any principal plane! This functionality is not implemented, the opening will not work properly!" << std::endl;
-    if (type != OPENING_VELOCITY || type != OUTLET_FREEFLOW)
+    if (type != OPENING_VELOCITY && type != OPENING_MURRAY && type != OUTLET_FREEFLOW)
         pcout << "WARNING! Setting velocity profile for a non-velocity opening! This will have no effect." << std::endl;
 
     // Paraboloid height
@@ -180,7 +200,7 @@ void OpeningHandler::createBluntVelocityProfile()
     // Sanity check
     if ( !(boundingBox->x0 == boundingBox->x1 || boundingBox->y0 == boundingBox->y1 || boundingBox->z0 == boundingBox->z1) )
         pcout << "!!! ERROR: The opening is not parallel to any principal plane! This functionality is not implemented, the opening will not work properly!" << std::endl;
-    if (type != OPENING_VELOCITY)
+    if (type != OPENING_VELOCITY && type != OPENING_MURRAY)
         pcout << "WARNING! Setting velocity profile for a non-velocity opening! This will have no effect." << std::endl;
 
     vec3d vel = direction.getNormal();
@@ -204,6 +224,12 @@ void OpeningHandler::createConstantPressureProfile(T density)
 
 void OpeningHandler::loadScaleFunction(string fileName)
 {
+    if(type==OPENING_MURRAY || type==OUTLET_FREEFLOW){
+        pcout << "-> *WARNING*: The opening type can't have a scale function. The scale function will be disregarded." << std::endl;
+        hasScaleFunction = false;
+        return;
+    }
+
     pcout << "-> Loading and scale function: " << fileName << std::endl;
 
     plb_ifstream finSign(fileName.c_str());
@@ -232,13 +258,12 @@ void OpeningHandler::loadScaleFunction(string fileName)
     finSign.close();
 
     hasScaleFunction = true;
-
     pcout << fileName << " loaded with " << scaleTime.size() << " data points." << std::endl;
 }
 
 void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
 {
-    if (type == OPENING_VELOCITY ) {
+    if (type == OPENING_VELOCITY || type == OPENING_MURRAY ) {
         OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createLocalBoundaryCondition3D<T,DESCRIPTOR>();
         // OnLatticeBoundaryCondition3D<T, DESCRIPTOR> *bc = createZouHeBoundaryCondition3D<T,DESCRIPTOR>();
         bc->setVelocityConditionOnBlockBoundaries(*lattice, *boundingBox, boundary::dirichlet);
@@ -272,7 +297,7 @@ void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice)
 void OpeningHandler::setExternalVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr)
 {
     
-    if(type==OPENING_VELOCITY) {
+    if(type==OPENING_VELOCITY || type==OPENING_MURRAY) {
         // Set the predetermined profile
         setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velocityArr, 1.0));
     }
@@ -294,10 +319,12 @@ void OpeningHandler::setExternalPressureProfile(MultiBlockLattice3D<T, DESCRIPTO
 
 void OpeningHandler::setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T scale = 1.0)
 {   
-    if(type == OPENING_VELOCITY) 
+    if(type == OPENING_VELOCITY || type == OPENING_MURRAY) 
         setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
     else if(type == OPENING_PRESSURE)
         setBoundaryDensity(*lattice, *boundingBox, PressureProfile3D<T,DESCRIPTOR>(&presArr, scale));
+    else if(type == OUTLET_FREEFLOW)
+        setBoundaryVelocity(*lattice, *boundingBox, VelocityProfile3D<T,DESCRIPTOR>(&velArr, scale));
 
     // TODO: errorhandling 'else'-case?
 
@@ -305,8 +332,7 @@ void OpeningHandler::setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR>
 
 void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt)
 {
-    T scale = 1.0;
-
+    // Do we need to change the scale value?
     if(hasScaleFunction)
     {
         int len = scaleTime.size();
@@ -321,12 +347,13 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T
         }
 
         if(cTimePos < len-1)
-            scale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos+1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos+1]);
+            cScale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos+1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos+1]);
         else
-            scale = interpolate(scaleTime[cTimePos], scaleTime[0], cTimeVal, scaleSignal[cTimePos], scaleSignal[0]);
+            cScale = interpolate(scaleTime[cTimePos], scaleTime[0], cTimeVal, scaleSignal[cTimePos], scaleSignal[0]);
     }
 
-    setScaledBoundaryProfile(lattice, scale);
+    // Apply the previously defined profile scaled with 'parameter' and the scale function if it exists.
+    setScaledBoundaryProfile(lattice, cScale * bcParameter);
 
 }
 

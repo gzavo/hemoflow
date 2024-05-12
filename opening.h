@@ -13,7 +13,7 @@ public:
     OpeningHandler(unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d direction);
     ~OpeningHandler();
 
-    void printOpeningDetails();
+    void printOpeningDetails(SimPar s);
     void loadScaleFunction(string fileName);    // Load in the scale function form a text file and MPI boradcast it
     void setBCParameter(T parameter_, SimPar s);  // Set Q or p or other BC parameter, convert it to LBM units.
     void setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);    // Sets the BC type for LBM
@@ -27,11 +27,14 @@ public:
     void normalizeFlowRate();           // Set Q = 1.0
     void scaleFlowRate(T scale_);       // Scale velocity
     void scalePressure(T scale_);       // Scale pressure
+    void setBCParameter (T bcParameter_) { bcParameter = bcParameter_; }
 
     int getGeometryLabel() { return flag; }
     int getOpeningType() { return type; }
     int getSurfaceSize() { return nodes.size(); }
-    T getFlowRate();
+    bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
+    T getProfileFlowRate();
+    T getScaledFlowRate();
     T getRadius() { return R; }
     vec3d getCenter() { return center; }
     Box3D *getBoundingBox() { return boundingBox; }
@@ -40,11 +43,9 @@ public:
     string getName () {return name;}
 
 private:
-    //int flag;
     string name;
     GeometryLabel flag;
     OpeningType type;
-    bool hasScaleFunction;
     
     vector<Index3D> nodes;  // List of LBM nodes on the opening
     vec3d center;           // LBM units
@@ -52,14 +53,16 @@ private:
     T R;                    // LBM units (area-derived hydrodynamic radius)
     Box3D *boundingBox;     // BB for functionals
 
-    // Boundary condition values
+    // Boundary condition profiles
     field3D velArr;
     scalar3D presArr;
+    T bcParameter;    // Normal velocity magnitude max (for Q) or absolute pressure (p). These multiply the scale functions.
 
     // Scale signal
+    bool hasScaleFunction;
     vector<T> scaleSignal;
     vector<T> scaleTime;
-    T parameter;    // Q or p for the BC
+    T cScale; // The current scale value of the function
 
     // Keeping track of the scale function (and looping it)
     int cTimePos;

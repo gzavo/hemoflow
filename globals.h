@@ -36,8 +36,9 @@ enum GeometryLabel {
 
 enum OpeningType {
     OPENING_VELOCITY = 1,
-    OPENING_PRESSURE = 2,
-    OUTLET_FREEFLOW = 3 
+    OPENING_MURRAY = 2,
+    OPENING_PRESSURE = 3,
+    OUTLET_FREEFLOW = 4 
 };
 
 // Simulation domain size
