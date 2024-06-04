@@ -320,8 +320,8 @@ int main(int argc, char *argv[])
         double* ocData = openingCenter.data<double>();
         */
 
-        cnpy::NpyArray openingTangent = geom_npz["openingTangent"]; // TODO: rename this to opening normal
-        auto* otData = openingTangent.data<double>();
+        cnpy::NpyArray openingNormal = geom_npz["openingNormal"];
+        auto* onData = openingNormal.data<double>();
 
         // Loop through the openings in the datafile 
         unsigned int numOpenings = openingRadius.shape[0];
@@ -346,8 +346,8 @@ int main(int argc, char *argv[])
                 pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
 
             // Get the direction of the opening 
-            int s = openingTangent.shape[1];
-            vec3d dir(otData[gT2D(s,openingIdx,0)], otData[gT2D(s,openingIdx,1)], otData[gT2D(s,openingIdx,2)]);
+            int s = openingNormal.shape[1];
+            vec3d dir(onData[gT2D(s,openingIdx,0)], onData[gT2D(s,openingIdx,1)], onData[gT2D(s,openingIdx,2)]);
 
             // Create the opening
             auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
