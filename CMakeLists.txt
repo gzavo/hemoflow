@@ -5,6 +5,10 @@ set(PROJECT_NAME "hemoFlow")
 project(${PROJECT_NAME})
 enable_language(CXX)
 
+set(CMAKE_DEBUG_POSTFIX d)
+# Build with: cmake -DCMAKE_BUILD_TPYE=Build ..
+# Debug with: gdb --args ./${PROJECT_NAME} /path/to/xml
+
 option(BUILD_HDF5 "compile with hdf5" ON)
 
 if(BUILD_HDF5)
@@ -110,6 +114,7 @@ target_sources(${PROJECT_NAME} PRIVATE "external/cnpy/cnpy.cpp")
 
 include_directories("external/HighFive/include")
 
+set_target_properties(${EXECUTABLE_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 
 # Link with the following libraries
 if(BUILD_HDF5)
