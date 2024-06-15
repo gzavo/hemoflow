@@ -39,6 +39,7 @@
 
 # Build
 build/
+cmake-build-debug/
 
 # Cases
 cases/
