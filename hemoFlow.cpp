@@ -515,7 +515,7 @@ int main(int argc, char *argv[])
         
         pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
-    else { // If not, then let's do a warm up.
+    else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
@@ -523,7 +523,14 @@ int main(int argc, char *argv[])
     
         // imposeOpenings(0.0);
 
+        T cE = computeAverageEnergy(*lattice);
+        if(isnan(cE)) {
+            pcout << "WARNING: Energy (velocity) is NaN! Please check the simulation setup! Exiting..." << endl;
+            return -1;
+        }
+
         if(saveInitState) {
+            pcout << "Energy at the initial state: "<< cE << endl;
             pcout << "Saving initial state with flow diverter..." << endl;
             // writeVTK(*lattice, sim, -1, porosityField);
             writeHDF5(*lattice, sim, -1, outDir, porosityField);
