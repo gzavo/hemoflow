@@ -274,41 +274,6 @@ int main(int argc, char *argv[])
         Nz = geometryFlag.shape[2];
         pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
 
-        if(SPARSE) {
-            pcout << "Setting simulation domain mask for sparse decomposition..." << endl;
-            auto *flagMatrix = new MultiScalarField3D<int>(Nx,Ny,Nz);
-            setToFunction(*flagMatrix, flagMatrix->getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, 1));
-
-            pcout << "Creating sparse representation ..." << endl;
-            
-            //Create sparse representation
-            MultiBlockManagement3D sparseBlockManagement =
-                        computeSparseManagement(*plb::reparallelize(*flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
-                                                            
-            #if LES
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
-                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                            new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago)); 
-            #else
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
-                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                            new BackgroundDynamics(sim.omega));
-            #endif
-        }
-        else {
-            #if LES
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago));
-            #else
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(sim.omega));
-            #endif
-        }
-
-
-
         // Reading dx = C_l from the geometry file
         cnpy::NpyArray dxA = geom_npz["dx"];
         double sim_dx = (dxA.data<double>())[0];
@@ -358,16 +323,56 @@ int main(int argc, char *argv[])
         cnpy::NpyArray openingNormal = geom_npz["openingNormal"];
         auto* onData = openingNormal.data<double>();
 
+        if(SPARSE) {
+            pcout << "Setting simulation domain mask for sparse decomposition..." << endl;
+            auto *flagMatrix = new MultiScalarField3D<int>(Nx,Ny,Nz);
+            setToFunction(*flagMatrix, flagMatrix->getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, 1));
+
+            pcout << "Creating sparse representation ..." << endl;
+            
+            //Create sparse representation
+            MultiBlockManagement3D sparseBlockManagement =
+                        computeSparseManagement(*plb::reparallelize(*flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
+                                                            
+            #if LES
+                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
+                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+                                                            new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago)); 
+            #else
+                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
+                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+                                                            new BackgroundDynamics(sim.omega));
+            #endif
+        }
+        else {
+            #if LES
+                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago));
+            #else
+                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(sim.omega));
+            #endif
+        }
+
+        #if LES
+            instantiateStaticSmagorinsky(*lattice, lattice->getBoundingBox(), cSmago);
+        #endif
+
+        pcout << getMultiBlockInfo(*lattice) << endl;
+
         // Loop through the openings in the datafile 
         unsigned int numOpenings = openingRadius.shape[0];
         pcout << "Number of openings in geometry: " << numOpenings << std::endl;
         pcout << "Opening flags: ";
-        for(int o=0; o < numOpenings; o++)
+
+        for(unsigned int o=0; o < numOpenings; o++)
             pcout << oiData[o] << " ";
         pcout << endl;
 
         // Loop through the openings following the xml config
-        for(int o=0; o < numOpenings; o++){
+        for(unsigned int o=0; o < numOpenings; o++){
             pcout << "Processing opening: " << o << std::endl;
             
             string xmlTagOpening = "opening_"+std::to_string(o);
@@ -456,13 +461,6 @@ int main(int argc, char *argv[])
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-
-    #if LES
-        instantiateStaticSmagorinsky(*lattice, lattice->getBoundingBox(), cSmago);
-    #endif
-
-    pcout << getMultiBlockInfo(*lattice) << endl;
-
     // If there is data on porosity, set up porous layer in the simulation   
     if(sfData != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
@@ -477,11 +475,11 @@ int main(int argc, char *argv[])
 
     // TODO: add some reparallelize here, check if it plays nice with checkpointing
 
-    pcout << "Setting up boundary nodes..." << std::endl;
-    for(auto &o: openings){
-        o->setBCType(lattice);
-    }
-
+    //    pcout << "Setting up boundary nodes..." << std::endl;
+    //    for(auto &o: openings){
+    //        o->setBCType(lattice);
+    //    }
+    
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
 
