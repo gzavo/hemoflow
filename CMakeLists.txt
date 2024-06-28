@@ -6,7 +6,7 @@ project(${PROJECT_NAME})
 enable_language(CXX)
 
 set(CMAKE_DEBUG_POSTFIX d)
-# Build with: cmake -DCMAKE_BUILD_TPYE=Build ..
+# Build with: cmake -DCMAKE_BUILD_TYPE=Build ..
 # Debug with: gdb --args ./${PROJECT_NAME} /path/to/xml
 
 option(BUILD_HDF5 "compile with hdf5" ON)
