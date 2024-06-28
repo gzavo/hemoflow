@@ -474,11 +474,6 @@ int main(int argc, char *argv[])
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
 
     // TODO: add some reparallelize here, check if it plays nice with checkpointing
-
-    //    pcout << "Setting up boundary nodes..." << std::endl;
-    //    for(auto &o: openings){
-    //        o->setBCType(lattice);
-    //    }
     
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
