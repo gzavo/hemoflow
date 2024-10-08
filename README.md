@@ -10,27 +10,33 @@ All input parameters should be either SI or non-dimensional!
 # Setup
 The code builds on the Palabos open-source code. If not present, copy it to the 'palabos' directory, or use the 'setup.sh' script to clone it from the repository.
 Afterwards use CMake to build the executable, e.g.:
-> mkdir build
-> cd build
-> cmake ..
-> make -j 4
+
+```bash
+mkdir build
+cd build
+cmake ..
+make -j 4
+```
 
 ### HDF5 problems on Ubuntu
 HighFive requires 1.13+ parallel HDF5 version which is not available from apt-get (yet).
 Can be compiled manually using
 
-> git clone https://github.com/HDFGroup/hdf5
-> cd hdf5
-> git checkout hdf5-1_14_0
-> mkdir build
-> cd build
-
-> cmake -G "Unix Makefiles" -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DCMAKE_INSTALL_PREFIX=/opt/hdf5 ..
-> sudo make install -j 4
+```bash
+git clone https://github.com/HDFGroup/hdf5
+cd hdf5
+git checkout hdf5-1_14_0
+mkdir build
+cd build
+cmake -G "Unix Makefiles" -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DCMAKE_INSTALL_PREFIX=/opt/hdf5 ..
+sudo make install -j 4
+```
 
 When compiling hemoflow cmake needs help to find our custom HDF5:
-> cmake -DHDF5_ROOT=/opt/hdf5 ..
-> make -j 4
+```bash
+cmake -DHDF5_ROOT=/opt/hdf5 ..
+make -j 4
+```
 
 ## Shortcomings
 - Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.
