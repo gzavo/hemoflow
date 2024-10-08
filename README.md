@@ -15,6 +15,23 @@ Afterwards use CMake to build the executable, e.g.:
 > cmake ..
 > make -j 4
 
+### HDF5 problems on Ubuntu
+HighFive requires 1.13+ parallel HDF5 version which is not available from apt-get (yet).
+Can be compiled manually using
+
+> git clone https://github.com/HDFGroup/hdf5
+> cd hdf5
+> git checkout hdf5-1_14_0
+> mkdir build
+> cd build
+
+> cmake -G "Unix Makefiles" -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DCMAKE_INSTALL_PREFIX=/opt/hdf5 ..
+> sudo make install -j 4
+
+When compiling hemoflow cmake needs help to find our custom HDF5:
+> cmake -DHDF5_ROOT=/opt/hdf5 ..
+> make -j 4
+
 ## Shortcomings
 - Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.
 - An opening cannot fall to an edge or corner of the AA bounding box (or it can be detected on the wrong side).

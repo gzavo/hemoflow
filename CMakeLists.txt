@@ -70,6 +70,12 @@ if(ENABLE_MPI)
     endif()
 endif()
 
+find_package (ZLIB) # Legacy find
+        if (ZLIB_FOUND)
+          message("enabling ZLIB")
+          # set (LINK_COMP_LIBS ${LINK_COMP_LIBS} ${ZLIB_LIBRARIES})
+        endif ()
+
 if(WIN32)
     option(ENABLE_POSIX "Enable POSIX" OFF)
 else()
@@ -118,7 +124,7 @@ set_target_properties(${EXECUTABLE_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_
 
 # Link with the following libraries
 if(BUILD_HDF5)
-	target_link_libraries(${EXECUTABLE_NAME} palabos ${HDF5_LIBRARIES} )
+	target_link_libraries(${EXECUTABLE_NAME} palabos ${HDF5_LIBRARIES} ${ZLIB_LIBRARIES} )
 else()
 	target_link_libraries(${EXECUTABLE_NAME} palabos )
 endif()
