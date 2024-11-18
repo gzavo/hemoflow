@@ -121,48 +121,50 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 void imposeOpenings(T dt)
 {
     T murrayExponent = 3.0;
-    T murrayTotalRadii = 0.0;
+    T murrayOutletTotalRadii = 0.0;
     T sumInflowRate = 0.0;
 
     // Phase I - Defined BCs
     // Get the sum defined inflowrate and the sum undefined outflow surface
 
-    for(auto &o: openings) {
+    for (auto &o : openings)
+    {
 
-        if (o->getOpeningType() != OPENING_MURRAY) {       // All non-Murray velocity BCs
-            
+        if (o->getOpeningType() == OPENING_VELOCITY)
+        { // All non-Murray velocity BCs
+
             o->progressTime(lattice, dt);
-
-            if (o->getOpeningType() == OPENING_VELOCITY) {  // All defined velocity BCs
-                sumInflowRate += o->getScaledFlowRate();    // Note: can be outflow (i.e. negative, still ok)
-            }
+            sumInflowRate += o->getScaledFlowRate();
         }
-        else if(o->getOpeningType() == OPENING_MURRAY) {
-            murrayTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
-        }            
+        else
+        {
+            //murrayOutletTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
+            murrayOutletTotalRadii +=pow(o->getRadius(),murrayExponent); // LBM units with Murray exponent
+        }
     }
-            
-    
+
     // Phase II - Automatic BCs
     // Set the undefined outflow rates according to Murray's law
     // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
 
-    for(auto &o: openings) {
-        if(o->getOpeningType() == OPENING_MURRAY) {
-            
-            T murrayRadius = pow(o->getSurfaceSize(), murrayExponent / 2.0); // = sqrt(pi)*radius, but the scalar multiplier does not matter
-            T flowRate = murrayRadius / murrayTotalRadii * sumInflowRate;
+    for (auto &o : openings)
+    {
+        if (o->getOpeningType() == OPENING_MURRAY)
+        {
+
+            // T murrayRadius = pow(o->getSurfaceSize(), murrayExponent / 2.0); // = sqrt(pi)*radius, but the scalar multiplier does not matter
+            // T flowRate = murrayRadius / murrayOutletTotalRadii * sumInflowRate;
+            T flowRate = (pow(o->getRadius(), murrayExponent) * sumInflowRate) / murrayOutletTotalRadii;
+            T murrayVelocity = flowRate / (pow(o->getRadius(), 2) * 3.14 / 2); // Q/A
 
             // The profile flow-rate is 0.5 only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
-            o->setBCParameter(flowRate / profileFlowRate);
+            o->setBCParameter(flowRate / profileFlowRate); // BCparameter requires velocity
             o->progressTime(lattice, dt);
         }
     }
-
 }
-
 
 // *** Main simulation entry point
 int main(int argc, char *argv[])

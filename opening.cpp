@@ -90,6 +90,10 @@ void OpeningHandler::setBCParameter(T bcParameter_, SimPar s)
         // p -> LB density
         bcParameter = bcParameter_ / 3.0  / s.C_p + 1.0;   // 1.0 is defined as density for 0 pressure
     }
+    else if (type == OPENING_MURRAY) {
+        //VFR in LB units?
+        bcParameter = bcParameter_; //* s.C_t/(pow(s.C_l,3));
+    }
     else {
         // Murray of freeflow, nothing to be done
         return;
