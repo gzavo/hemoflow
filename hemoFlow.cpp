@@ -135,18 +135,20 @@ void imposeOpenings(T dt)
 
             o->progressTime(lattice, dt);
             sumInflowRate += o->getScaledFlowRate();
+            
         }
         else
         {
-            //murrayOutletTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
-            murrayOutletTotalRadii +=pow(o->getRadius(),murrayExponent); // LBM units with Murray exponent
+            // murrayOutletTotalRadii += pow(o->getSurfaceSize(), murrayExponent / 2.0); // (sqrt(A)^3)
+            murrayOutletTotalRadii += pow(o->getRadius(), murrayExponent); // LBM units with Murray exponent
         }
     }
 
     // Phase II - Automatic BCs
     // Set the undefined outflow rates according to Murray's law
     // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
-
+    pcout << "sum radius: " << murrayOutletTotalRadii << std::endl;
+    pcout << "sum inflow rate: " << sumInflowRate << std::endl;
     for (auto &o : openings)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
@@ -154,14 +156,17 @@ void imposeOpenings(T dt)
 
             // T murrayRadius = pow(o->getSurfaceSize(), murrayExponent / 2.0); // = sqrt(pi)*radius, but the scalar multiplier does not matter
             // T flowRate = murrayRadius / murrayOutletTotalRadii * sumInflowRate;
-            T flowRate = (pow(o->getRadius(), murrayExponent) * sumInflowRate) / murrayOutletTotalRadii;
-            T murrayVelocity = flowRate / (pow(o->getRadius(), 2) * 3.14 / 2); // Q/A
+            pcout << "radius: " << pow(o->getRadius(), murrayExponent) << std::endl;
+            T flowRate = -1*(pow(o->getRadius(), murrayExponent)/ murrayOutletTotalRadii) * sumInflowRate; //-1 cause it is an outlet
+            T murrayVelocity = flowRate / (pow(o->getRadius(), 2) * 3.14); // Q/A
 
             // The profile flow-rate is 0.5 only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
-            o->setBCParameter(flowRate / profileFlowRate); // BCparameter requires velocity
+            o->setBCParameter(murrayVelocity / profileFlowRate); // BCparameter requires velocity
             o->progressTime(lattice, dt);
+            pcout << "murray flow rate: " << o->getScaledFlowRate() << std::endl;
+            pcout << "murray profile flow rate: " << o->getProfileFlowRate() << std::endl;
         }
     }
 }

@@ -39,6 +39,8 @@
 
 # Build
 build/
+build*/
+case*/
 cmake-build-debug/
 
 # Cases
