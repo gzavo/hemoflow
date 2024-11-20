@@ -115,7 +115,7 @@ T OpeningHandler::getProfileVelSum()
 // Get the current flowrate on a defined velocity boundary
 T OpeningHandler::getScaledFlowRate()
 {
-    T otherFlowRate=bcParameter * 0.5 * nodes.size() * cScale;
+    T otherFlowRate=bcParameter * 0.5 * (pow(getRadius(), 2)*3.14) * cScale;
     return otherFlowRate;
 }
 
