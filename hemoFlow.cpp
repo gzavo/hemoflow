@@ -145,7 +145,7 @@ void imposeOpenings(T dt)
     // Phase II - Automatic BCs
     // Set the undefined outflow rates according to Murray's law
     // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
-    pcout << "sum inflow rate: " << sumInflowRate << " sum outlet D^3: " << murrayOutletTotalRadii << std::endl;
+    //pcout << "sum inflow rate: " << sumInflowRate << " sum outlet D^3: " << murrayOutletTotalRadii << std::endl;
 
     for (auto &o : openings)
     {
@@ -159,7 +159,7 @@ void imposeOpenings(T dt)
             T profileFlowRate = 0.5;
             o->setBCParameter(murrayVelocity / profileFlowRate);
             o->progressTime(lattice, dt);
-            pcout << "Murray flow rate: " << o->getScaledFlowRate() << " for D^3:" << pow(o->getRadius(), murrayExponent) << std::endl;
+            //pcout << "Murray flow rate: " << o->getScaledFlowRate() << " for D^3:" << pow(o->getRadius(), murrayExponent) << std::endl;
         }
     }
 }
@@ -562,14 +562,18 @@ int main(int argc, char *argv[])
         
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/sim.C_t) << "] " << " - Energy: " << cE <<"         ";
+            pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/sim.C_t) << "] " << " - Energy: " << cE << endl;
             
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
                 writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
                 return 0;
-            } 
+            }
+            for (auto &o : openings)
+            {
+                pcout << o->getName()<<" flow rate SI: " << o->getLBMFlowRate(sim) << " scaledVFR:" <<o->getScaledFlowRate() << " with D^3:"<<pow(o->getRadius()*2, 3) <<std::endl;
+            }
         }
 
         // Impose boundary conditions with dt progress in time
