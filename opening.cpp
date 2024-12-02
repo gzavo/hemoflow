@@ -112,25 +112,20 @@ T OpeningHandler::getProfileVelSum()
     return velSum;
 }
 
-T OpeningHandler::getLBMFlowRate(SimPar s)
+T OpeningHandler::getFlowRate(SimPar s)
 {
     T velSum = 0.0;
 
-    for(auto const& v: nodes)
+    for (auto const &v : nodes)
         velSum += velArr[v.x][v.y][v.z].dot(direction);
 
-    //pcout<< "velsum: "<<velSum<< " area: " << getArea() <<" area by radius:" << (pow(getRadius(), 2)*3.14)<< " bcpar "<< bcParameter<<" cscale: " <<cScale<<endl;
-
-    //pcout<< "scl:"<<s.C_l<<"sct:" <<s.C_t<<endl;
-
-    return velSum * bcParameter*cScale* s.C_l * s.C_l * s.C_l / s.C_t; //*getArea()/getArea()
+    return velSum * bcParameter * cScale * s.C_l * s.C_l * s.C_l / s.C_t; //*getArea()/getArea()
 }
 
 // Get the current flowrate on a defined velocity boundary
 T OpeningHandler::getScaledFlowRate()
 {
-    T otherFlowRate=bcParameter * 0.5 * getArea() * cScale;
-    return otherFlowRate;
+    return bcParameter * 0.5 * getArea() * cScale;
 }
 
 // Scale the flow velocity array

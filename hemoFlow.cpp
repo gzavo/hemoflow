@@ -145,7 +145,6 @@ void imposeOpenings(T dt)
     // Phase II - Automatic BCs
     // Set the undefined outflow rates according to Murray's law
     // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
-    //pcout << "sum inflow rate: " << sumInflowRate << " sum outlet D^3: " << murrayOutletTotalRadii << std::endl;
 
     for (auto &o : openings)
     {
@@ -153,13 +152,11 @@ void imposeOpenings(T dt)
         {
             T flowRate = -1 * (pow(o->getRadius()*2, murrayExponent) / murrayOutletTotalRadii) * sumInflowRate; //-1 cause it is an outlet
             T murrayVelocity = flowRate / (pow(o->getRadius(), 2)*3.14); // Q/A
-
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
             o->setBCParameter(murrayVelocity / profileFlowRate);
             o->progressTime(lattice, dt);
-            //pcout << "Murray flow rate: " << o->getScaledFlowRate() << " for D^3:" << pow(o->getRadius(), murrayExponent) << std::endl;
         }
     }
 }
@@ -572,7 +569,7 @@ int main(int argc, char *argv[])
             }
             for (auto &o : openings)
             {
-                pcout << o->getName()<<" flow rate SI: " << o->getLBMFlowRate(sim) << " scaledVFR:" <<o->getScaledFlowRate() << " with D^3:"<<pow(o->getRadius()*2, 3) <<std::endl;
+                pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate() << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
             }
         }
 

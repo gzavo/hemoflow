@@ -34,7 +34,7 @@ public:
     int getSurfaceSize() { return nodes.size(); }
     bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
     T getProfileVelSum();
-    T getLBMFlowRate(SimPar s);
+    T getFlowRate(SimPar s);
     T getScaledFlowRate();
     T getRadius() const { return R; }
     T getArea() const { return nodes.size(); }
