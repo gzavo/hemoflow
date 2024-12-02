@@ -65,6 +65,7 @@ void OpeningHandler::printOpeningDetails(SimPar s)
     if(type == OPENING_VELOCITY) {
         T flowRate = 0.5 * bcParameter * nodes.size() * s.C_l * s.C_l * s.C_l / s.C_t; 
         pcout << "-> BC Q [m^3/s]: " << flowRate << std::endl;
+        pcout << "-> BC Q [lbm]: " << 0.5 * bcParameter * nodes.size() << std::endl;
 
         T maxVel = bcParameter * s.C_l / s.C_t;
         pcout << "-> BC max vel. [m/s]: " << maxVel << std::endl;
@@ -90,6 +91,10 @@ void OpeningHandler::setBCParameter(T bcParameter_, SimPar s)
         // p -> LB density
         bcParameter = bcParameter_ / 3.0  / s.C_p + 1.0;   // 1.0 is defined as density for 0 pressure
     }
+    else if (type == OPENING_MURRAY) {
+        //VFR in LB units?
+        bcParameter = bcParameter_; //* s.C_t/(pow(s.C_l,3));
+    }
     else {
         // Murray of freeflow, nothing to be done
         return;
@@ -97,7 +102,7 @@ void OpeningHandler::setBCParameter(T bcParameter_, SimPar s)
 }
 
 // Return flow rate on the opening in LBM units of the predefined profile
-T OpeningHandler::getProfileFlowRate()
+T OpeningHandler::getProfileVelSum()
 {
     T velSum = 0.0;
 
@@ -107,11 +112,20 @@ T OpeningHandler::getProfileFlowRate()
     return velSum;
 }
 
+T OpeningHandler::getFlowRate(SimPar s)
+{
+    T velSum = 0.0;
+
+    for (auto const &v : nodes)
+        velSum += velArr[v.x][v.y][v.z].dot(direction);
+
+    return velSum * bcParameter * cScale * s.C_l * s.C_l * s.C_l / s.C_t; //*getArea()/getArea()
+}
+
 // Get the current flowrate on a defined velocity boundary
 T OpeningHandler::getScaledFlowRate()
 {
-    T profileFlowRate = getProfileFlowRate();
-    return profileFlowRate * bcParameter * cScale;
+    return bcParameter * 0.5 * getArea() * cScale;
 }
 
 // Scale the flow velocity array
@@ -130,7 +144,7 @@ void OpeningHandler::scalePressure(T scale_)
 
 void OpeningHandler::normalizeFlowRate()
 {
-  T invVelSum = 1.0 / getProfileFlowRate();
+  T invVelSum = 1.0 / getProfileVelSum();
 
     for(auto const& v: nodes)
         velArr[v.x][v.y][v.z] = velArr[v.x][v.y][v.z] * invVelSum;

@@ -33,9 +33,11 @@ public:
     int getOpeningType() { return type; }
     int getSurfaceSize() { return nodes.size(); }
     bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
-    T getProfileFlowRate();
+    T getProfileVelSum();
+    T getFlowRate(SimPar s);
     T getScaledFlowRate();
     T getRadius() const { return R; }
+    T getArea() const { return nodes.size(); }
     vec3d getCenter() { return center; }
     Box3D *getBoundingBox() { return boundingBox; }
 
