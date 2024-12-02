@@ -30,10 +30,14 @@ unsigned short* gfData = nullptr;
 // Flow diverter (stent) data
 cnpy::NpyArray stentFlag;
 unsigned short* sfData = nullptr;
+unsigned short* linData = nullptr;
+unsigned short* quadData = nullptr;
 T linCoeff = 0.0;
 T quadCoeff = 0.0;
 T linCoeff_lb = 0.0;
 T quadCoeff_lb = 0.0;
+T linConvert = 0.0;
+T quadConvert = 0.0;
 
 // Simulation parameters structure
 SimPar sim;
@@ -41,6 +45,7 @@ SimPar sim;
 // Technical simulation parameters
 bool useCheckpoint = true;
 bool saveInitState = true;
+bool inhomogen = false;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
@@ -55,6 +60,8 @@ vector<OpeningHandler*> openings;
 // Simulation data structures
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
 MultiNTensorField3D<T> *porosityField = nullptr;
+MultiNTensorField3D<T> *linearField = nullptr;
+MultiNTensorField3D<T> *quadraticField = nullptr;
 
 // Carreau parameters for human blood
 //  B.M.  Johnston,  P.R.  Johnson,  S.  Corney,  and  D. Kilpatrick, “Non-Newtonian blood flow in human  right  coronary  arteries:  steady  state  simulations,” Journal  of  Biomechanics, 37, 709 – 720 (2004)
@@ -102,6 +109,9 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
     // TODO: convert linCoeff and quadCoeff
     linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ]
     quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
+
+    linConvert = sim.C_l * sim.C_l * sim.C_t / sim.C_m;  // [ kg / (m2 s) ]
+    quadConvert = sim.C_l * sim.C_l * sim.C_l / sim.C_m; // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
     if(sim.U_max_lb > 0.1)
@@ -279,10 +289,26 @@ int main(int argc, char *argv[])
 
         // Loading the geometry of the stent (if there is one)
         stentFlag = geom_npz["stent"];
-        
-        if(stentFlag.shape.size() > 1) {    // Check if there is data on the FD
+
+        if (stentFlag.shape.size() > 1)
+        { // Check if there is data on the FD
             pcout << "Found flow diverter information to load." << std::endl;
             sfData = stentFlag.data<unsigned short>();
+            // Inhomogen porosity handling
+            try
+            {
+                auto linquad = geom_npz.at("linear");
+                if (linquad.shape[0] != 0)
+                {
+                    linData = geom_npz["linear"].data<unsigned short>();
+                    quadData = geom_npz["quadratic"].data<unsigned short>();
+                    inhomogen = true;
+                }
+            }
+            catch (std::out_of_range)
+            {
+            }
+
             // Also look for corresponding data in xml
             xml["flowdiverter"]["linCoeff"].read(linCoeff);
             xml["flowdiverter"]["quadCoeff"].read(quadCoeff);
@@ -458,12 +484,26 @@ int main(int argc, char *argv[])
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-    // If there is data on porosity, set up porous layer in the simulation   
-    if(sfData != nullptr) {
-        pcout << "Setting up porous layer for flow diverter..." << std::endl;
-        porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
-        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData), porosityField->getBoundingBox(), *porosityField);
-        integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
+    // If there is data on porosity, set up porous layer in the simulation
+    if (sfData != nullptr)
+    {
+        if (inhomogen)
+        {
+            pcout << "Setting up inhomogen porous layer for flow diverter..." << std::endl;
+            linearField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
+            quadraticField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
+            applyProcessingFunctional(new InitializePorousField<T, unsigned short>(linData), linearField->getBoundingBox(), *linearField);
+            applyProcessingFunctional(new InitializePorousField<T, unsigned short>(quadData), quadraticField->getBoundingBox(), *quadraticField);
+            integrateProcessingFunctional(new LinearPorousForceFunctional<T, DESCRIPTOR>(linConvert), lattice->getBoundingBox(), *lattice, *linearField);
+            integrateProcessingFunctional(new QuadraticPorousForceFunctional<T, DESCRIPTOR>(quadConvert), lattice->getBoundingBox(), *lattice, *quadraticField);
+        }
+        else
+        {
+            pcout << "Setting up porous layer for flow diverter..." << std::endl;
+            porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
+            applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData), porosityField->getBoundingBox(), *porosityField);
+            integrateProcessingFunctional(new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
+        }
     }
 
     pcout << "Defining walls..." << std::endl;
@@ -523,7 +563,12 @@ int main(int argc, char *argv[])
             pcout << "Energy at the initial state: "<< cE << endl;
             pcout << "Saving initial state with flow diverter..." << endl;
             // writeVTK(*lattice, sim, -1, porosityField);
-            writeHDF5(*lattice, sim, -1, outDir, porosityField);
+            if (inhomogen)
+            {
+                writeInhomogenHDF5(*lattice, sim, -1, outDir, linearField, quadraticField);
+            }
+            else
+                writeHDF5(*lattice, sim, -1, outDir, porosityField);
         }
 
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
@@ -564,7 +609,12 @@ int main(int argc, char *argv[])
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
-                writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
+                if (inhomogen)
+                {
+                    writeInhomogenHDF5(*lattice, sim, -1, outDir, linearField, quadraticField);
+                }
+                else
+                    writeHDF5(*lattice, sim, -1, outDir, porosityField);
                 return 0;
             }
             for (auto &o : openings)
@@ -587,7 +637,12 @@ int main(int argc, char *argv[])
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
             // writeVTK(*lattice, sim, stat_cycle);
             // writeNPZ(*lattice, sim, stat_cycle);
-            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
+            if (inhomogen)
+            {
+                writeInhomogenHDF5(*lattice, sim, -1, outDir, linearField, quadraticField);
+            }
+            else
+                writeHDF5(*lattice, sim, -1, outDir, porosityField);
         }
         
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {

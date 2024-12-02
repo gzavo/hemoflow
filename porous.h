@@ -107,5 +107,129 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor
 		T quadCoeff;
 };
 
+//************************************************************************************
+//Inhomogen porosity: Calculating Porous Force
+
+/// Apply macroscopic porous material forcing
+/// Dusgustingly emberassing workaround
+
+template <typename T, template <typename U> class Descriptor>
+struct LinearPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor, T>
+{
+
+public:
+    LinearPorousForceFunctional(T linConvert_) : linConvert(linConvert_)
+    {
+    }
+
+    virtual void process(Box3D domain, BlockLattice3D<T, Descriptor> &lattice,
+                         NTensorField3D<T> &field)
+    {
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ)
+                {
+
+                    T porosity = *field.get(iX, iY, iZ);
+
+                    if (porosity == 0.0)
+                        continue;
+
+                    if (lattice.get(iX, iY, iZ).getDynamics().isBoundary())
+                        continue;
+
+                    // If it has porosity
+                    Array<T, Descriptor<T>::d> vel;
+                    lattice.get(iX, iY, iZ).computeVelocity(vel);
+
+                    T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
+
+                    // Calculate the force (momentum loss)
+                    for (pluint iD = 0; iD < Descriptor<T>::d; ++iD)
+                    {
+                        force[iD] = -porosity * linConvert * vel[iD]
+                            //+ quadCoeff * copysign(vel[iD] * vel[iD], vel[iD])
+                            ;
+                    }
+                }
+    }
+
+    virtual LinearPorousForceFunctional<T, Descriptor> *clone() const
+    {
+        return new LinearPorousForceFunctional<T, Descriptor>(*this);
+    }
+
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const
+    {
+        modified[0] = modif::staticVariables;
+    }
+
+    virtual BlockDomain::DomainT appliesTo() const
+    {
+        return BlockDomain::bulkAndEnvelope;
+    }
+
+private:
+    T linConvert;
+};
+
+template <typename T, template <typename U> class Descriptor>
+struct QuadraticPorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor, T>
+{
+
+public:
+    QuadraticPorousForceFunctional(T quadConvert_) : quadConvert(quadConvert_)
+    {
+    }
+
+    virtual void process(Box3D domain, BlockLattice3D<T, Descriptor> &lattice,
+                         NTensorField3D<T> &field)
+    {
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ)
+                {
+
+                    T porosity = *field.get(iX, iY, iZ);
+
+                    if (porosity == 0.0)
+                        continue;
+
+                    if (lattice.get(iX, iY, iZ).getDynamics().isBoundary())
+                        continue;
+
+                    // If it has porosity
+                    Array<T, Descriptor<T>::d> vel;
+                    lattice.get(iX, iY, iZ).computeVelocity(vel);
+
+                    T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
+
+                    // Calculate the force (momentum loss)
+                    for (pluint iD = 0; iD < Descriptor<T>::d; ++iD)
+                    {
+                        force[iD] += // -porosity * (linCoeff * vel[iD]
+                            -porosity * quadConvert * copysign(vel[iD] * vel[iD], vel[iD]);
+                    }
+                }
+    }
+
+    virtual QuadraticPorousForceFunctional<T, Descriptor> *clone() const
+    {
+        return new QuadraticPorousForceFunctional<T, Descriptor>(*this);
+    }
+
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const
+    {
+        modified[0] = modif::staticVariables;
+    }
+
+    virtual BlockDomain::DomainT appliesTo() const
+    {
+        return BlockDomain::bulkAndEnvelope;
+    }
+
+private:
+    T quadConvert;
+};
 
 #endif

@@ -26,6 +26,7 @@ int mkpath(const char *path, mode_t mode);
 
 void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter);  // Note: this output type does not do unit conversion.
 void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1 = nullptr);
+void writeInhomogenHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1 = nullptr,MultiNTensorField3D<T> *field2 = nullptr);
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, MultiNTensorField3D<T> *field1 = nullptr);
 
 
