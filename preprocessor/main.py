@@ -80,10 +80,11 @@ if __name__ == "__main__":
         dirName = os.path.split(workDir)[1]
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
-    else:
-        if(len(confData["stent_mesh_base"]) > 0):
-            haveStent = True
-            stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
+    elif (len(confData["stent_mesh_base"]) > 0):
+        stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
+    
+    if os.path.isfile(stentGeomFile):
+        haveStent = True
     
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
