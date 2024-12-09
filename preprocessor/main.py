@@ -155,7 +155,7 @@ if __name__ == "__main__":
     openingRadius = []
     openingNormalizedQratio = []
     openingCenter = []
-    openingTangent = []
+    openingNormal = []
     
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
     r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
@@ -171,7 +171,7 @@ if __name__ == "__main__":
                 openingRadius.append(rCL[0]*SI_FACTOR)
                 openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
                 openingCenter.append(cVox)
-                openingTangent.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
+                openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
 
     if DEBUG_MODE:
         print("-> (DEBUG) Saving nrrd geometry flag")    
@@ -229,7 +229,7 @@ if __name__ == "__main__":
                         openingRadius=np.array(openingRadius).astype(np.double, copy=False), 
                         openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False), 
                         openingCenter=np.array(openingCenter).astype(np.double, copy=False), 
-                        openingTangent=np.array(openingTangent).astype(np.double, copy=False), 
+                        openingNormal=np.array(openingNormal).astype(np.double, copy=False), 
                         stent=voxel_stent_final.astype(np.short, copy=False))
 
     endTime = time.time()
