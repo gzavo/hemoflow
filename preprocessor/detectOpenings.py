@@ -122,9 +122,9 @@ def detect_inlets_outlets(data):
             # if(inlet_outlet is not None):
             inlets_outlets.append(inlet_outlet)
 
-    return paint_inlets_outlets(inlets_outlets, data)
+    return (inlets_outlets, data)
 
-def paint_inlets_outlets(inlets_outlets, data):
+def paint_inlets_outlets(inlets_outlets, data, findBoundaryByArea=True):
     """ Determines the inlet by picking the inlet/outlet with the greatest area
         Then paints the inlet with the value 6 and the outlets with 7
     """
@@ -136,13 +136,21 @@ def paint_inlets_outlets(inlets_outlets, data):
     data_result = np.copy(data)
     
     # Length of the opening lists
-    areas = np.array([len(x) for x in inlets_outlets])
-    inletIdx = np.argmax(areas)
+    if findBoundaryByArea:
+        areas = np.array([len(x) for x in inlets_outlets])
+        inletIdx = np.argmax(areas)
+    else:
+        inletIdx = 0
+
     inlet = inlets_outlets.pop(inletIdx)
 
     # Length of the remaining opening lists
-    areas = np.array([len(x) for x in inlets_outlets])
-    pressureOutletIdx = np.argmin(areas)
+    if findBoundaryByArea:
+        areas = np.array([len(x) for x in inlets_outlets])
+        pressureOutletIdx = np.argmin(areas)
+    else:
+        pressureOutletIdx = -1
+
     # pressureOutlet = min(inlets_outlets, key=len)
     pressureOutlet = inlets_outlets.pop(pressureOutletIdx)
 
@@ -178,7 +186,7 @@ def paint_inlets_outlets(inlets_outlets, data):
         openingCenter.append(openingC / len(outlet))
         outletCount += 1
     
-    return (openingIdx, openingCenter, data_result)
+    return (openingIdx, openingCenter, data_result[1:-1, 1:-1, 1:-1].astype(np.short, copy=False))
 
 def detectOpenings(inputArray):
     sys.setrecursionlimit(100000)
@@ -187,10 +195,10 @@ def detectOpenings(inputArray):
     data = np.pad(inputArray, 1, 'constant')
 
     # Detect openings
-    openingIdx, openingCenter, result = detect_inlets_outlets(data)
+    inlets_outlets, data = detect_inlets_outlets(data)
 
     # Return result without outer layer
-    return (openingIdx, openingCenter, result[1:-1, 1:-1, 1:-1].astype(np.short, copy=False) )
+    return (inlets_outlets, data)
 
 
 if __name__ == "__main__":
@@ -205,7 +213,8 @@ if __name__ == "__main__":
     #data, data_header = nrrd.read('Files/reference_geom_capped.nrrd')
     data, data_header = nrrd.read(sys.argv[1])
     
-    openingDescr, result = detectOpenings(data)
+    inlet_outlets, data = detectOpenings(data)
+    openingDescr, result = paint_inlets_outlets(inlet_outlets, data)
     
     # Write result without the surrounding layer
     nrrd.write(sys.argv[2], result)

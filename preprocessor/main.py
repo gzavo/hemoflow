@@ -6,7 +6,7 @@ import os
 from readCL import getOpeningsFromCenterline, convertToVoxelspace
 from voxelizeStl import voxelize
 from createFluidSolid import createWalls
-from detectOpenings import detectOpenings
+from detectOpenings import detectOpenings, paint_inlets_outlets
 
 #############################
 # Parameters to check before execution:
@@ -143,7 +143,14 @@ if __name__ == "__main__":
     print("Walls:", np.count_nonzero(volWithWalls == 1))
 
     print("\n### Detecting and assigning voxel openings ###")
-    openingIdxs, openingCenters, paintedOpenings = detectOpenings(volWithWalls)
+    inlet_outlets, data = detectOpenings(volWithWalls)
+
+    openingCenters = []
+    for io in inlet_outlets:
+        oC = np.zeros(3)
+        for (x,y,z) in io:
+            oC += np.array((z,x,y))
+        openingCenters.append(oC/len(io))
 
     # TODO: Assign tangents and radii to voxelized openings
     
@@ -157,22 +164,26 @@ if __name__ == "__main__":
     openingNormalizedQratio = []
     openingCenter = []
     openingTangent = []
+    inlets_outlets_sorted = []
     
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
     r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
     
-    for ccVox in range(len(openingCenters)):
-        for ccCL in range(len(radiusTangentVoxelList)):
+    for ccCL in range(len(radiusTangentVoxelList)):
+        for ccVox in range(len(openingCenters)):
             cVox = openingCenters[ccVox]
             rCL = radiusTangentVoxelList[ccCL]
             cCL = rCL[1]
 
             if inRange3D(cVox, (cCL[0], cCL[1], cCL[2]), distance) is True:
-                openingIndex.append(openingIdxs[ccVox])
                 openingRadius.append(rCL[0]*SI_FACTOR)
                 openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
                 openingCenter.append(cVox)
                 openingTangent.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
+
+                inlets_outlets_sorted.append(inlet_outlets[ccVox])
+    
+    openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
     if DEBUG_MODE:
         print("-> (DEBUG) Saving nrrd geometry flag")    
