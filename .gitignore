@@ -43,6 +43,7 @@ build*/
 case*/
 output*/
 cmake-build-debug/
+cmake-build-release/
 
 # Cases
 cases/
