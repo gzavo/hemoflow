@@ -3,10 +3,17 @@ import time
 import numpy as np
 import json
 import os
+import scipy.interpolate as scpinter
+import vtk
+import slice
+
 from readCL import getOpeningsFromCenterline, convertToVoxelspace
 from voxelizeStl import voxelize
 from createFluidSolid import createWalls
 from detectOpenings import detectOpenings, paint_inlets_outlets
+from vtk.numpy_interface import dataset_adapter as dsa
+from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
+from vtk.util import numpy_support
 
 #############################
 # Parameters to check before execution:
@@ -37,13 +44,13 @@ def generateCutList(voxelDomainSize, radiusTangentVoxelList):
     distance = 4  # 4 voxel distance: note, cutting away unused layers might influence this!
 
     if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize) 
+            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize)
     
     for o in radiusTangentVoxelList:
         pos = o[1]
 
         if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)    
+            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)
 
         for j in range(3):
             if inRange(pos[j], 0, distance):
@@ -53,10 +60,18 @@ def generateCutList(voxelDomainSize, radiusTangentVoxelList):
             
     return np.where(sidesToCut == 1)[0]
 
+def scaleAndShiftData(points, scale, shift):
+    for i in range(len(points)):
+        pts = points[i]
+        for j in range(3):
+            pts[j] = (pts[j] + shift[j]) * scale[j]
+        points[i] = pts
+    return points
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage:", sys.argv[0], "input.config")
-        sys.exit(-1) 
+        sys.exit(-1)
 
     cutWidth = 1 # Might need to set this to 2 if there is more than 1 padding layer for some reason
     distance = 4
@@ -100,7 +115,7 @@ if __name__ == "__main__":
     voxelVol, domainData = voxelize(vesselGeomFile, targetElem)
 
     if DEBUG_MODE:
-        print("-> (DEBUG) Saving voxelization result")    
+        print("-> (DEBUG) Saving voxelization result")
         nrrd.write(outputBaseName+"fluid_only.nrrd", voxelVol)
 
     sx,sy,sz = domainData[0]
@@ -131,7 +146,7 @@ if __name__ == "__main__":
     volWithWalls, sliced = createWalls(voxelVol, cutList, cutWidth)
 
     if DEBUG_MODE:
-        print("\n-> (DEBUG) Saving nrrd wall geometry ###")    
+        print("\n-> (DEBUG) Saving nrrd wall geometry ###")
         nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
 
     print("Size after cutting layers for openings:", volWithWalls.shape)
@@ -186,7 +201,7 @@ if __name__ == "__main__":
     openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
     if DEBUG_MODE:
-        print("-> (DEBUG) Saving nrrd geometry flag")    
+        print("-> (DEBUG) Saving nrrd geometry flag")
         nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
         if len(openingIndex) != len(openingCenters):
             print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
@@ -194,55 +209,98 @@ if __name__ == "__main__":
     if haveStent:
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
         print("-> Voxelizing flow diverter geometry projection #1")
-        voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData) 
+        voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData)
     
         print("-> Voxelizing flow diverter geometry projection #2")
-        voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0) 
+        voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0)
     
         print("-> Voxelizing flow diverter geometry projection #3")
-        voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1) 
-    
+        voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1)
+
+        print("Starting stent interpolation")
+        xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
+
+        reader = vtkXMLPolyDataReader()
+        reader.SetFileName(workDir + "/" + confData["stent_mesh_base"] + "values.vtp")
+        reader.Update()
+        vtpdata = dsa.WrapDataObject(reader.GetOutput())
+        stentPoints = vtpdata.GetPoints()
+
+        stentLinear = vtpdata.PointData['linearCoeff']
+        stentQuadratic = vtpdata.PointData['quadraticCoeff']
+
+        stentPoints = scaleAndShiftData(stentPoints, domainData[0], domainData[1])
+
+        stentVoxelLinearInterpolate = scpinter.griddata(stentPoints, stentLinear, (xg, yg, zg), method="nearest")
+        stentVoxelQuadraticInterpolate = scpinter.griddata(stentPoints, stentQuadratic, (xg, yg, zg), method="nearest")
+
+        print("Linear and quadratic coefficients interpolated")
+
         print("-> Merging projections")
         sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
+        linear = stentVoxelLinearInterpolate*sdomain_full
+        quadratic = stentVoxelQuadraticInterpolate*sdomain_full
 
         sdomain_full = sdomain_full[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
-
+        linear_full = linear[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
+        quadratic_full = quadratic[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
 
         if 0 in cutList:
             sdomain_full = sdomain_full[cutWidth:,:,:]
+            linear_full = linear_full[cutWidth:, :, :]
+            quadratic_full = quadratic_full[cutWidth:, :, :]
         if 1 in cutList:
             sdomain_full = sdomain_full[:-cutWidth,:,:]
+            linear_full = sdomain_full[:-cutWidth, :, :]
+            quadratic_full = sdomain_full[:-cutWidth, :, :]
         if 2 in cutList:
             sdomain_full = sdomain_full[:,cutWidth:,:]
+            linear_full = linear_full[:, cutWidth:, :]
+            quadratic_full = quadratic_full[:, cutWidth:, :]
         if 3 in cutList:
             sdomain_full = sdomain_full[:,:-cutWidth,:]
+            linear_full = linear_full[:, :-cutWidth, :]
+            quadratic_full = quadratic_full[:, :-cutWidth, :]
         if 4 in cutList:
             sdomain_full = sdomain_full[:,:,cutWidth:]
+            linear_full = linear_full[:, :, cutWidth:]
+            quadratic_full = quadratic_full[:, :, cutWidth:]
         if 5 in cutList:
             sdomain_full = sdomain_full[:,:,:-cutWidth]
+            linear_full = linear_full[:, :, :-cutWidth]
+            quadratic_full = quadratic_full[:, :, :-cutWidth]
 
         # TODO: why would this be needed, some old bug?
         # voxel_stent_final = sdomain_full[1:-1, 1:-1, 1:-1]
         voxel_stent_final = sdomain_full
+        voxel_linear_final = linear_full
+        voxel_quadratic_final = quadratic_full
+
+        print("Min and max of linear coefficients:", np.nanmin(voxel_linear_final), np.nanmax(voxel_linear_final))
+        print("Min and max of quadratic coefficients:", np.nanmin(voxel_quadratic_final), np.nanmax(voxel_quadratic_final))
 
         print("Flow diverter domain size after cutting layers for openings:", voxel_stent_final.shape)
 
         if DEBUG_MODE:
-            print("-> (DEBUG) Saving voxelized flow diverter") 
-            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))  
+            print("-> (DEBUG) Saving voxelized flow diverter")
+            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))
+            nrrd.write(outputBaseName + "stent_linear.nrrd", voxel_linear_final.astype(np.single, copy=False))
+            nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
 
     print("\n### Saving final output ###")
-    print("File:", outputBaseName+"c.npz")
+    print("File:", outputBaseName + "c.npz")
 
     #np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
-    np.savez_compressed(outputBaseName+"c.npz", geometryFlag=paintedOpenings, 
+    np.savez_compressed(outputBaseName + "c.npz", geometryFlag=paintedOpenings, 
                         dx=np.array([DX]).astype(np.double, copy=False),
-                        openingIndex=np.array(openingIndex).astype(np.short, copy=False), 
-                        openingRadius=np.array(openingRadius).astype(np.double, copy=False), 
-                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False), 
-                        openingCenter=np.array(openingCenter).astype(np.double, copy=False), 
-                        openingTangent=np.array(openingTangent).astype(np.double, copy=False), 
-                        stent=voxel_stent_final.astype(np.short, copy=False))
+                        openingIndex=np.array(openingIndex).astype(np.short, copy=False),
+                        openingRadius=np.array(openingRadius).astype(np.double, copy=False),
+                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False),
+                        openingCenter=np.array(openingCenter).astype(np.double, copy=False),
+                        openingTangent=np.array(openingTangent).astype(np.double, copy=False),
+                        stent=voxel_stent_final.astype(np.short, copy=False),
+                        linear=voxel_linear_final.astype(np.int32, copy=False),
+                        quadratic=voxel_quadratic_final.astype(np.int32, copy=False))
 
     endTime = time.time()
     timeElapsed = int(round((endTime - startTime)))
