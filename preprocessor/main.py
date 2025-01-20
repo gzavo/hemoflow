@@ -94,12 +94,15 @@ if __name__ == "__main__":
     if "stent_folder" in confData.keys() and len(confData["stent_folder"]) > 0:
         dirName = os.path.split(workDir)[1]
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
+
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
     elif (len(confData["stent_mesh_base"]) > 0):
         stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
     
     if os.path.isfile(stentGeomFile):
         haveStent = True
+    
+    stentGeomBase = stentGeomFile.replace('mesh.stl','')
     
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
@@ -221,7 +224,7 @@ if __name__ == "__main__":
         xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
 
         reader = vtkXMLPolyDataReader()
-        reader.SetFileName(workDir + "/" + confData["stent_mesh_base"] + "values.vtp")
+        reader.SetFileName(stentGeomBase + "values.vtp")
         reader.Update()
         vtpdata = dsa.WrapDataObject(reader.GetOutput())
         stentPoints = vtpdata.GetPoints()
