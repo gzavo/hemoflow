@@ -40,8 +40,6 @@
 # Build
 build/
 build*/
-case*/
-output*/
 cmake-build-debug/
 cmake-build-release/
 
@@ -57,3 +55,8 @@ output/
 #IDEs
 *.idea/
 .vscode/
+
+#User
+case*/
+output*/
+#testcase*/

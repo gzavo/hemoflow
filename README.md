@@ -8,6 +8,7 @@ The code supports MPI execution and sparse domain decomposition.
 All input parameters should be either SI or non-dimensional!
 
 # Setup
+## Solver
 The code builds on the Palabos open-source code. If not present, copy it to the 'palabos' directory, or use the 'setup.sh' script to clone it from the repository.
 Afterwards use CMake to build the executable, e.g.:
 
@@ -18,7 +19,15 @@ cmake ..
 make -j 4
 ```
 
-### HDF5 problems on Ubuntu
+## Voxelization
+The voxelization code runs on python, the environment can be set up using conda:
+```bash
+conda create -n lbmpre python=3.9
+conda activate lbmpre
+pip install -r ./preprocessor/requirements.txt
+```
+
+## HDF5 problems on Ubuntu
 HighFive requires 1.13+ parallel HDF5 version which is not available from apt-get (yet).
 Can be compiled manually using
 
@@ -47,6 +56,7 @@ make -j 4
 - [X] New outlet pressure distribution based on Murray-law
 - [X] Pass the angle of the openings based on centerline calculations (new ID / opening, every centerline goes from the inlet to an opening)
 - [X] Calculate proper axis aligned Pouseuille profile even if the boundary is not perpendicular.
+- [] Bump up preprocessor to python 3.12 and corresponding numpy.
 - [] Validate and verify
 
 
