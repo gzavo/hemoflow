@@ -48,6 +48,7 @@ string workingFolder;
 T simLength;
 T saveFreqTime;
 T checkpointFreqTime;
+string mode;
 
 // Vector of openings
 vector<OpeningHandler*> openings;
@@ -368,58 +369,169 @@ int main(int argc, char *argv[])
             pcout << oiData[o] << " ";
         pcout << endl;
 
-        // Loop through the openings following the xml config
-        for(unsigned int o=0; o < numOpenings; o++){
-            pcout << "Processing opening: " << o << std::endl;
-            
-            string xmlTagOpening = "opening_"+std::to_string(o);
-     
-            string name;    xml["geometry"][xmlTagOpening]["name"].read(name);
-            int type;       xml["geometry"][xmlTagOpening]["type"].read(type);
-            int label;      xml["geometry"][xmlTagOpening]["label"].read(label);
-
-            int openingIdx = findIndex(oiData, numOpenings, label);    
-            if(openingIdx == -1) 
-                pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
-
-            // Get the direction of the opening 
-            int s = openingNormal.shape[1];
-            vec3d dir(onData[gT2D(s,openingIdx,0)], onData[gT2D(s,openingIdx,1)], onData[gT2D(s,openingIdx,2)]);
-
-            // Create the opening
-            auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
-            
-            opening->setName(name);
-            opening->setBCType(lattice);
-
-            string parameterStr; 
-            double parameter;
-            xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
-            if(!parameterStr.empty())
-                parameter = std::stod(parameterStr);
-
-            opening->setBCParameter(parameter, sim);
-
-            // Load scale function (fileName from XML)
-            string flowrateFunc;
-            xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
-            if(!flowrateFunc.empty())
-                opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
-            // Set profile
-            if(type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW){
-                opening->createPoiseauilleProfile();    // Normalized to max_vel = 1.0 (LBM units)
-                // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
-            } 
-            else if(type == OPENING_PRESSURE) {
-                opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
-            }
-
-            opening->printOpeningDetails(sim);
-                
-            openings.push_back(opening);
-
+        try
+        {
+            xml["simulation"]["mode"].read(mode);
         }
+        catch (PlbIOException &exception)
+        {
+            pcout << "No mode is defined, all BCs must be declared in XML." << std::endl;
+            mode = "";
+        }
+        // Loop through the openings following the xml config
+        if (mode == "aneurysm")
+        {
+            pcout << "Aneurysm boundary condition mode activated";
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                if (o == 0)
+                {
+                    int label_velocity = 10;
+                    int type_velocity = 1;
+                    pcout << "Processing opening: " << o << std::endl;
+
+                    string xmlTagOpening = "opening_" + std::to_string(o);
+
+                    // Get the direction of the opening
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_velocity), static_cast<OpeningType>(type_velocity), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Velocity inlet");
+                    opening->setBCType(lattice);
+
+                    string parameterStr;
+                    double parameter;
+                    xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
+                    if (!parameterStr.empty())
+                        parameter = std::stod(parameterStr);
+
+                    opening->setBCParameter(parameter, sim);
+
+                    // Load scale function (fileName from XML)
+                    string flowrateFunc;
+                    xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
+                    if (!flowrateFunc.empty())
+                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                    // Set profile
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                else if (o == 1)
+                {
+                    int type_pressure = 3;
+                    int label_pressure = 11;
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_pressure), static_cast<OpeningType>(type_pressure), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Pressure outlet");
+                    opening->setBCType(lattice);
+
+                    opening->createConstantPressureProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                else
+                {
+                    int label_murray = o + 10;
+                    int type_murray = 1;
+
+                    pcout << "Processing opening: " << o << std::endl;
+                    // Get the direction of the opening
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_murray), static_cast<OpeningType>(type_murray), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Murray outlet");
+                    opening->setBCType(lattice);
+                    string parameterStr;
+                    double parameter;
+                    xml["geometry"]["opening_0"]["parameter"].read(parameterStr);
+                    if (!parameterStr.empty())
+                        parameter = std::stod(parameterStr);
+
+                    opening->setBCParameter(parameter, sim);
+
+                    // Load scale function (fileName from XML)
+                    string flowrateFunc;
+                    xml["geometry"]["opening_0"]["timeScaleFunction"].read(flowrateFunc);
+                    if (!flowrateFunc.empty())
+                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                    // Set profile
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+            }
+        }
+        else
+        {
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                pcout << "Processing opening: " << o << std::endl;
+
+                string xmlTagOpening = "opening_" + std::to_string(o);
+
+                string name;
+                xml["geometry"][xmlTagOpening]["name"].read(name);
+                int type;
+                xml["geometry"][xmlTagOpening]["type"].read(type);
+                int label;
+                xml["geometry"][xmlTagOpening]["label"].read(label);
+
+                int openingIdx = findIndex(oiData, numOpenings, label);
+                if (openingIdx == -1)
+                    pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
+
+                // Get the direction of the opening
+                int s = openingNormal.shape[1];
+                vec3d dir(onData[gT2D(s, openingIdx, 0)], onData[gT2D(s, openingIdx, 1)], onData[gT2D(s, openingIdx, 2)]);
+
+                // Create the opening
+                auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
+
+                opening->setName(name);
+                opening->setBCType(lattice);
+
+                string parameterStr;
+                double parameter;
+                xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
+                if (!parameterStr.empty())
+                    parameter = std::stod(parameterStr);
+
+                opening->setBCParameter(parameter, sim);
+
+                // Load scale function (fileName from XML)
+                string flowrateFunc;
+                xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
+                if (!flowrateFunc.empty())
+                    opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                // Set profile
+                if (type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW)
+                {
+                    opening->createPoiseauilleProfile(); // Normalized to max_vel = 1.0 (LBM units)
+                    // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
+                }
+                else if (type == OPENING_PRESSURE)
+                {
+                    opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
+                }
+
+                opening->printOpeningDetails(sim);
+
+                openings.push_back(opening);
+            }
+    }
 
         // Sanity check
         if(numOpenings != openings.size()) {
