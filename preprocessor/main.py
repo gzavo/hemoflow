@@ -12,7 +12,7 @@ from detectOpenings import detectOpenings
 # Parameters to check before execution:
 SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 
-DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
+DEBUG_MODE = True # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 #############################
 
 if DEBUG_MODE:
@@ -80,11 +80,10 @@ if __name__ == "__main__":
         dirName = os.path.split(workDir)[1]
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
-    elif (len(confData["stent_mesh_base"]) > 0):
-        stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
-    
-    if os.path.isfile(stentGeomFile):
-        haveStent = True
+    else:
+        if(len(confData["stent_mesh_base"]) > 0):
+            haveStent = True
+            stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
     
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
@@ -154,8 +153,8 @@ if __name__ == "__main__":
     # The combined information about openings in the correct order (Inlet, Pressure outlet, Other velocity outlets)
     openingIndex = []
     openingRadius = []
-    openingNormalizedQratio = []
-    openingCenter = []
+    # openingNormalizedQratio = [] # Not needed anymore
+    # openingCenter = [] # Not needed anymore
     openingNormal = []
     
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
@@ -170,8 +169,8 @@ if __name__ == "__main__":
             if inRange3D(cVox, (cCL[0], cCL[1], cCL[2]), distance) is True:
                 openingIndex.append(openingIdxs[ccVox])
                 openingRadius.append(rCL[0]*SI_FACTOR)
-                openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
-                openingCenter.append(cVox)
+                # openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
+                # openingCenter.append(cVox) # Not needed anymore
                 openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
 
     if DEBUG_MODE:
@@ -228,8 +227,8 @@ if __name__ == "__main__":
                         dx=np.array([DX]).astype(np.double, copy=False),
                         openingIndex=np.array(openingIndex).astype(np.short, copy=False), 
                         openingRadius=np.array(openingRadius).astype(np.double, copy=False), 
-                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False), 
-                        openingCenter=np.array(openingCenter).astype(np.double, copy=False), 
+                        # openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False), # Not needed anymore
+                        # openingCenter=np.array(openingCenter).astype(np.double, copy=False), # Not needed anymore
                         openingNormal=np.array(openingNormal).astype(np.double, copy=False), 
                         stent=voxel_stent_final.astype(np.short, copy=False))
 

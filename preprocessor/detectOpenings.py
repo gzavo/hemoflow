@@ -148,10 +148,6 @@ def paint_inlets_outlets(inlets_outlets, data):
 
     velocityOutlets = inlets_outlets # [o for o in inlets_outlets if (o != inlet and o != pressureOutlet)]
 
-    print("Number of inlets: 1")
-    print("Number of pressure outlets: 1")
-    print("Number of velocity outlet(s): ", len(velocityOutlets))
-
     openingC = np.zeros(3)
     openingIdx.append(CONSTANTS.INLET_VOXEL)
     for (x, y, z) in inlet:
@@ -166,10 +162,12 @@ def paint_inlets_outlets(inlets_outlets, data):
         openingC += np.array((z,x,y))
     openingCenter.append(openingC / len(pressureOutlet))
 
+    outFlags = []
     outletCount = 0
     for outlet in velocityOutlets:
         openingC = np.zeros(3)
         openingIdx.append(CONSTANTS.OUTLET_REST_VOXEL + outletCount)
+        outFlags.append(CONSTANTS.OUTLET_REST_VOXEL + outletCount)
       
         for (x, y, z) in outlet:
             data_result[z][x][y] = CONSTANTS.OUTLET_REST_VOXEL + outletCount
@@ -178,6 +176,10 @@ def paint_inlets_outlets(inlets_outlets, data):
         openingCenter.append(openingC / len(outlet))
         outletCount += 1
     
+    print("Number of inlets: 1 (Flags: {})".format(CONSTANTS.INLET_VOXEL))
+    print("Number of pressure outlets: 1 (Flags: {})".format(CONSTANTS.OUTLET_VOXEL))
+    print("Number of velocity outlet(s): (Flags: {})".format(outFlags))
+
     return (openingIdx, openingCenter, data_result)
 
 def detectOpenings(inputArray):
