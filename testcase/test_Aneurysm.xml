@@ -4,10 +4,11 @@
 	<outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 	<simLength>0.8</simLength> <!-- [s] -->
 	<saveFrequency>0.016</saveFrequency> <!-- [s] -->
+	<mode>aneurysm</mode>
 </simulation>
 
 <geometry>
-	<file>./input/vox_NAP126_ane_PED_4x20_2M_c.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
+	<file>./input/vox_NAP180_ane_2M_c.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
 
 	<!-- Opening types: 1 - Velocity; 2 - Murray (velocity); 3- Pressure; 4 - Freeflow -->
 	<!-- Create a separate tag for every opening. -->
@@ -18,31 +19,6 @@
 		<timeScaleFunction>./input/cerebral_flowrate.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
 		<parameter>0.26</parameter> <!-- [m/s] or [Pa]. The timeScaleFunction will scale this. On velocity openings it can be negative, it creates an outflow. -->
 	</opening_0>
-	
-	<opening_1>
-		<name>Outlet 1 Pressure</name> 
-		<type>3</type> 
-		<label>11</label>
-		<timeScaleFunction></timeScaleFunction> <!-- On a Murray opening this is disregarded. -->
-		<parameter>0</parameter> <!-- On a Murray opening this value is disregarded and recalculated every iteration. -->
-	</opening_1>
-
-	<opening_2>
-		<name>Outlet 2 Murray</name> 
-		<type>2</type> 
-		<label>12</label>
-		<timeScaleFunction></timeScaleFunction> <!-- On a Murray opening this is disregarded. -->
-		<parameter></parameter> <!-- On a Murray opening this value is disregarded and recalculated every iteration. -->
-	</opening_2>
-	
-	<opening_3>
-		<name>Outlet 3 Murray</name> 
-		<type>2</type> 
-		<label>13</label>
-		<timeScaleFunction></timeScaleFunction>
-		<parameter></parameter> <!-- [Pa] -->
-	</opening_3>
-
 </geometry>
 
 <flowdiverter>

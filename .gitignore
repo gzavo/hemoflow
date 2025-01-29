@@ -60,3 +60,4 @@ output/
 case*/
 output*/
 #testcase*/
+*.npz

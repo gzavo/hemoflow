@@ -12,7 +12,7 @@ from detectOpenings import detectOpenings
 # Parameters to check before execution:
 SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 
-DEBUG_MODE = True # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
+DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 #############################
 
 if DEBUG_MODE:
