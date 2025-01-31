@@ -440,7 +440,8 @@ int main(int argc, char *argv[])
                 else
                 {
                     int label_murray = o + 10;
-                    int type_murray = 1;
+                    int type_murray = 2;
+                    string xmlTagOpening="opening_"+std::to_string(o);
 
                     pcout << "Processing opening: " << o << std::endl;
                     // Get the direction of the opening
@@ -452,20 +453,22 @@ int main(int argc, char *argv[])
 
                     opening->setName("Murray outlet");
                     opening->setBCType(lattice);
+                    
                     string parameterStr;
                     double parameter;
-                    xml["geometry"]["opening_0"]["parameter"].read(parameterStr);
+                    
+                    xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
                     if (!parameterStr.empty())
                         parameter = std::stod(parameterStr);
-
+                    
                     opening->setBCParameter(parameter, sim);
-
+                    
                     // Load scale function (fileName from XML)
                     string flowrateFunc;
-                    xml["geometry"]["opening_0"]["timeScaleFunction"].read(flowrateFunc);
+                    xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
                     if (!flowrateFunc.empty())
                         opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
+                    
                     // Set profile
                     opening->createPoiseauilleProfile();
                     opening->printOpeningDetails(sim);
