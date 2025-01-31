@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
             {
                 if (o == 0)
                 {
-                    int label_velocity = 10;
+                    int label = oiData[o];
                     int type_velocity = 1;
                     pcout << "Processing opening: " << o << std::endl;
 
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
                     vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
 
                     // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_velocity), static_cast<OpeningType>(type_velocity), orData[o] / sim.C_l, dir);
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_velocity), orData[o] / sim.C_l, dir);
 
                     opening->setName("Velocity inlet");
                     opening->setBCType(lattice);
@@ -421,27 +421,28 @@ int main(int argc, char *argv[])
                     opening->printOpeningDetails(sim);
                     openings.push_back(opening);
                 }
-                else if (o == 1)
+                //TODO: be consistent in opening labeling (area descending?->smallest is pressure)
+                else if (o == numOpenings - 1)
                 {
+                    int label = oiData[o];
                     int type_pressure = 3;
-                    int label_pressure = 11;
                     int s = openingNormal.shape[1];
                     vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
                     // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_pressure), static_cast<OpeningType>(type_pressure), orData[o] / sim.C_l, dir);
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_pressure), orData[o] / sim.C_l, dir);
 
                     opening->setName("Pressure outlet");
                     opening->setBCType(lattice);
-
+                    opening->setBCParameter(0, sim);
                     opening->createConstantPressureProfile();
                     opening->printOpeningDetails(sim);
                     openings.push_back(opening);
                 }
                 else
                 {
-                    int label_murray = o + 10;
+                    int label = oiData[o];
                     int type_murray = 2;
-                    string xmlTagOpening="opening_"+std::to_string(o);
+                    string xmlTagOpening = "opening_" + std::to_string(o);
 
                     pcout << "Processing opening: " << o << std::endl;
                     // Get the direction of the opening
@@ -449,27 +450,11 @@ int main(int argc, char *argv[])
                     vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
 
                     // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label_murray), static_cast<OpeningType>(type_murray), orData[o] / sim.C_l, dir);
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_murray), orData[o] / sim.C_l, dir);
 
                     opening->setName("Murray outlet");
                     opening->setBCType(lattice);
-                    
-                    string parameterStr;
-                    double parameter;
-                    
-                    xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
-                    if (!parameterStr.empty())
-                        parameter = std::stod(parameterStr);
-                    
-                    opening->setBCParameter(parameter, sim);
-                    
-                    // Load scale function (fileName from XML)
-                    string flowrateFunc;
-                    xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
-                    if (!flowrateFunc.empty())
-                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-                    
-                    // Set profile
+                    opening->setBCParameter(0, sim);
                     opening->createPoiseauilleProfile();
                     opening->printOpeningDetails(sim);
                     openings.push_back(opening);
