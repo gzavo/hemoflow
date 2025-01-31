@@ -122,7 +122,7 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 void imposeOpenings(T dt)
 {
     T murrayExponent = 3.0;
-    T murrayOutletTotalRadii = 0.0;
+    T murrayOutletTotalDiamt = 0.0;
     T sumInflowRate = 0.0;
 
     // Phase I - Defined BCs
@@ -139,7 +139,7 @@ void imposeOpenings(T dt)
         }
         else
         {
-            murrayOutletTotalRadii += pow(o->getRadius()*2, murrayExponent); // LBM units with Murray exponent
+            murrayOutletTotalDiamt += pow(o->getRadius()*2, murrayExponent); // LBM units with Murray exponent
         }
     }
 
@@ -151,8 +151,8 @@ void imposeOpenings(T dt)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
         {
-            T flowRate = -1 * (pow(o->getRadius()*2, murrayExponent) / murrayOutletTotalRadii) * sumInflowRate; //-1 cause it is an outlet
-            T murrayVelocity = flowRate / (pow(o->getRadius(), 2)*3.14); // Q/A
+            T flowRate = -1 * ((pow(o->getRadius()*2, murrayExponent)* sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet
+            T murrayVelocity = flowRate / (pow(o->getRadius(), 2)*3.14); // v=Q/A
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
@@ -634,8 +634,8 @@ int main(int argc, char *argv[])
         if(saveInitState) {
             pcout << "Energy at the initial state: "<< cE << endl;
             pcout << "Saving initial state with flow diverter..." << endl;
-            // writeVTK(*lattice, sim, -1, porosityField);
-            writeHDF5(*lattice, sim, -1, outDir, porosityField);
+            writeVTK(*lattice, sim, -1, porosityField);
+            //writeHDF5(*lattice, sim, -1, outDir, porosityField);
         }
 
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
@@ -656,9 +656,9 @@ int main(int argc, char *argv[])
         pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
     
         pcout << "Saving time step 0..." << endl;
-        // writeVTK(*lattice, 0);
+        writeVTK(*lattice, sim, 0);
         // writeNPZ(*lattice, 0);
-        writeHDF5(*lattice, sim, 0, outDir);
+        //writeHDF5(*lattice, sim, 0, outDir);
         
         // Set the counter back
         stat_cycle = 0;
@@ -676,7 +676,8 @@ int main(int argc, char *argv[])
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
-                writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
+                writeVTK(*lattice, sim, stat_cycle);
+                //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
                 return 0;
             }
             for (auto &o : openings)
@@ -697,9 +698,9 @@ int main(int argc, char *argv[])
         // Save output 
         if(stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
-            // writeVTK(*lattice, sim, stat_cycle);
+            writeVTK(*lattice, sim, stat_cycle);
             // writeNPZ(*lattice, sim, stat_cycle);
-            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
+            //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
         }
         
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {

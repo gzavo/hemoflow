@@ -84,12 +84,14 @@ def getOpeningsFromCenterline(fileName):
         
         # All other tangents are pointing outwards
         v2 = pArray[-1]-pArray[-3] # Note, the last 2 points are sometimes the same for some reason
-        rTanData.append((r2, pArray[-1], -v2)) # Outlets should also point inwards
+        rTanData.append((r2, pArray[-1], -v2))
     
         # print("Line: ", ll)
         # print(r1, pArray[0], v1)
         # print(r2, pArray[-1], v2)
         
+    rTanData.sort(key=lambda rTanData: rTanData[0],reverse=True)
+
     return rTanData
 
 

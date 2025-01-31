@@ -89,10 +89,10 @@ int mkpath(const char *path, mode_t mode)
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, MultiNTensorField3D<T> *field1)
 {
     VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), sim.C_l);
-    vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3. * sim.C_p );
+    //vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3. * sim.C_p );
     vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", sim.C_l/sim.C_t);
-    vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(sim.C_l*sim.C_t*sim.C_t));
-    vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./sim.C_t );
+    //vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(sim.C_l*sim.C_t*sim.C_t));
+    //vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./sim.C_t );
     // TODO - output viscosity?
     
     if (field1 != nullptr)
