@@ -91,6 +91,7 @@ if __name__ == "__main__":
     vesselGeomFile = workDir + "/" + confData["geometry_original_stl"]
     
     haveStent = False
+    stentGeomFile = ""
     if "stent_folder" in confData.keys() and len(confData["stent_folder"]) > 0:
         dirName = os.path.split(workDir)[1]
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
@@ -299,17 +300,35 @@ if __name__ == "__main__":
     print("\n### Saving final output ###")
     print("File:", outputBaseName + "c.npz")
 
-    #np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
-    np.savez_compressed(outputBaseName + "c.npz", geometryFlag=paintedOpenings, 
-                        dx=np.array([DX]).astype(np.double, copy=False),
-                        openingIndex=np.array(openingIndex).astype(np.short, copy=False),
-                        openingRadius=np.array(openingRadius).astype(np.double, copy=False),
-                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False),
-                        openingCenter=np.array(openingCenter).astype(np.double, copy=False),
-                        openingNormal=np.array(openingNormal).astype(np.double, copy=False),
-                        stent=voxel_stent_final.astype(np.short, copy=False),
-                        linear=voxel_linear_final.astype(np.int32, copy=False),
-                        quadratic=voxel_quadratic_final.astype(np.int32, copy=False))
+    # np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
+    if haveStent:
+        np.savez_compressed(
+            outputBaseName + "c.npz",
+            geometryFlag=paintedOpenings,
+            dx=np.array([DX]).astype(np.double, copy=False),
+            openingIndex=np.array(openingIndex).astype(np.short, copy=False),
+            openingRadius=np.array(openingRadius).astype(np.double, copy=False),
+            openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(
+                np.double, copy=False
+            ),
+            openingCenter=np.array(openingCenter).astype(np.double, copy=False),
+            openingNormal=np.array(openingNormal).astype(np.double, copy=False),
+            stent=voxel_stent_final.astype(np.short, copy=False),
+            linear=voxel_linear_final.astype(np.int32, copy=False),
+            quadratic=voxel_quadratic_final.astype(np.int32, copy=False),
+        )
+    else:
+        np.savez_compressed(
+            outputBaseName + "c.npz",
+            geometryFlag=paintedOpenings,
+            dx=np.array([DX]).astype(np.double, copy=False),
+            openingIndex=np.array(openingIndex).astype(np.short, copy=False),
+            openingRadius=np.array(openingRadius).astype(np.double, copy=False),
+            openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(
+                np.double, copy=False
+            ),
+            openingCenter=np.array(openingCenter).astype(np.double, copy=False),
+            openingNormal=np.array(openingNormal).astype(np.double, copy=False))
 
     endTime = time.time()
     timeElapsed = int(round((endTime - startTime)))
