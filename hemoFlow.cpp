@@ -407,8 +407,9 @@ int main(int argc, char *argv[])
                     xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
                     if (!parameterStr.empty())
                         parameter = std::stod(parameterStr);
-
-                    opening->setBCParameter(parameter, sim);
+                    
+                    //*2 because we are putting in avg velo not parabolic
+                    opening->setBCParameter(parameter*2, sim);
 
                     // Load scale function (fileName from XML)
                     string flowrateFunc;
