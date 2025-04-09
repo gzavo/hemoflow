@@ -101,7 +101,10 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
     sim.C_m = sim.C_r * sim.C_l * sim.C_l * sim.C_l;
 
     // TODO: convert linCoeff and quadCoeff
-    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ]
+    //!!!!NOTE it is multiplied with one lattice lenght unit
+    //https://youtu.be/sOQMXxoKFQM?t=1168
+    
+    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ] 
     quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
