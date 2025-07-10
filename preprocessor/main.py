@@ -228,7 +228,7 @@ if __name__ == "__main__":
         stentVoxelLinearInterpolate=1
         stentVoxelQuadraticInterpolate=1
 
-        if not os.path.isfile(stentGeomBase + "values.vtp"):
+        if os.path.isfile(stentGeomBase + "values.vtp"):
             print("Inhomogen resistance values found")
             reader = vtkXMLPolyDataReader()
             reader.SetFileName(stentGeomBase + "values.vtp")
