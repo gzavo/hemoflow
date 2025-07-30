@@ -18,6 +18,7 @@ public:
     void setBCParameter(T parameter_, SimPar s);  // Set Q or p or other BC parameter, convert it to LBM units.
     void setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);    // Sets the BC type for LBM
     void progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);     // Progress time by dt and impose time-dependent values on the opening
+    void progressWarmup(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt, T rampingInterval);     // Progress warmup ramping
     void setExternalVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);     // Overwrites profile with external array
     void setExternalPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);    // Overwrites profile with external array
     void setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T scale);

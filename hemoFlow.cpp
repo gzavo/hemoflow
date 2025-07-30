@@ -614,9 +614,10 @@ int main(int argc, char *argv[])
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
-        T minDE = 1e-11; T dE = 100; T prevE = 0;
+        int rampupInterval = convergenceSteps/2;
+        
+        T minDE = 1e-12; T dE = 100; T prevE = 0;
     
-        // imposeOpenings(0.0);
 
         T cE = computeAverageEnergy(*lattice);
         if(isnan(cE)) {
@@ -633,13 +634,23 @@ int main(int argc, char *argv[])
 
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
         {
+            for (auto &o : openings)
+            {
+                if (o->getOpeningType() == OPENING_VELOCITY || o->getOpeningType() == OPENING_MURRAY)
+                {
+
+                    o->progressWarmup(lattice, stat_cycle, rampupInterval);
+                }
+            }
+
             lattice->collideAndStream();
-    
+
             T cE = computeAverageEnergy(*lattice);
             dE = cE - prevE; prevE = cE;
     
             if(stat_cycle % 500 == 0) {
                 pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
+                writeVTK(*lattice, sim,stat_cycle);
             }
             
             stat_cycle++;

@@ -371,6 +371,21 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T
 
 }
 
+void OpeningHandler::progressWarmup(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt, T rampingInterval)
+{
+    // Do we need to change the scale value?
+    T rampingScale = 1.0;
+    rampingScale = dt / rampingInterval;
+
+    if (rampingScale < 5e-2)
+    {
+        rampingScale = 5e-2;
+    }
+
+    // Apply the previously defined profile scaled with 'parameter' and the scale function if it exists.
+    setScaledBoundaryProfile(lattice, rampingScale * bcParameter);
+}
+
 OpeningHandler::~OpeningHandler()
 {
 
