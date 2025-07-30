@@ -511,6 +511,7 @@ int main(int argc, char *argv[])
                 // Set profile
                 if (type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW)
                 {
+                    opening->setBCParameter(parameter*2, sim); //*2 because we are putting in avg velo not parabolic
                     opening->createPoiseauilleProfile(); // Normalized to max_vel = 1.0 (LBM units)
                     // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
                 }
