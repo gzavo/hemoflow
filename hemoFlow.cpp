@@ -613,8 +613,8 @@ int main(int argc, char *argv[])
     else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
-        int convergenceSteps = 10*max(max(Nx, Ny), Nz);
-        int rampupInterval = convergenceSteps/2;
+        int convergenceSteps = 20*max(max(Nx, Ny), Nz);
+        int rampupInterval = convergenceSteps/4;
         
         T minDE = 1e-12; T dE = 100; T prevE = 0;
     
