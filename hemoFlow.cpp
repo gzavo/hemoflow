@@ -613,8 +613,8 @@ int main(int argc, char *argv[])
     else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
-        int convergenceSteps = 20*max(max(Nx, Ny), Nz);
-        int rampupInterval = convergenceSteps/4;
+        int convergenceSteps = 10*max(max(Nx, Ny), Nz);
+        int rampupInterval = convergenceSteps/2;
         
         T minDE = 1e-12; T dE = 100; T prevE = 0;
     
@@ -631,8 +631,8 @@ int main(int argc, char *argv[])
             writeVTK(*lattice, sim, -1, porosityField);
             //writeHDF5(*lattice, sim, -1, outDir, porosityField);
         }
-
-        while(abs(dE) > minDE && stat_cycle < convergenceSteps )
+        pcout << "Ramping for " << rampupInterval << " iterations" << endl;
+        while (stat_cycle < rampupInterval)
         {
             for (auto &o : openings)
             {
@@ -646,13 +646,33 @@ int main(int argc, char *argv[])
             lattice->collideAndStream();
 
             T cE = computeAverageEnergy(*lattice);
-            dE = cE - prevE; prevE = cE;
-    
-            if(stat_cycle % 500 == 0) {
-                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-                writeVTK(*lattice, sim,stat_cycle);
+            dE = cE - prevE;
+            prevE = cE;
+
+            if (stat_cycle % 500 == 0)
+            {
+                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
+                writeVTK(*lattice, sim, stat_cycle);
             }
-            
+
+            stat_cycle++;
+        }
+        pcout << "Ramping finished " << endl;
+
+        while (abs(dE) > minDE && stat_cycle < convergenceSteps)
+        {
+            lattice->collideAndStream();
+
+            T cE = computeAverageEnergy(*lattice);
+            dE = cE - prevE;
+            prevE = cE;
+
+            if (stat_cycle % 500 == 0)
+            {
+                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
+                writeVTK(*lattice, sim, stat_cycle);
+            }
+
             stat_cycle++;
         }
         pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
