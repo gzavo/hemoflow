@@ -383,7 +383,7 @@ void OpeningHandler::progressWarmup(MultiBlockLattice3D<T, DESCRIPTOR> *lattice,
     }
 
     // Apply the previously defined profile scaled with 'parameter' and the scale function if it exists.
-    setScaledBoundaryProfile(lattice, rampingScale * bcParameter);
+    setScaledBoundaryProfile(lattice, rampingScale * cScale * bcParameter);
 }
 
 OpeningHandler::~OpeningHandler()
