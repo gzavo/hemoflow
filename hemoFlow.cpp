@@ -17,6 +17,7 @@ using namespace std;
 
 
 /* ********** GLOBAL VARIABLES ************/
+bool DEBUG = true;
 
 // Domain size
 int Nx=0;
@@ -615,7 +616,8 @@ int main(int argc, char *argv[])
            
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
         int rampupInterval = convergenceSteps/2;
-        
+        int debugSteps = 1;
+
         T minDE = 1e-12; T dE = 100; T prevE = 0;
     
 
@@ -625,11 +627,15 @@ int main(int argc, char *argv[])
             return -1;
         }
 
-        if(saveInitState) {
-            pcout << "Energy at the initial state: "<< cE << endl;
-            pcout << "Saving initial state with flow diverter..." << endl;
-            writeVTK(*lattice, sim, -1, porosityField);
-            //writeHDF5(*lattice, sim, -1, outDir, porosityField);
+        if (saveInitState)
+        {
+            pcout << "Energy at the initial state: " << cE << endl;
+            if (DEBUG)
+            {
+                pcout << "Saving initial state with flow diverter..." << endl;
+                writeVTK(*lattice, sim, -1*debugSteps, porosityField);
+                // writeHDF5(*lattice, sim, -1, outDir, porosityField);
+            }
         }
         pcout << "Ramping for " << rampupInterval << " iterations" << endl;
         while (stat_cycle < rampupInterval)
@@ -652,7 +658,11 @@ int main(int argc, char *argv[])
             if (stat_cycle % 500 == 0)
             {
                 pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
-                writeVTK(*lattice, sim, stat_cycle);
+                if (DEBUG)
+                {
+                    writeVTK(*lattice, sim, -1 * debugSteps, porosityField);
+                    debugSteps++;
+                }
             }
 
             stat_cycle++;
@@ -670,7 +680,11 @@ int main(int argc, char *argv[])
             if (stat_cycle % 500 == 0)
             {
                 pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
-                writeVTK(*lattice, sim, stat_cycle);
+                if (DEBUG)
+                {
+                    writeVTK(*lattice, sim, -1 * debugSteps, porosityField);
+                    debugSteps++;
+                }
             }
 
             stat_cycle++;
