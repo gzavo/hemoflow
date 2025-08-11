@@ -17,7 +17,8 @@ using namespace std;
 
 
 /* ********** GLOBAL VARIABLES ************/
-bool DEBUG = true;
+bool DEBUG = false;
+bool CHECKPOINTING = false;
 
 // Domain size
 int Nx=0;
@@ -166,6 +167,15 @@ void imposeOpenings(T dt)
     }
 }
 
+void print_help()
+{
+    std::cout << "Usage: ./hemoFlow ./input.xml ./checkpoint [OPTIONS]" << endl
+              << "Options:" << endl
+              << "  -d, --debug         Enable debug mode" << endl
+              << "  -c, --checkpoint    Enable checkpointing" << endl
+              << "  -h, --help          Show this help message";
+}
+
 // *** Main simulation entry point
 int main(int argc, char *argv[])
 {
@@ -182,6 +192,33 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+
+        if (arg == "-h" || arg == "--help")
+        {
+            print_help();
+            return 0;
+        }
+        else if (arg == "-d" || arg == "--debug")
+        {
+            DEBUG = true;
+            pcout << "Debug mode enabled" << endl;
+        }
+        else if (arg == "-c" || arg == "--checkpoint")
+        {
+            CHECKPOINTING = true;
+            pcout << "Checkpointing enabled" << endl;
+        }
+        else
+        {
+            std::cout << "Unknown argument: " << arg << "\n";
+            print_help();
+            return 1;
+        }
+    }
+
     // Reading in the config file name
     string paramXmlFileName;
     try {
@@ -191,24 +228,6 @@ int main(int argc, char *argv[])
         pcout << "Wrong input XML; the syntax is: "
               << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
         return -1;
-    }
-    
-    // Check if we have the checkpoint flag
-    string checkpointFlag;
-    bool isCheckpointed = false;
-    if(global::argc() > 2) {
-        try {
-            global::argv(2).read(checkpointFlag);
-            if(checkpointFlag.compare("-r")==0) {
-                isCheckpointed = true;
-                pcout << std::endl << "Restart from checkpoint is requested! The checkpoint data will be loaded after the geometry setup." << std::endl << std::endl;
-            }
-            else
-                pcout << "Unknown command line argument: " << checkpointFlag << std::endl;
-        }
-        catch (PlbIOException& exception) {
-            // No flag, nothing to do
-        }
     }
 
     string outDir; // Output directory
@@ -591,7 +610,7 @@ int main(int argc, char *argv[])
     int stat_cycle = 0;
     
     // Check if the simulation was checkpointed
-    if(isCheckpointed) {
+    if(CHECKPOINTING) {
         pcout << endl << "*********** Restoring checkpoint ***********" << endl;
         
         // Load in the iteration counter
@@ -616,7 +635,7 @@ int main(int argc, char *argv[])
            
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
         int rampupInterval = convergenceSteps/2;
-        int debugSteps = 1;
+        int debugSteps = 10;
 
         T minDE = 1e-12; T dE = 100; T prevE = 0;
     
@@ -720,7 +739,10 @@ int main(int argc, char *argv[])
             }
             for (auto &o : openings)
             {
-                pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate() << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+                if (DEBUG)
+                {
+                    pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate() << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+                }
             }
         }
 
