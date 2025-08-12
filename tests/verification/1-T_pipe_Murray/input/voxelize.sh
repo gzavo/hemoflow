@@ -1,0 +1,1 @@
+python ../../../preprocessor/main.py ./input_t_pipe_vox.config
