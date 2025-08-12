@@ -144,7 +144,7 @@ void imposeOpenings(T dt)
         }
         else
         {
-            murrayOutletTotalDiamt += pow(o->getRadius()*2, murrayExponent); // LBM units with Murray exponent
+            murrayOutletTotalDiamt += pow(sqrt(o->getArea() * 4 / 3.14), murrayExponent); // LBM units with Murray exponent
         }
     }
 
@@ -156,8 +156,9 @@ void imposeOpenings(T dt)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
         {
-            T flowRate = -1 * ((pow(o->getRadius()*2, murrayExponent)* sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet
-            T murrayVelocity = flowRate / (pow(o->getRadius(), 2)*3.14); // v=Q/A
+            T diameter = sqrt(o->getArea() * 4 / 3.14);
+            T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet
+            T murrayVelocity = flowRate / o->getArea();                                                   // v=Q/A
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
@@ -173,7 +174,7 @@ void print_help()
               << "Options:" << endl
               << "  -d, --debug         Enable debug mode" << endl
               << "  -c, --checkpoint    Enable checkpointing" << endl
-              << "  -h, --help          Show this help message";
+              << "  -h, --help          Show this help message" << endl;
 }
 
 // *** Main simulation entry point
@@ -186,9 +187,10 @@ int main(int argc, char *argv[])
             << "********************************* " << endl;
 
     // *** Reading in command line arguments
-    if(global::argc() < 2) {
-        pcout << "Not enough arguments; the syntax is: "
-              << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
+    if (global::argc() < 2)
+    {
+        pcout << "Not enough arguments" << endl;
+        print_help();
         return -1;
     }
 
@@ -426,7 +428,7 @@ int main(int argc, char *argv[])
                     opening->setBCType(lattice);
 
                     string parameterStr;
-                    double parameter;
+                    double parameter = 0;
                     xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
                     if (!parameterStr.empty())
                         parameter = std::stod(parameterStr);
@@ -515,7 +517,7 @@ int main(int argc, char *argv[])
                 opening->setBCType(lattice);
 
                 string parameterStr;
-                double parameter;
+                double parameter = 0;
                 xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
                 if (!parameterStr.empty())
                     parameter = std::stod(parameterStr);
@@ -633,7 +635,7 @@ int main(int argc, char *argv[])
     else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
-        int convergenceSteps = 10*max(max(Nx, Ny), Nz);
+        int convergenceSteps = 14*max(max(Nx, Ny), Nz);
         int rampupInterval = convergenceSteps/2;
         int debugSteps = 10;
 
@@ -709,7 +711,6 @@ int main(int argc, char *argv[])
             stat_cycle++;
         }
         pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-    
         pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
     
         pcout << "Saving time step 0..." << endl;

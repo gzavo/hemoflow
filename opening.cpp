@@ -352,9 +352,8 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T
         int len = scaleTime.size();
 
         cTimeVal += dt;
-        if(scaleTime[cTimePos] < cTimeVal)  // TODO : We might need to skip some positions if simulation dt is too large. (With LBM, heck no....)
+        if(scaleTime[cTimePos+1] < cTimeVal)  // TODO : We might need to skip some positions if simulation dt is too large. (With LBM, heck no....)
             cTimePos++;
-
         if (cTimePos > len-1) {
             cTimePos = 0;
             cTimeVal -= scaleTime[len-1];
