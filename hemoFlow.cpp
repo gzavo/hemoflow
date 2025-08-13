@@ -162,7 +162,7 @@ void imposeOpenings(T dt)
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
-            o->setBCParameter(murrayVelocity / profileFlowRate);
+            o->setBCParameter(murrayVelocity / profileFlowRate * 0.95); // VFR correction factor for voxeled circle outlets
             o->progressTime(lattice, dt);
         }
     }
@@ -690,7 +690,7 @@ int main(int argc, char *argv[])
         }
         pcout << "Ramping finished " << endl;
 
-        while (abs(dE) > minDE && stat_cycle < convergenceSteps)
+        while (stat_cycle < convergenceSteps)
         {
             lattice->collideAndStream();
 

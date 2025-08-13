@@ -44,12 +44,12 @@ def main(path):
         murray_outlet_theory=murray_outlet['d']**3*sum_vfr/sum_d3
         small_outlet_theory=small_outlet['d']**3*sum_vfr/sum_d3
 
-        murray_diff=((murray_outlet_theory-murray_outlet['VFR'])/murray_outlet_theory)[0]
-        small_diff=((small_outlet_theory-(small_outlet['perp_velocity']))/small_outlet_theory)[0]
+        murray_diff=((murray_outlet['VFR']-murray_outlet_theory)/murray_outlet_theory)[0]
+        small_diff=(((small_outlet['perp_velocity'])-small_outlet_theory)/small_outlet_theory)[0]
         print(f"Time:{time}")
-        print(f"Inlet VFR:{inlet['VFR'][0]:.4} Sum outlet VFR:{(murray_outlet['VFR'][0]+small_outlet['VFR'][0]):.4}")
-        print(f"Murray outlet VFR: {murray_outlet['VFR'][0]:.4}  difference:{murray_diff:.2%}")
-        print(f"Small outlet VFR: {small_outlet['VFR'][0]:.4} Murray difference:{small_diff:.2%}")
+        print(f"Inlet VFR:{inlet['VFR'][0]:.4}, Sum outlet VFR:{(murray_outlet['VFR'][0]+small_outlet['VFR'][0]):.4}")
+        print(f"Murray outlet AVG velocity:{murray_outlet['mean_velocity'][0]:.4}, VFR: {murray_outlet['VFR'][0]:.4},Murray difference:{murray_diff:.2%}")
+        print(f"Small outlet AVG velocity:{small_outlet['mean_velocity'][0]:.4}, VFR: {small_outlet['VFR'][0]:.4}, Murray difference:{small_diff:.2%}")
         
         time+=1
 
