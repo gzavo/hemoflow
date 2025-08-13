@@ -1,7 +1,7 @@
 
     <simulation>
 
-	<dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
+        <dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
 
         <blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
 
@@ -11,14 +11,14 @@
 
         <saveFrequency>0.016</saveFrequency> <!-- [s] -->
 
-	<mode>aneurysm</mode>
+        <mode>aneurysm</mode>
+
     </simulation>
 
 
     <geometry>
 
         <file>input/vox_t_pipe_c.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
-
 
         <!-- Opening types: 1 - Velocity; 2 - Murray (velocity); 3- Pressure; 4 - Freeflow -->
 
@@ -30,7 +30,7 @@
 
             <type>1</type>
 
-            <label>11</label>
+            <label>10</label>
 
             <timeScaleFunction>input/ramp.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
 

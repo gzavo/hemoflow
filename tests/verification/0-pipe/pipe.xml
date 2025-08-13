@@ -1,7 +1,7 @@
 
     <simulation>
 
-	<dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
+        <dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
 
         <blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
 
@@ -17,7 +17,6 @@
     <geometry>
 
         <file>input/vox_pipe_c.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
-
 
         <!-- Opening types: 1 - Velocity; 2 - Murray (velocity); 3- Pressure; 4 - Freeflow -->
 
