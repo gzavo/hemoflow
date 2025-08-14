@@ -124,7 +124,7 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 }
 
 // Progress timer for the openings and impose BC values
-void imposeOpenings(T dt)
+void imposeOpenings(T dt, SimPar &sim)
 {
     T murrayExponent = 3.0;
     T murrayOutletTotalDiamt = 0.0;
@@ -140,11 +140,11 @@ void imposeOpenings(T dt)
         { // All non-Murray velocity BCs
 
             o->progressTime(lattice, dt);
-            sumInflowRate += o->getScaledFlowRate();
+            sumInflowRate += o->getScaledFlowRate(sim);
         }
         else
         {
-            murrayOutletTotalDiamt += pow(sqrt(o->getArea() * 4 / 3.14), murrayExponent); // LBM units with Murray exponent
+            murrayOutletTotalDiamt += pow(o->getRadius() * 2, murrayExponent); // LBM units with Murray exponent
         }
     }
 
@@ -156,13 +156,14 @@ void imposeOpenings(T dt)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
         {
-            T diameter = sqrt(o->getArea() * 4 / 3.14);
+            T diameter = o->getRadius() * 2;
+            T area = pow(o->getRadius(), 2) * 3.14;
             T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet
-            T murrayVelocity = flowRate / o->getArea();                                                   // v=Q/A
+            T murrayVelocity = flowRate / area;                                                           // v=Q/A
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
             T profileFlowRate = 0.5;
-            o->setBCParameter(murrayVelocity / profileFlowRate * 0.95); // VFR correction factor for voxeled circle outlets
+            o->setBCParameter((murrayVelocity / profileFlowRate)/(sim.C_l * sim.C_l * sim.C_l / sim.C_t)); // VFR correction factor for voxeled circle outlets? (0.95)
             o->progressTime(lattice, dt);
         }
     }
@@ -606,7 +607,7 @@ int main(int argc, char *argv[])
     lattice->initialize();
 
     // Set all the boundaries in the initialized lattice
-    imposeOpenings(0.0);
+    imposeOpenings(0.0,sim);
 
     // iteration counter
     int stat_cycle = 0;
@@ -742,13 +743,13 @@ int main(int argc, char *argv[])
             {
                 if (DEBUG)
                 {
-                    pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate() << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+                    pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate(sim) << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
                 }
             }
         }
 
         // Impose boundary conditions with dt progress in time
-        imposeOpenings(sim.C_t);
+        imposeOpenings(sim.C_t,sim);
 
         // Calculate next step
         lattice->collideAndStream();

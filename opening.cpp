@@ -123,9 +123,9 @@ T OpeningHandler::getFlowRate(SimPar s)
 }
 
 // Get the current flowrate on a defined velocity boundary
-T OpeningHandler::getScaledFlowRate()
+T OpeningHandler::getScaledFlowRate(SimPar s)
 {
-    return bcParameter * 0.5 * getArea() * cScale;
+    return bcParameter * 0.5 * pow(getRadius(), 2) * 3.14 * cScale * s.C_l * s.C_l * s.C_l / s.C_t;
 }
 
 // Scale the flow velocity array
