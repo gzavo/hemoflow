@@ -20,6 +20,7 @@ from vtk.util import numpy_support
 SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 
 DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
+INHOMOGEN = False
 #############################
 
 if DEBUG_MODE:
@@ -224,12 +225,11 @@ if __name__ == "__main__":
         print("Starting stent interpolation")
         xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
         
-        inhomogen=False
         stentVoxelLinearInterpolate=1
         stentVoxelQuadraticInterpolate=1
 
-        if os.path.isfile(stentGeomBase + "values.vtp"):
-            print("Inhomogen resistance values found")
+        if (INHOMOGEN and (os.path.isfile(stentGeomBase + "values.vtp"))):
+            print("INHOMOGEN resistance values found")
             reader = vtkXMLPolyDataReader()
             reader.SetFileName(stentGeomBase + "values.vtp")
             reader.Update()
@@ -243,8 +243,10 @@ if __name__ == "__main__":
 
             stentVoxelLinearInterpolate = scpinter.griddata(stentPoints, stentLinear, (xg, yg, zg), method="nearest")
             stentVoxelQuadraticInterpolate = scpinter.griddata(stentPoints, stentQuadratic, (xg, yg, zg), method="nearest")
-            inhomogen=True
             print("Linear and quadratic coefficients interpolated")
+        elif (INHOMOGEN):
+            print("INHOMOGEN resistance values not found!")
+            
 
         print("-> Merging projections")
         sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
