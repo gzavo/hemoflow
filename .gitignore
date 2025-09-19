@@ -59,5 +59,6 @@ output/
 #User
 case*/
 output*/
+temp*/
 #testcase*/
 *.npz

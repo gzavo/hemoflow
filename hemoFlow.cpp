@@ -140,7 +140,7 @@ void imposeOpenings(T dt, SimPar &sim)
         { // All non-Murray velocity BCs
 
             o->progressTime(lattice, dt);
-            sumInflowRate += o->getScaledFlowRate(sim);
+            sumInflowRate += o->getScaledFlowRate(sim); //LBM units
         }
         else
         {
@@ -156,14 +156,14 @@ void imposeOpenings(T dt, SimPar &sim)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
         {
-            T diameter = o->getRadius() * 2;
-            T area = pow(o->getRadius(), 2) * 3.14;
-            T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet
-            T murrayVelocity = flowRate / area;                                                           // v=Q/A
+            T diameter = o->getRadius() * 2; //LBM units
+            T area = pow(o->getRadius(), 2) * 3.14; //LBM units
+            T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet, LBM units
+            T murrayVelocity = flowRate / area;                                                          // v=Q/A
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
-            T profileFlowRate = 0.5;
-            o->setBCParameter((murrayVelocity / profileFlowRate)/(sim.C_l * sim.C_l * sim.C_l / sim.C_t)); // VFR correction factor for voxeled circle outlets? (0.95)
+            T profileFlowRate = 0.5; 
+            o->setBCParameter(murrayVelocity / profileFlowRate); //LBM units VFR correction factor for voxeled circle outlets? (0.95)
             o->progressTime(lattice, dt);
         }
     }
