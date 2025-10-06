@@ -1,15 +1,15 @@
 
     <simulation>
 
-        <dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
+        <dt>$dt</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
 
         <blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
 
         <outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 
-        <simLength>1.6</simLength> <!-- [s] -->
+        <simLength>$t_end</simLength> <!-- [s] -->
 
-        <saveFrequency>0.1</saveFrequency> <!-- [s] -->
+        <saveFrequency>$save_dt</saveFrequency> <!-- [s] -->
 
     </simulation>
 
@@ -30,9 +30,9 @@
 
             <label>11</label>
 
-            <timeScaleFunction>input/cerebral_flowrate.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
+            <timeScaleFunction>input/stationary.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
 
-            <parameter>0.45</parameter> <!-- inlet parameter -->
+            <parameter>$u</parameter> <!-- inlet parameter -->
 
         </opening_0>
 
@@ -55,9 +55,9 @@
 
     <flowdiverter>
 
-        <linCoeff>644</linCoeff>
+        <linCoeff>$l</linCoeff>
 
-        <quadCoeff>612</quadCoeff>
+        <quadCoeff>$q</quadCoeff>
 
     </flowdiverter>
 

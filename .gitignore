@@ -60,5 +60,6 @@ output/
 case*/
 output*/
 temp*/
+*_output.csv
 #testcase*/
 *.npz
