@@ -22,9 +22,8 @@ make -j 4
 ## Voxelization
 The voxelization code runs on python, the environment can be set up using conda:
 ```bash
-conda create -n lbmpre python=3.9
+conda env create -f preprocessor/environment.yml
 conda activate lbmpre
-pip install -r ./preprocessor/requirements.txt
 ```
 
 ## HDF5 problems on Ubuntu

@@ -12,7 +12,6 @@ HEMOFLOW_PATH = os.path.abspath(HEMOFLOW_PATH)
 PREPRPOCESSOR_PATH = os.path.join(SOFTWARE_PATH, "preprocessor", "main.py")
 PREPRPOCESSOR_PATH = os.path.abspath(PREPRPOCESSOR_PATH)
 # For LBMpost use the fix-vvuq branch
-LBMPOST_PATH = "/mnt/d/1_Github/LBMPOST/main.py"
 TEMPLATE_DIR_PATH = "campaign_dir"
 TEMPLATE_DIR_PATH = os.path.abspath(TEMPLATE_DIR_PATH)
 
