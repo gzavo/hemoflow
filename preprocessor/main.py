@@ -155,7 +155,7 @@ if __name__ == "__main__":
         nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
 
     print("Size after cutting layers for openings:", volWithWalls.shape)
-    volume = np.product(volWithWalls.shape)
+    volume = np.prod(volWithWalls.shape)
     fluids = np.count_nonzero(volWithWalls == 2)
     print("Volume:", volume)
     print("Fluid nodes:", fluids)
