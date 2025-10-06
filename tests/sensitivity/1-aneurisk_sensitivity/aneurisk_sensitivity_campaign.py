@@ -3,6 +3,7 @@ from dask.distributed import Client
 import argparse
 import os
 import time
+import glob
 
 SOFTWARE_PATH = "/home/nan/Documents/github/hemoflow/"
 SOFTWARE_PATH = os.path.abspath(SOFTWARE_PATH)
@@ -12,7 +13,7 @@ HEMOFLOW_PATH = os.path.abspath(HEMOFLOW_PATH)
 PREPRPOCESSOR_PATH = os.path.join(SOFTWARE_PATH, "preprocessor", "main.py")
 PREPRPOCESSOR_PATH = os.path.abspath(PREPRPOCESSOR_PATH)
 # For LBMpost use the fix-vvuq branch
-LBMPOST_PATH = "/mnt/d/1_Github/LBMPOST/main.py"
+LBMPOST_PATH = "/home/nan/Documents/github/LBMpost/main.py"
 TEMPLATE_DIR_PATH = "campaign_dir"
 TEMPLATE_DIR_PATH = os.path.abspath(TEMPLATE_DIR_PATH)
 
@@ -22,22 +23,22 @@ def run_sensitivity_study(client_param):
     Usage of EasyVVUQ for simulation verification study
     """
     work_dir = os.path.dirname(os.path.abspath(__file__))
-    campaign = uq.Campaign(name="temp_pipe_sensitivity_", work_dir=work_dir)
+    campaign = uq.Campaign(name="temp_aneurisk_sensitivity_", work_dir=work_dir)
 
     params = {
         "u": {"type": "float", "default": 0.45},
         "l": {"type": "integer", "default": 0},
         "q": {"type": "integer", "default": 0},
-        "dt": {"type": "float", "default": 1e-5},
+        "dt": {"type": "float", "default": 2e-5},
         "dx": {"type": "float", "default": 2e-4},
         "elem": {"type": "integer", "default": int(5e4)},
-        "save_dt": {"type": "float", "default": 10},  # default 0.016
-        "t_end": {"type": "float", "default": 0.8},  # CHANGE BACK TO 0.8!
+        "save_dt": {"type": "float", "default": 0.1},  # default 0.016
+        "t_end": {"type": "float", "default": 0.2},  # CHANGE BACK TO 0.8!
     }
 
     vary = {
         "dx": [
-            0.3,
+            0.4
         ],
     }
 
@@ -49,12 +50,11 @@ def run_sensitivity_study(client_param):
     encoder_vox = uq.encoders.GenericEncoder(
         template_fname="{}/campaign_dir/vox_config.template".format(work_dir),
         delimiter="$",
-        target_filename="input/input_pipe_vox.config",
+        target_filename="input/input_aneurisk_vox.config",
     )
-    # decoder = uq.decoders.SimpleCSV(target_filename='postProc/post_data.csv', output_columns=['ane_0_velocity_vol_avg'])
-    decoder = uq.decoders.SimpleCSV(
-        target_filename="output.csv", output_columns=["pressure_drop"]
-    )
+
+    decoder = uq.decoders.SimpleCSV(target_filename="postProc/static_data.csv", output_columns=['ane_0_velocity_vol_avg'])
+
 
     actions = uq.actions.Actions(
         uq.actions.CreateRunDirectory(root=work_dir, flatten=True),
@@ -62,17 +62,14 @@ def run_sensitivity_study(client_param):
         uq.actions.Encode(encoder_vox),
         # Voxelization
         uq.actions.ExecuteLocal(
-            f"conda run --live-stream -n lbmpre python {PREPRPOCESSOR_PATH} ./input/input_pipe_vox.config"
+            f"conda run --live-stream -n lbmpre python {PREPRPOCESSOR_PATH} ./input/input_aneurisk_vox.config"
         ),
         uq.actions.Encode(encoder),
         # Simulation
         #!RUNNING ON 6 CORES
         uq.actions.ExecuteLocal("mpirun -n 6 " + HEMOFLOW_PATH + " input.xml"),
         # conda env for running LBMpost, livestream for stdio
-        # uq.actions.ExecuteLocal("conda run --live-stream -n lbmpost python "+LBMPOST_PATH+" ./ full"),
-        uq.actions.ExecuteLocal(
-            "conda run --live-stream -n lbmpost python pressure_drop.py ./"
-        ),
+        uq.actions.ExecuteLocal("conda run --live-stream -n lbmpost python "+LBMPOST_PATH+" ./ full"),
         uq.actions.Decode(decoder),
     )
 
