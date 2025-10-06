@@ -90,7 +90,7 @@ if __name__ == "__main__":
     # cutList =  [int(x) for x in confData["cut_list"].split()]
 
     vesselGeomFile = workDir + "/" + confData["geometry_original_stl"]
-    
+
     haveStent = False
     stentGeomFile = ""
     if "stent_folder" in confData.keys() and len(confData["stent_folder"]) > 0:
@@ -100,24 +100,30 @@ if __name__ == "__main__":
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
     elif (len(confData["stent_mesh_base"]) > 0):
         stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
-    
+
     if os.path.isfile(stentGeomFile):
         haveStent = True
-    
+
     stentGeomBase = stentGeomFile.replace('mesh.stl','')
-    
+
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
     outputBaseName =  workDir + "/" + confData["output_base_name"]
 
     targetElem = int(confData["target_elements"])
 
+    target_dx = None
+    try:
+        target_dx = float(confData["target_dx"])  # milimeter
+    except:
+        print("No dx data available")
+
     voxel_stent_final = np.zeros(0)
 
     startTime = time.time()
 
     print("\n### Voxelizing vessel geometry ###")
-    voxelVol, domainData = voxelize(vesselGeomFile, targetElem)
+    voxelVol, domainData = voxelize(vesselGeomFile, targetElem, target_dx=target_dx)
 
     if DEBUG_MODE:
         print("-> (DEBUG) Saving voxelization result")
@@ -125,7 +131,7 @@ if __name__ == "__main__":
 
     sx,sy,sz = domainData[0]
     tx,ty,tz = domainData[1]
-    
+
     print("Voxelized domain size:", voxelVol.shape)
     print("Domain:", domainData[2])
     print("Bounding box:", domainData[3])
@@ -142,11 +148,11 @@ if __name__ == "__main__":
     print("scale", domainData[0])
     print("translate", domainData[1])
     radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
-    
+
     cutList = generateCutList(domainData[2], radiusTangentVoxelList)
-    
+
     print("Computed list of sides to cut away for openings:", cutList)
-    
+
     print("\n### Creating walls and opening in/outlets ###")
     volWithWalls, sliced = createWalls(voxelVol, cutList, cutWidth)
 
@@ -173,11 +179,11 @@ if __name__ == "__main__":
         openingCenters.append(oC/len(io))
 
     # TODO: Assign tangents and radii to voxelized openings
-    
+
     if len(openingCenters) != len(radiusTangentVoxelList):
         print("!!! ERROR: the number of outlets found on the voxelized domain sides differ from the number found along the centerline! :", len(radiusTangentVoxelList), len(openingCenters))
         sys.exit(-1)
-    
+
     # The combined information about openings in the correct order (Inlet, Pressure outlet, Other velocity outlets)
     openingIndex = []
     openingRadius = []
@@ -185,10 +191,10 @@ if __name__ == "__main__":
     openingCenter = []
     inlets_outlets_sorted = []
     openingNormal = []
-    
+
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
     r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
-    
+
     for ccCL in range(len(radiusTangentVoxelList)):
         for ccVox in range(len(openingCenters)):
             cVox = openingCenters[ccVox]
@@ -202,7 +208,7 @@ if __name__ == "__main__":
                 openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
 
                 inlets_outlets_sorted.append(inlet_outlets[ccVox])
-    
+
     openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
     if DEBUG_MODE:
@@ -215,16 +221,16 @@ if __name__ == "__main__":
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
         print("-> Voxelizing flow diverter geometry projection #1")
         voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData)
-    
+
         print("-> Voxelizing flow diverter geometry projection #2")
         voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0)
-    
+
         print("-> Voxelizing flow diverter geometry projection #3")
         voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1)
 
         print("Starting stent interpolation")
         xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
-        
+
         stentVoxelLinearInterpolate=1
         stentVoxelQuadraticInterpolate=1
 
@@ -246,7 +252,6 @@ if __name__ == "__main__":
             print("Linear and quadratic coefficients interpolated")
         elif (INHOMOGEN):
             print("INHOMOGEN resistance values not found!")
-            
 
         print("-> Merging projections")
         sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
