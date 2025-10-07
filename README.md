@@ -25,8 +25,8 @@ The voxelization code runs on python, the environment can be set up using conda:
 conda env create -f preprocessor/environment.yml
 conda activate lbmpre
 ```
-
-## HDF5 problems on Ubuntu
+## Troubleshooting
+### HDF5 problems on Ubuntu
 HighFive requires 1.13+ parallel HDF5 version which is not available from apt-get (yet).
 Can be compiled manually using
 
@@ -45,6 +45,14 @@ When compiling hemoflow cmake needs help to find our custom HDF5:
 cmake -DHDF5_ROOT=/opt/hdf5 ..
 make -j 4
 ```
+### Compilation on newer systems
+
+Newer compilers can throw an error, which can be disabled in the CmakeLists adding
+
+    -Wno-error=template-body
+
+to the flags
+
 
 ## Shortcomings
 - Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.

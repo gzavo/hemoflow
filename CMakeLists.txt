@@ -41,7 +41,7 @@ message(${CMAKE_BUILD_TYPE})
 # Append flags: set(CMAKE_XXX_FLAGS "${CMAKE_XXX_FLAGS} ...")
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
     message("GCC.")
-    set(CMAKE_CXX_FLAGS "-std=c++11  -Wall -Wnon-virtual-dtor -Wno-unused-result -Wno-error=template-body")
+    set(CMAKE_CXX_FLAGS "-std=c++11  -Wall -Wnon-virtual-dtor -Wno-unused-result ") #on newer systems -Wno-error=template-body is needed, can brake cmake
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
     set(CMAKE_CXX_FLAGS_DEBUG "-g -DPLB_DEBUG -O0")
 elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL AppleClang)
