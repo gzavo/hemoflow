@@ -3,9 +3,10 @@ from dask.distributed import Client
 import argparse
 import os
 import time
+import numpy as np
 import glob
 
-SOFTWARE_PATH = "/home/nan/Documents/github/hemoflow/"
+SOFTWARE_PATH = "/home/lsandor/00_software/hemoflow/"
 SOFTWARE_PATH = os.path.abspath(SOFTWARE_PATH)
 # HEMOFLOW_PATH='/mnt/d/1_Github/VascuTreatCFD/hemoflowcfd/build/hemoflow'
 HEMOFLOW_PATH = os.path.join(SOFTWARE_PATH, "build", "hemoFlow")
@@ -13,7 +14,7 @@ HEMOFLOW_PATH = os.path.abspath(HEMOFLOW_PATH)
 PREPRPOCESSOR_PATH = os.path.join(SOFTWARE_PATH, "preprocessor", "main.py")
 PREPRPOCESSOR_PATH = os.path.abspath(PREPRPOCESSOR_PATH)
 # For LBMpost use the fix-vvuq branch
-LBMPOST_PATH = "/home/nan/Documents/github/LBMpost/main.py"
+LBMPOST_PATH = "/home/lsandor/00_software/LBMpost/main.py"
 TEMPLATE_DIR_PATH = "campaign_dir"
 TEMPLATE_DIR_PATH = os.path.abspath(TEMPLATE_DIR_PATH)
 
@@ -26,20 +27,22 @@ def run_sensitivity_study(client_param):
     campaign = uq.Campaign(name="temp_aneurisk_sensitivity_", work_dir=work_dir)
 
     params = {
-        "u": {"type": "float", "default": 0.45},
+        "u": {"type": "float", "default": 0.5},
         "l": {"type": "integer", "default": 0},
         "q": {"type": "integer", "default": 0},
         "dt": {"type": "float", "default": 2e-5},
-        "dx": {"type": "float", "default": 2e-4},
+        "dx": {"type": "float", "default": 0.1},
         "elem": {"type": "integer", "default": int(5e4)},
-        "save_dt": {"type": "float", "default": 0.1},  # default 0.016
-        "t_end": {"type": "float", "default": 0.2},  # CHANGE BACK TO 0.8!
+        "save_dt": {"type": "float", "default": 0.016},  # default 0.016
+        "t_end": {"type": "float", "default": 0.8},  # CHANGE BACK TO 0.8!
     }
+    save_frames=np.array([10,20,40,50,60])
 
     vary = {
-        "dx": [
-            0.4
-        ],
+        #"dx": [0.2,0.15,0.1,0.08,0.06,0.05],
+        #"dt": [3e-5,2e-5,1e-5,9e-6,8e-6],
+        #"dt": [3e-5,2e-5,1e-5,9e-6,8e-6],
+        "save_dt": params["t_end"]["default"]/save_frames
     }
 
     encoder = uq.encoders.GenericEncoder(

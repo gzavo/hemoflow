@@ -4,7 +4,7 @@ import argparse
 import os
 import time
 
-SOFTWARE_PATH = "/home/nan/Documents/github/hemoflow/"
+SOFTWARE_PATH = "/home/lsandor/00_software/hemoflow/"
 SOFTWARE_PATH = os.path.abspath(SOFTWARE_PATH)
 # HEMOFLOW_PATH='/mnt/d/1_Github/VascuTreatCFD/hemoflowcfd/build/hemoflow'
 HEMOFLOW_PATH = os.path.join(SOFTWARE_PATH, "build", "hemoFlow")
@@ -24,19 +24,23 @@ def run_sensitivity_study(client_param):
     campaign = uq.Campaign(name="temp_pipe_sensitivity_", work_dir=work_dir)
 
     params = {
-        "u": {"type": "float", "default": 0.45},
+        "u": {"type": "float", "default": 0.5},
         "l": {"type": "integer", "default": 0},
         "q": {"type": "integer", "default": 0},
         "dt": {"type": "float", "default": 1e-5},
         "dx": {"type": "float", "default": 2e-4},
         "elem": {"type": "integer", "default": int(5e4)},
-        "save_dt": {"type": "float", "default": 10},  # default 0.016
-        "t_end": {"type": "float", "default": 0.8},  # CHANGE BACK TO 0.8!
+        "save_dt": {"type": "float", "default": 1.0},  # default 0.016
+        "t_end": {"type": "float", "default": 2.5},  # CHANGE BACK TO 0.8!
     }
 
     vary = {
         "dx": [
             0.3,
+            0.2,
+            0.15,
+            0.1,
+            0.08,
         ],
     }
 
@@ -66,7 +70,7 @@ def run_sensitivity_study(client_param):
         uq.actions.Encode(encoder),
         # Simulation
         #!RUNNING ON 6 CORES
-        uq.actions.ExecuteLocal("mpirun -n 6 " + HEMOFLOW_PATH + " input.xml"),
+        uq.actions.ExecuteLocal("mpirun -n 16 " + HEMOFLOW_PATH + " input.xml"),
         # conda env for running LBMpost, livestream for stdio
         # uq.actions.ExecuteLocal("conda run --live-stream -n lbmpost python "+LBMPOST_PATH+" ./ full"),
         uq.actions.ExecuteLocal(

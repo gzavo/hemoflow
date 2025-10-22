@@ -7,7 +7,7 @@
 
         <outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 
-        <simLength>1.6</simLength> <!-- [s] -->
+        <simLength>2.5</simLength> <!-- [s] -->
 
         <saveFrequency>0.1</saveFrequency> <!-- [s] -->
 
@@ -30,7 +30,7 @@
 
             <label>11</label>
 
-            <timeScaleFunction>input/cerebral_flowrate.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
+            <timeScaleFunction>input/stationary.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
 
             <parameter>0.45</parameter> <!-- inlet parameter -->
 
@@ -55,9 +55,9 @@
 
     <flowdiverter>
 
-        <linCoeff>644</linCoeff>
+        <linCoeff>0</linCoeff>
 
-        <quadCoeff>612</quadCoeff>
+        <quadCoeff>0</quadCoeff>
 
     </flowdiverter>
 
