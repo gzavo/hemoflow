@@ -75,7 +75,7 @@ int findIndex(const unsigned short *array, int arraySize, unsigned short itemToF
 
 // *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
 void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
-{   
+{
     sim.C_l = dx;
     sim.U_max_lb = U_max_LB_;
 
@@ -85,7 +85,7 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
         nuInf_lb = nuInf * sim.C_t / sim.C_l / sim.C_l;
         T tau = 3.0*nuInf_lb+0.5;
         sim.omega = 1.0 / tau;
-    } 
+    }
     else {
         sim.omega = 1.0;
         nuInf_lb =  0.5 / 3.0;
@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
               << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
         return -1;
     }
-    
+
     // Check if we have the checkpoint flag
     string checkpointFlag;
     bool isCheckpointed = false;
@@ -216,17 +216,17 @@ int main(int argc, char *argv[])
         workingFolder = ".";
     else
         workingFolder = paramXmlFileName.substr(0, folderIdx);
-    
+
     // *** Load in data files
     try {
         pcout << "Loading in data file..." << std::endl;
 
         xml["simulation"]["outputDir"].read(outputFolder);
-        
+
         outDir = workingFolder + "/" + outputFolder;
 
         // Check if output dir exists and accessible on the main processor
-        if(global::mpi().isMainProcessor()) 
+        if(global::mpi().isMainProcessor())
             if (dirExists(outDir) <= 0) {
                 pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
                 mkpath(outDir.c_str(), 0777);
@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
         xml["simulation"]["blockSize"].read(blockSize);
         xml["simulation"]["simLength"].read(simLength);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
-        
+
         // Check for optional checkpoint argument
         try {
             xml["simulation"]["checkpointFrequency"].read(checkpointFreqTime);
@@ -258,8 +258,8 @@ int main(int argc, char *argv[])
         xml["geometry"]["file"].read(npzFileName);
         cnpy::npz_t geom_npz = cnpy::npz_load(workingFolder + "/" + npzFileName);
         pcout << "Input data elements: " << geom_npz.size() << std::endl;
-        
-        for (auto const& array : geom_npz) 
+
+        for (auto const& array : geom_npz)
             pcout << "->" << array.first << std::endl;
 
         // TODO - Consider hdf5-based input files (see the Turbulence branch)
@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
 
         // Loading the geometry of the stent (if there is one)
         stentFlag = geom_npz["stent"];
-        
+
         if(stentFlag.shape.size() > 1) {    // Check if there is data on the FD
             pcout << "Found flow diverter information to load." << std::endl;
             sfData = stentFlag.data<unsigned short>();
@@ -297,22 +297,22 @@ int main(int argc, char *argv[])
 
         // Calcualte simulation parameters here!
         pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(sim, sim_dx, sim_dt);  
+        calcSimulationParameters(sim, sim_dx, sim_dt);
 
         // **** Processing openings ****
         pcout << "Processing openings..." << std::endl;
-        
-        // Loading information on openings 
+
+        // Loading information on openings
         cnpy::NpyArray openingIndex = geom_npz["openingIndex"];
         auto* oiData = openingIndex.data<unsigned short>();
-        
+
         cnpy::NpyArray openingRadius = geom_npz["openingRadius"];
         auto* orData = openingRadius.data<double>();
-        
+
         /* -- Not needed atm.
         cnpy::NpyArray openingQRatio = geom_npz["openingNormalizedQRatio"];
         double* oqData = openingQRatio.data<double>();
-        
+
         cnpy::NpyArray openingCenter = geom_npz["openingCenter"];
         double* ocData = openingCenter.data<double>();
         */
@@ -326,17 +326,17 @@ int main(int argc, char *argv[])
             setToFunction(*flagMatrix, flagMatrix->getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, 1));
 
             pcout << "Creating sparse representation ..." << endl;
-            
+
             //Create sparse representation
             MultiBlockManagement3D sparseBlockManagement =
                         computeSparseManagement(*plb::reparallelize(*flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
-                                                            
+
             #if LES
                 lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
                                                             defaultMultiBlockPolicy3D().getBlockCommunicator(),
                                                             defaultMultiBlockPolicy3D().getCombinedStatistics(),
                                                             defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                            new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago)); 
+                                                            new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago));
             #else
                 lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
                                                             defaultMultiBlockPolicy3D().getBlockCommunicator(),
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
 
         pcout << getMultiBlockInfo(*lattice) << endl;
 
-        // Loop through the openings in the datafile 
+        // Loop through the openings in the datafile
         unsigned int numOpenings = openingRadius.shape[0];
         pcout << "Number of openings in geometry: " << numOpenings << std::endl;
         pcout << "Opening flags: ";
@@ -371,28 +371,28 @@ int main(int argc, char *argv[])
         // Loop through the openings following the xml config
         for(unsigned int o=0; o < numOpenings; o++){
             pcout << "Processing opening: " << o << std::endl;
-            
+
             string xmlTagOpening = "opening_"+std::to_string(o);
-     
+
             string name;    xml["geometry"][xmlTagOpening]["name"].read(name);
             int type;       xml["geometry"][xmlTagOpening]["type"].read(type);
             int label;      xml["geometry"][xmlTagOpening]["label"].read(label);
 
-            int openingIdx = findIndex(oiData, numOpenings, label);    
-            if(openingIdx == -1) 
+            int openingIdx = findIndex(oiData, numOpenings, label);
+            if(openingIdx == -1)
                 pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
 
-            // Get the direction of the opening 
+            // Get the direction of the opening
             int s = openingNormal.shape[1];
             vec3d dir(onData[gT2D(s,openingIdx,0)], onData[gT2D(s,openingIdx,1)], onData[gT2D(s,openingIdx,2)]);
 
             // Create the opening
             auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
-            
+
             opening->setName(name);
             opening->setBCType(lattice);
 
-            string parameterStr; 
+            string parameterStr;
             double parameter;
             xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
             if(!parameterStr.empty())
@@ -410,20 +410,20 @@ int main(int argc, char *argv[])
             if(type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW){
                 opening->createPoiseauilleProfile();    // Normalized to max_vel = 1.0 (LBM units)
                 // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
-            } 
+            }
             else if(type == OPENING_PRESSURE) {
                 opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
             }
 
             opening->printOpeningDetails(sim);
-                
+
             openings.push_back(opening);
 
         }
 
         // Sanity check
         if(numOpenings != openings.size()) {
-            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl; 
+            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl;
         }
 
     }
@@ -432,7 +432,7 @@ int main(int argc, char *argv[])
               << ": " << exception.what() << std::endl;
         return -1;
     }
-    
+
     pcout   << "*********** Simulation parameters *********** " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
             << "dx [m]:  " << sim.C_l << endl
@@ -440,7 +440,7 @@ int main(int argc, char *argv[])
             << "dm [kg]:  " << sim.C_m << endl
             << "omega:  " << sim.omega << endl
             << "nu:     " << 1./3. * (1./sim.omega - 0.5) << endl
-            << "U_max [lbm]: " << sim.U_max_lb << endl 
+            << "U_max [lbm]: " << sim.U_max_lb << endl
             << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
 
     int saveFrequency;
@@ -448,17 +448,17 @@ int main(int argc, char *argv[])
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
     int checkpointFrequency = (int)round(checkpointFreqTime/sim.C_t);
-    
-    if(useCheckpoint)     
+
+    if(useCheckpoint)
         pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
-    
+
     // Checkpoint file names relative to the output folder
     string chkParamFile = outDir+"/checkpoint_parameters.dat";
     string chkDataFile = outDir+"/checkpoint_lattice.dat";
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-    // If there is data on porosity, set up porous layer in the simulation   
+    // If there is data on porosity, set up porous layer in the simulation
     if(sfData != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
@@ -471,7 +471,7 @@ int main(int argc, char *argv[])
     defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
 
     // TODO: add some reparallelize here, check if it plays nice with checkpointing
-    
+
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
 
@@ -483,11 +483,11 @@ int main(int argc, char *argv[])
 
     // iteration counter
     int stat_cycle = 0;
-    
+
     // Check if the simulation was checkpointed
     if(isCheckpointed) {
         pcout << endl << "*********** Restoring checkpoint ***********" << endl;
-        
+
         // Load in the iteration counter
         string chkParamFile = outDir+"/checkpoint_parameters.dat";
         plb_ifstream ifile(chkParamFile.c_str());
@@ -499,18 +499,18 @@ int main(int argc, char *argv[])
             pcout << "ERROR reading from the checkpoint parameter file: checkpoint_parameters.dat! Exiting..." << std::endl;
             return -1;
         }
-        
+
         // Load the lattice
         loadBinaryBlock(*lattice, outDir+"/checkpoint_lattice.dat");
-        
+
         pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
     else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
-           
+
         int convergenceSteps = 10*max(max(Nx, Ny), Nz);
         T minDE = 1e-11; T dE = 100; T prevE = 0;
-    
+
         // imposeOpenings(0.0);
 
         T cE = computeAverageEnergy(*lattice);
@@ -529,38 +529,38 @@ int main(int argc, char *argv[])
         while(abs(dE) > minDE && stat_cycle < convergenceSteps )
         {
             lattice->collideAndStream();
-    
+
             T cE = computeAverageEnergy(*lattice);
             dE = cE - prevE; prevE = cE;
-    
+
             if(stat_cycle % 500 == 0) {
                 pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
             }
-            
+
             stat_cycle++;
         }
         pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-    
+
         pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
-    
+
         pcout << "Saving time step 0..." << endl;
         // writeVTK(*lattice, 0);
         // writeNPZ(*lattice, 0);
         writeHDF5(*lattice, sim, 0, outDir);
-        
+
         // Set the counter back
         stat_cycle = 0;
     }
-    
+
     pcout << "Starting computation..." << endl;
 
     while(stat_cycle*sim.C_t <= simLength + sim.C_t)
     {
-        
+
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
             pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/sim.C_t) << "] " << " - Energy: " << cE << endl;
-            
+
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
@@ -582,31 +582,31 @@ int main(int argc, char *argv[])
         // Advance time
         stat_cycle++;
 
-        // Save output 
+        // Save output
         if(stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
             // writeVTK(*lattice, sim, stat_cycle);
             // writeNPZ(*lattice, sim, stat_cycle);
-            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
+            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
         }
-        
+
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {
             // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
             if(global::mpi().isMainProcessor()) {
                 if(fileExists(chkDataFile)){
-                    // Remove prev-previous checkpoint            
+                    // Remove prev-previous checkpoint
                     if(fileExists(chkDataFileOld)){
                         if( ( std::remove( chkDataFileOld.c_str() ) + std::remove( chkParamFileOld.c_str() ) ) != 0 )
                             pcout << "WARNING: cannot remove old chekpoint file!" << std::endl;
                     }
                     // Rename previous checkpoint
-                    if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() )) 
+                    if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() ))
                         pcout << "WARNING: cannot rename old chekpoint file!" << std::endl;
                 }
             }
 
             global::mpi().barrier();
-            
+
             plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
             saveBinaryBlock(*lattice, chkDataFile);
         }
