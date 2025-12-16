@@ -208,8 +208,13 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
 
     // For compression
     DataSetCreateProps props;
-    // Use chunking
-    props.add(Chunking(std::vector<hsize_t>{100, 100, 100}));
+    // Use adaptive chunking based on dataset dimensions
+    // Chunk size should be <= dimension size
+    hsize_t chunk_x = std::min<hsize_t>(Nx, 100);
+    hsize_t chunk_y = std::min<hsize_t>(Ny, 100);
+    hsize_t chunk_z = std::min<hsize_t>(Nz, 100);
+    // The order matters if chunking is not cubic
+    props.add(Chunking(std::vector<hsize_t>{chunk_z, chunk_y, chunk_x}));
     // Enable shuffle
     props.add(Shuffle());
     // Enable deflate
