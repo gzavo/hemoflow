@@ -1,7 +1,7 @@
 <simulation>
 	<dt>1e-4</dt>	<!-- Desired time step size [s]. This defines the balance between accuracy and computational cost. -->
 	<blockSize>30</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
-	<outputDir>output_simple_tube</outputDir> <!-- Where to put the output files. Relative to this config file.-->
+	<outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 	<!-- Extended for better ParaView visibility -->
 	<simLength>3.2</simLength> <!-- [s] -->
 	<saveFrequency>0.016</saveFrequency> <!-- [s] -->
@@ -10,7 +10,7 @@
 </simulation>
 
 <geometry>
-	<file>./input/simple_tube_small.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
+	<file>./input/simple_tube_straight.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
 
 	<!-- Opening types: 1 - Velocity; 2 - Murray (velocity); 3- Pressure; 4 - Freeflow -->
 	<!-- Create a separate tag for every opening. -->
