@@ -1,3 +1,0 @@
-vtk
-pynrrd
-numpy-stl
