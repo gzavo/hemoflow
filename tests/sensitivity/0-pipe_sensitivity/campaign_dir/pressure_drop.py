@@ -1,10 +1,11 @@
-import pyvista as pv
-import os
-import glob
-import numpy as np
 import argparse
-import pandas as pd
+import glob
+import os
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pyvista as pv
 
 
 def mag(a: pv.pyvista_ndarray):
@@ -76,6 +77,7 @@ def main(path):
     velocity_profile = threshold.sample_over_line(
         pointa=[3 / 4 * x_bounds, y_bounds / 2, 0],
         pointb=[3 / 4 * x_bounds, y_bounds / 2, y_bounds],
+        resolution=200,
     )
     analyitical_profile = poiseuille_1d(
         velocity_profile.points[:, 2],
@@ -92,11 +94,13 @@ def main(path):
 
     fig.savefig("profile_comp.png")
 
+    np.savetxt("profile.csv", velocity_profile["velocity_magnitude"], delimiter=",")
+
     print(f"Pipe diameter {D_pipe}")
     print(f"Distance between measurement {L_dp}")
     print(f"Pressure drop from Poiseuille equation (without stent) {dp_Poiseuille}")
     print(f"Pressure drop for pipe {pressure_drop}")
-    print(f"Relative difference between analyitcal and numerical {dp_diff*100:.4}%")
+    print(f"Relative difference between analyitcal and numerical {dp_diff * 100:.4}%")
     print(f"Inlet VFR: {inlet['VFR'][0]:.4} m3/s")
     print(f"Outlet VFR: {outlet['VFR'][0]:.4} m3/s")
 

@@ -70,7 +70,7 @@ def run_sensitivity_study(client_param):
         uq.actions.Encode(encoder),
         # Simulation
         #!RUNNING ON 6 CORES
-        uq.actions.ExecuteLocal("mpirun -n 6 " + HEMOFLOW_PATH + " input.xml"),
+        uq.actions.ExecuteLocal("mpirun -n 6 " + HEMOFLOW_PATH + " input.xml hemoflow.log"),
         # conda env for running LBMpost, livestream for stdio
         uq.actions.ExecuteLocal("conda run --live-stream -n lbmpost python "+LBMPOST_PATH+" ./ full"),
         uq.actions.Decode(decoder),
