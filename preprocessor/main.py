@@ -80,8 +80,16 @@ if __name__ == "__main__":
         dirName = os.path.split(workDir)[1]
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
-    elif (len(confData["stent_mesh_base"]) > 0):
+    elif "stent_mesh_base" in confData.keys() and len(confData["stent_mesh_base"]) > 0:
         stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
+    else:
+        # Either no stent_folder or stent_mesh_base is provided (or provided but empty),
+        # so we assume no stent geometry is available
+        #
+        # TODO: apparently a more self-descriptive config json would be better
+        # For example,how do we tell config json users how to skip stent files "properly",
+        # by giving the config json empty strings or just skip the key-value pair?
+        stentGeomFile = ""
 
     if os.path.isfile(stentGeomFile):
         haveStent = True
