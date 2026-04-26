@@ -27,36 +27,36 @@ def inRange3D(value3D, rangeValue3D, distance):
     isInRange = True
     for i in range(3):
         isInRange = (isInRange and inRange(value3D[i], rangeValue3D[i], distance) )
-    
+
     return isInRange
 
 def generateCutList(voxelDomainSize, radiusTangentVoxelList):
     sidesToCut = np.zeros(6)
-    
+
     # If centerline point is within this distance of the boundary it is considered an opening
     distance = 4  # 4 voxel distance: note, cutting away unused layers might influence this!
 
     if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize) 
-    
+            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize)
+
     for o in radiusTangentVoxelList:
         pos = o[1]
 
         if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)    
+            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)
 
         for j in range(3):
             if inRange(pos[j], 0, distance):
                 sidesToCut[j*2]=1
             if inRange(pos[j], voxelDomainSize[j], distance):
                 sidesToCut[j*2+1]=1
-            
+
     return np.where(sidesToCut == 1)[0]
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage:", sys.argv[0], "input.config")
-        sys.exit(-1) 
+        sys.exit(-1)
 
     cutWidth = 1 # Might need to set this to 2 if there is more than 1 padding layer for some reason
     distance = 4
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # cutList =  [int(x) for x in confData["cut_list"].split()]
 
     vesselGeomFile = workDir + "/" + confData["geometry_original_stl"]
-    
+
     haveStent = False
     if "stent_folder" in confData.keys() and len(confData["stent_folder"]) > 0:
         dirName = os.path.split(workDir)[1]
@@ -82,10 +82,10 @@ if __name__ == "__main__":
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
     elif (len(confData["stent_mesh_base"]) > 0):
         stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
-    
+
     if os.path.isfile(stentGeomFile):
         haveStent = True
-    
+
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
     outputBaseName =  workDir + "/" + confData["output_base_name"]
@@ -100,12 +100,12 @@ if __name__ == "__main__":
     voxelVol, domainData = voxelize(vesselGeomFile, targetElem)
 
     if DEBUG_MODE:
-        print("-> (DEBUG) Saving voxelization result")    
+        print("-> (DEBUG) Saving voxelization result")
         nrrd.write(outputBaseName+"fluid_only.nrrd", voxelVol)
 
     sx,sy,sz = domainData[0]
     tx,ty,tz = domainData[1]
-    
+
     print("Voxelized domain size:", voxelVol.shape)
     print("Domain:", domainData[2])
     print("Bounding box:", domainData[3])
@@ -122,16 +122,16 @@ if __name__ == "__main__":
     print("scale", domainData[0])
     print("translate", domainData[1])
     radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
-    
+
     cutList = generateCutList(domainData[2], radiusTangentVoxelList)
-    
+
     print("Computed list of sides to cut away for openings:", cutList)
-    
+
     print("\n### Creating walls and opening in/outlets ###")
     volWithWalls, sliced = createWalls(voxelVol, cutList, cutWidth)
 
     if DEBUG_MODE:
-        print("\n-> (DEBUG) Saving nrrd wall geometry ###")    
+        print("\n-> (DEBUG) Saving nrrd wall geometry ###")
         nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
 
     print("Size after cutting layers for openings:", volWithWalls.shape)
@@ -146,21 +146,21 @@ if __name__ == "__main__":
     openingIdxs, openingCenters, paintedOpenings = detectOpenings(volWithWalls)
 
     # TODO: Assign tangents and radii to voxelized openings
-    
+
     if len(openingCenters) != len(radiusTangentVoxelList):
         print("!!! ERROR: the number of outlets found on the voxelized domain sides differ from the number found along the centerline! :", len(radiusTangentVoxelList), len(openingCenters))
         sys.exit(-1)
-    
+
     # The combined information about openings in the correct order (Inlet, Pressure outlet, Other velocity outlets)
     openingIndex = []
     openingRadius = []
     openingNormalizedQratio = []
     openingCenter = []
     openingNormal = []
-    
+
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
     r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
-    
+
     for ccVox in range(len(openingCenters)):
         for ccCL in range(len(radiusTangentVoxelList)):
             cVox = openingCenters[ccVox]
@@ -175,7 +175,7 @@ if __name__ == "__main__":
                 openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
 
     if DEBUG_MODE:
-        print("-> (DEBUG) Saving nrrd geometry flag")    
+        print("-> (DEBUG) Saving nrrd geometry flag")
         nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
         if len(openingIndex) != len(openingCenters):
             print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
@@ -183,14 +183,14 @@ if __name__ == "__main__":
     if haveStent:
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
         print("-> Voxelizing flow diverter geometry projection #1")
-        voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData) 
-    
+        voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData)
+
         print("-> Voxelizing flow diverter geometry projection #2")
-        voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0) 
-    
+        voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0)
+
         print("-> Voxelizing flow diverter geometry projection #3")
-        voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1) 
-    
+        voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1)
+
         print("-> Merging projections")
         sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
 
@@ -217,20 +217,20 @@ if __name__ == "__main__":
         print("Flow diverter domain size after cutting layers for openings:", voxel_stent_final.shape)
 
         if DEBUG_MODE:
-            print("-> (DEBUG) Saving voxelized flow diverter") 
-            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))  
+            print("-> (DEBUG) Saving voxelized flow diverter")
+            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))
 
     print("\n### Saving final output ###")
     print("File:", outputBaseName+"c.npz")
 
     #np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
-    np.savez_compressed(outputBaseName+"c.npz", geometryFlag=paintedOpenings, 
+    np.savez_compressed(outputBaseName+"c.npz", geometryFlag=paintedOpenings,
                         dx=np.array([DX]).astype(np.double, copy=False),
-                        openingIndex=np.array(openingIndex).astype(np.short, copy=False), 
-                        openingRadius=np.array(openingRadius).astype(np.double, copy=False), 
-                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False), 
-                        openingCenter=np.array(openingCenter).astype(np.double, copy=False), 
-                        openingNormal=np.array(openingNormal).astype(np.double, copy=False), 
+                        openingIndex=np.array(openingIndex).astype(np.short, copy=False),
+                        openingRadius=np.array(openingRadius).astype(np.double, copy=False),
+                        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False),
+                        openingCenter=np.array(openingCenter).astype(np.double, copy=False),
+                        openingNormal=np.array(openingNormal).astype(np.double, copy=False),
                         stent=voxel_stent_final.astype(np.short, copy=False))
 
     endTime = time.time()
