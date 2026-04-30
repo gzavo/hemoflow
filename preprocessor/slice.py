@@ -104,17 +104,31 @@ def calculateScaleAndShift(mesh, targetElements):
         mins[i] = min(allPoints, key=lambda tri: tri[i])[i]
         maxs[i] = max(allPoints, key=lambda tri: tri[i])[i]
         ds[i] = maxs[i] - mins[i]
-    
+
     bounding_box = [mins, maxs]
     ds3 = ds[0]*ds[1]*ds[2]
     vox_scale = (targetElements / ds3 ) ** (1. / 3)
-    #domain = map(int, [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]]) 
-    domain = [int(x) for x in [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]]] 
+    #domain = map(int, [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]])
+    domain = [int(x) for x in [vox_scale * ds[0], vox_scale * ds[1], vox_scale * ds[2]]]
     shift = [-minimum for minimum in mins]
-    
+
     #xyscale = (domain[0] - 1.0) / ds[0]
     xyscale = domain[0] / ds[0]
     scale = [xyscale, xyscale, xyscale] #TODO Something is fishy here, what is this xyscale???
+
+    # Issue: #6
+    # Fix the issue of water tight false alarm due to over-truncated domain along Y
+    LHS_inequality = (vox_scale*ds[1]) % 1
+    RHS_inequality = ds[1]/ds[0]*((vox_scale*ds[0]) % 1)
+    if LHS_inequality > RHS_inequality:
+        print(f"Warning: Truncation bug detected (See Issue: #6): Inequality LHS {LHS_inequality} is larger than RHS {RHS_inequality}. It means potential truncation bug!!")
+        final_scaled_bound_y = scale[1] * ds[1]
+        print(f"Current scaled bound along Y is {final_scaled_bound_y}, while domain[1] is {domain[1]}")
+        if final_scaled_bound_y > domain[1]:
+            print(f"Applying fix by adding a layer of one voxel along Y-axis")
+            domain[1] += 1
+            print(f"After fix, domain[1] is updated to {domain[1]}")
+
 
     return (scale, shift, domain, bounding_box)
 
