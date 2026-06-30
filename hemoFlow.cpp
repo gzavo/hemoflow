@@ -633,6 +633,7 @@ int main(int argc, char *argv[])
         
         pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
+    /*
     else { // If not, then let's chek the initial state and do a warm up.
         pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
            
@@ -722,7 +723,7 @@ int main(int argc, char *argv[])
         // Set the counter back
         stat_cycle = 0;
     }
-    
+    */
     pcout << "Starting computation..." << endl;
 
     while(stat_cycle*sim.C_t <= simLength + sim.C_t)
