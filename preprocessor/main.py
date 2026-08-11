@@ -73,7 +73,7 @@ if __name__ == "__main__":
         print("Usage:", sys.argv[0], "input.config")
         sys.exit(-1)
 
-    cutWidth = 1 # Might need to set this to 2 if there is more than 1 padding layer for some reason
+    cutWidth = 1  # default wall layers to cut open at each boundary, overridden below if set in the config
     distance = 4  # default voxel distance tolerance, overridden below if set in the config
 
     confFile = sys.argv[1]
@@ -86,6 +86,11 @@ if __name__ == "__main__":
         distance = float(confData["distance"])
     except (KeyError, ValueError, TypeError):
         print("No valid 'distance' in config, using default:", distance)
+
+    try:
+        cutWidth = int(confData["cutWidth"])
+    except (KeyError, ValueError, TypeError):
+        print("No valid 'cutWidth' in config, using default:", cutWidth)
 
     # Cutlist meaning -> cut one layer from the planes:
     # 0,1 => Xmin, Xmax
