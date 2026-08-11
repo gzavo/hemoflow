@@ -22,9 +22,8 @@ SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 INHOMOGEN = False
 #############################
+import nrrd
 
-if DEBUG_MODE:
-    import nrrd
 
 def inRange(value, rangeValue, distance):
     if np.abs(rangeValue-value) < distance:
@@ -38,11 +37,11 @@ def inRange3D(value3D, rangeValue3D, distance):
     
     return isInRange
 
-def generateCutList(voxelDomainSize, radiusTangentVoxelList):
+def generateCutList(voxelDomainSize, radiusTangentVoxelList, distance=4):
     sidesToCut = np.zeros(6)
-    
-    # If centerline point is within this distance of the boundary it is considered an opening
-    distance = 4  # 4 voxel distance: note, cutting away unused layers might influence this!
+
+    # distance: if a centerline point is within this many voxels of the boundary
+    # it is considered an opening. Note: cutting away unused layers might influence this!
 
     if DEBUG_MODE:
             print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize)
@@ -75,13 +74,18 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     cutWidth = 1 # Might need to set this to 2 if there is more than 1 padding layer for some reason
-    distance = 4
+    distance = 4  # default voxel distance tolerance, overridden below if set in the config
 
     confFile = sys.argv[1]
     workDir = os.path.dirname(confFile)
 
     with open(confFile) as json_file:
         confData = json.load(json_file)
+
+    try:
+        distance = float(confData["distance"])
+    except (KeyError, ValueError, TypeError):
+        print("No valid 'distance' in config, using default:", distance)
 
     # Cutlist meaning -> cut one layer from the planes:
     # 0,1 => Xmin, Xmax
@@ -149,7 +153,7 @@ if __name__ == "__main__":
     print("translate", domainData[1])
     radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
 
-    cutList = generateCutList(domainData[2], radiusTangentVoxelList)
+    cutList = generateCutList(domainData[2], radiusTangentVoxelList, distance)
 
     print("Computed list of sides to cut away for openings:", cutList)
 
@@ -211,11 +215,10 @@ if __name__ == "__main__":
 
     openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
-    if DEBUG_MODE:
-        print("-> (DEBUG) Saving nrrd geometry flag")
-        nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
-        if len(openingIndex) != len(openingCenters):
-            print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
+    print("Saving nrrd geometry flag")
+    nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
+    if len(openingIndex) != len(openingCenters):
+        print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
 
     if haveStent:
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
