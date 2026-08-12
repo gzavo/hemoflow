@@ -4,6 +4,7 @@ import numpy as np
 import json
 import os
 import scipy.interpolate as scpinter
+from scipy.optimize import linear_sum_assignment
 import vtk
 import slice
 
@@ -18,6 +19,15 @@ from vtk.util import numpy_support
 #############################
 # Parameters to check before execution:
 SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
+
+# 'distance' tolerance (opening-detection voxel slack), in units of the opening's own
+# local radius. Always used (no longer configurable) instead of one flat voxel count,
+# since a flat count doesn't scale with vessel size/resolution: a value tuned for one
+# opening can be wrong by an order of magnitude for a smaller branch in the same geometry.
+# Keep this well under 1.0: at 1.0x, a large vessel's own tolerance can exceed its
+# distance to an unrelated domain face it just happens to sit near coordinate-wise,
+# spuriously flagging a face that isn't a real opening at all.
+DISTANCE_RADIUS_FACTOR = 0.5
 
 DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 INHOMOGEN = False
@@ -37,27 +47,28 @@ def inRange3D(value3D, rangeValue3D, distance):
     
     return isInRange
 
-def generateCutList(voxelDomainSize, radiusTangentVoxelList, distance=4):
+def generateCutList(voxelDomainSize, radiusTangentVoxelList, perOpeningDistance):
     sidesToCut = np.zeros(6)
 
-    # distance: if a centerline point is within this many voxels of the boundary
-    # it is considered an opening. Note: cutting away unused layers might influence this!
+    # perOpeningDistance: one tolerance per centerline point (voxels). If a point is
+    # within its own tolerance of a boundary, that side is considered an opening.
+    # Note: cutting away unused layers might influence this!
 
     if DEBUG_MODE:
             print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize)
-    
-    for o in radiusTangentVoxelList:
+
+    for o, distance in zip(radiusTangentVoxelList, perOpeningDistance):
         pos = o[1]
 
         if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> centerline point:", pos)
+            print("-> (DEBUG) generatin cutlist -> centerline point:", pos, "distance tolerance:", distance)
 
         for j in range(3):
             if inRange(pos[j], 0, distance):
                 sidesToCut[j*2]=1
             if inRange(pos[j], voxelDomainSize[j], distance):
                 sidesToCut[j*2+1]=1
-            
+
     return np.where(sidesToCut == 1)[0]
 
 def scaleAndShiftData(points, scale, shift):
@@ -73,8 +84,7 @@ if __name__ == "__main__":
         print("Usage:", sys.argv[0], "input.config")
         sys.exit(-1)
 
-    cutWidth = 1  # default wall layers to cut open at each boundary, overridden below if set in the config
-    distance = 4  # default voxel distance tolerance, overridden below if set in the config
+    cutWidth = 1  # wall layers to cut open at each boundary. No longer config-driven.
 
     confFile = sys.argv[1]
     workDir = os.path.dirname(confFile)
@@ -82,15 +92,12 @@ if __name__ == "__main__":
     with open(confFile) as json_file:
         confData = json.load(json_file)
 
-    try:
-        distance = float(confData["distance"])
-    except (KeyError, ValueError, TypeError):
-        print("No valid 'distance' in config, using default:", distance)
-
-    try:
-        cutWidth = int(confData["cutWidth"])
-    except (KeyError, ValueError, TypeError):
-        print("No valid 'cutWidth' in config, using default:", cutWidth)
+    # 'distance' (voxel opening-detection tolerance) and 'cutWidth' are no longer read from
+    # the config. 'distance' is always resolved per-opening below (once each opening's
+    # physical radius is known) as DISTANCE_RADIUS_FACTOR times that opening's own radius in
+    # voxels, instead of one flat default shared by every opening regardless of size.
+    print("Using radius-relative 'distance' default: {}x each opening's local radius".format(DISTANCE_RADIUS_FACTOR))
+    print("Using fixed 'cutWidth':", cutWidth)
 
     # Cutlist meaning -> cut one layer from the planes:
     # 0,1 => Xmin, Xmax
@@ -158,7 +165,12 @@ if __name__ == "__main__":
     print("translate", domainData[1])
     radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
 
-    cutList = generateCutList(domainData[2], radiusTangentVoxelList, distance)
+    voxScale = domainData[0][0]  # isotropic: same scale on all 3 axes
+    perOpeningDistance = [DISTANCE_RADIUS_FACTOR * rtv[0] * voxScale for rtv in radiusTangentVoxelList]
+
+    print("Per-opening distance tolerance [voxels]:", perOpeningDistance)
+
+    cutList = generateCutList(domainData[2], radiusTangentVoxelList, perOpeningDistance)
 
     print("Computed list of sides to cut away for openings:", cutList)
 
@@ -204,19 +216,40 @@ if __name__ == "__main__":
     # Radial ratio of outlets, note: Qinlet = 1, so it is not included
     r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
 
+    # Match each centerline point to its closest detected opening via a global optimal
+    # (Hungarian) assignment, instead of a distance-threshold scan. A threshold scan can
+    # silently drop a point that has no opening within 'distance' (leaving that opening
+    # unpainted, with no BC at all) while still passing the earlier length check, since
+    # that check only compares counts, not whether every point actually got matched.
+    # The Hungarian assignment always produces a full one-to-one pairing between the two
+    # equal-length lists, so no opening can be silently skipped.
+    costMatrix = np.zeros((len(radiusTangentVoxelList), len(openingCenters)))
     for ccCL in range(len(radiusTangentVoxelList)):
+        cCL = radiusTangentVoxelList[ccCL][1]
         for ccVox in range(len(openingCenters)):
             cVox = openingCenters[ccVox]
-            rCL = radiusTangentVoxelList[ccCL]
-            cCL = rCL[1]
+            costMatrix[ccCL, ccVox] = np.linalg.norm(np.array(cVox) - np.array((cCL[0], cCL[1], cCL[2])))
 
-            if inRange3D(cVox, (cCL[0], cCL[1], cCL[2]), distance) is True:
-                openingRadius.append(rCL[0]*SI_FACTOR)
-                openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
-                openingCenter.append(cVox)
-                openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
+    clMatchIdx, voxMatchIdx = linear_sum_assignment(costMatrix)
 
-                inlets_outlets_sorted.append(inlet_outlets[ccVox])
+    for ccCL, ccVox in zip(clMatchIdx, voxMatchIdx):
+        matchDistance = costMatrix[ccCL, ccVox]
+        matchTolerance = perOpeningDistance[ccCL]
+        if matchDistance > matchTolerance:
+            print("!!! ERROR: closest opening for centerline point is farther than the 'distance' tolerance!")
+            print("    Centerline point", ccCL, "at", radiusTangentVoxelList[ccCL][1], "radius", radiusTangentVoxelList[ccCL][0])
+            print("    Closest opening", ccVox, "at", openingCenters[ccVox], "distance", matchDistance, "> tolerance", matchTolerance)
+            sys.exit(-1)
+
+        rCL = radiusTangentVoxelList[ccCL]
+        cVox = openingCenters[ccVox]
+
+        openingRadius.append(rCL[0]*SI_FACTOR)
+        openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
+        openingCenter.append(cVox)
+        openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
+
+        inlets_outlets_sorted.append(inlet_outlets[ccVox])
 
     openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
