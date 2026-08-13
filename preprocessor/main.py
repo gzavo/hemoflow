@@ -27,7 +27,7 @@ SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 # Keep this well under 1.0: at 1.0x, a large vessel's own tolerance can exceed its
 # distance to an unrelated domain face it just happens to sit near coordinate-wise,
 # spuriously flagging a face that isn't a real opening at all.
-DISTANCE_RADIUS_FACTOR = 0.5
+DISTANCE_RADIUS_FACTOR = 0.9
 
 DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 INHOMOGEN = False

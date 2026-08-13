@@ -63,3 +63,4 @@ temp*/
 *_output.csv
 #testcase*/
 *.npz
+*.nrrd
