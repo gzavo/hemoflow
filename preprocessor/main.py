@@ -253,8 +253,6 @@ if __name__ == "__main__":
 
     openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
 
-    print("Saving nrrd geometry flag")
-    nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
     if len(openingIndex) != len(openingCenters):
         print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
 
@@ -344,6 +342,14 @@ if __name__ == "__main__":
             nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))
             nrrd.write(outputBaseName + "stent_linear.nrrd", voxel_linear_final.astype(np.single, copy=False))
             nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
+
+    if haveStent:
+        stentLabel = 17  # Hardcoded, visualization-only.
+        print("Marking stent voxels in geometry flag with label", stentLabel)
+        paintedOpenings[voxel_stent_final.astype(bool)] = stentLabel
+
+    print("Saving nrrd geometry flag")
+    nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
 
     print("\n### Saving final output ###")
     print("File:", outputBaseName + "c.npz")
