@@ -7,7 +7,7 @@
 
         <outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 
-        <simLength>0.8</simLength> <!-- [s] -->
+        <cycle>1</cycle> <!-- number of heart cycles to run; output is only written for the last cycle -->
 
         <saveFrequency>0.016</saveFrequency> <!-- [s] -->
 

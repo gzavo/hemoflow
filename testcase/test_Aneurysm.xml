@@ -2,7 +2,7 @@
 	<dt>1e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
 	<blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
 	<outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
-	<simLength>0.8</simLength> <!-- [s] -->
+	<cycle>1</cycle> <!-- number of heart cycles to run; output is only written for the last cycle -->
 	<saveFrequency>0.016</saveFrequency> <!-- [s] -->
 	<mode>aneurysm</mode>
 </simulation>

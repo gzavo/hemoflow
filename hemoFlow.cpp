@@ -42,12 +42,13 @@ SimPar sim;
 
 // Technical simulation parameters
 bool useCheckpoint = true;
-bool saveInitState = true;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
 string workingFolder;
 T simLength;
+int numCycles;
+T cyclePeriod;
 T saveFreqTime;
 T checkpointFreqTime;
 string mode;
@@ -268,7 +269,7 @@ int main(int argc, char *argv[])
 
         // Reading main simulation parameters
         xml["simulation"]["blockSize"].read(blockSize);
-        xml["simulation"]["simLength"].read(simLength);
+        xml["simulation"]["cycle"].read(numCycles);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
         
         // Check for optional checkpoint argument
@@ -551,8 +552,23 @@ int main(int argc, char *argv[])
 
         // Sanity check
         if(numOpenings != openings.size()) {
-            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl; 
+            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl;
         }
+
+        // Derive the cardiac cycle period from the first opening with a loaded waveform
+        cyclePeriod = -1.0;
+        for (auto &o : openings) {
+            if (o->getHasScaleFunction()) {
+                cyclePeriod = o->getPeriod();
+                break;
+            }
+        }
+        if (cyclePeriod <= 0.0) {
+            pcout << "ERROR: No opening with a timeScaleFunction was found; cannot derive a cardiac cycle period for <cycle>. Exiting..." << std::endl;
+            return -1;
+        }
+        simLength = numCycles * cyclePeriod;
+        pcout << "Cardiac cycle period: " << cyclePeriod << " s. Running " << numCycles << " cycles -> simLength = " << simLength << " s." << std::endl;
 
     }
     catch (PlbIOException& exception) {
@@ -576,8 +592,11 @@ int main(int argc, char *argv[])
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
     int checkpointFrequency = (int)round(checkpointFreqTime/sim.C_t);
-    
-    if(useCheckpoint)     
+
+    int lastCycleStartIter = (int)round((numCycles - 1) * cyclePeriod / sim.C_t);
+    pcout << "Writing output only from iteration " << lastCycleStartIter << " onward (last cycle)." << endl;
+
+    if(useCheckpoint)
         pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
     
     // Checkpoint file names relative to the output folder
@@ -633,96 +652,7 @@ int main(int argc, char *argv[])
         
         pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
-    else { // If not, then let's chek the initial state and do a warm up.
-        pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
-           
-        int convergenceSteps = 14*max(max(Nx, Ny), Nz);
-        int rampupInterval = convergenceSteps/2;
-        int debugSteps = 10;
 
-        T minDE = 1e-12; T dE = 100; T prevE = 0;
-    
-
-        T cE = computeAverageEnergy(*lattice);
-        if(isnan(cE)) {
-            pcout << "WARNING: Energy (velocity) is NaN! Please check the simulation setup! Exiting..." << endl;
-            return -1;
-        }
-
-        if (saveInitState)
-        {
-            pcout << "Energy at the initial state: " << cE << endl;
-            if (DEBUG)
-            {
-                pcout << "Saving initial state with flow diverter..." << endl;
-                writeVTK(*lattice, sim, -1*debugSteps, porosityField);
-                // writeHDF5(*lattice, sim, -1, outDir, porosityField);
-            }
-        }
-        pcout << "Ramping for " << rampupInterval << " iterations" << endl;
-        while (stat_cycle < rampupInterval)
-        {
-            for (auto &o : openings)
-            {
-                if (o->getOpeningType() == OPENING_VELOCITY || o->getOpeningType() == OPENING_MURRAY)
-                {
-
-                    o->progressWarmup(lattice, stat_cycle, rampupInterval);
-                }
-            }
-
-            lattice->collideAndStream();
-
-            T cE = computeAverageEnergy(*lattice);
-            dE = cE - prevE;
-            prevE = cE;
-
-            if (stat_cycle % 500 == 0)
-            {
-                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
-                if (DEBUG)
-                {
-                    writeVTK(*lattice, sim, -1 * debugSteps, porosityField);
-                    debugSteps++;
-                }
-            }
-
-            stat_cycle++;
-        }
-        pcout << "Ramping finished " << endl;
-
-        while (stat_cycle < convergenceSteps)
-        {
-            lattice->collideAndStream();
-
-            T cE = computeAverageEnergy(*lattice);
-            dE = cE - prevE;
-            prevE = cE;
-
-            if (stat_cycle % 500 == 0)
-            {
-                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps << "]" << std::endl;
-                if (DEBUG)
-                {
-                    writeVTK(*lattice, sim, -1 * debugSteps, porosityField);
-                    debugSteps++;
-                }
-            }
-
-            stat_cycle++;
-        }
-        pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-        pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
-    
-        pcout << "Saving time step 0..." << endl;
-        writeVTK(*lattice, sim, 0);
-        // writeNPZ(*lattice, 0);
-        //writeHDF5(*lattice, sim, 0, outDir);
-        
-        // Set the counter back
-        stat_cycle = 0;
-    }
-    
     pcout << "Starting computation..." << endl;
 
     while(stat_cycle*sim.C_t <= simLength + sim.C_t)
@@ -757,8 +687,8 @@ int main(int argc, char *argv[])
         // Advance time
         stat_cycle++;
 
-        // Save output 
-        if(stat_cycle % saveFrequency == 0) {
+        // Save output
+        if(stat_cycle >= lastCycleStartIter && stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
             writeVTK(*lattice, sim, stat_cycle);
             // writeNPZ(*lattice, sim, stat_cycle);
