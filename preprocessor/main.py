@@ -87,7 +87,7 @@ if __name__ == "__main__":
     cutWidth = 1  # wall layers to cut open at each boundary. No longer config-driven.
 
     confFile = sys.argv[1]
-    workDir = os.path.dirname(confFile)
+    workDir = os.path.dirname(os.path.abspath(confFile))
 
     with open(confFile) as json_file:
         confData = json.load(json_file)
@@ -114,11 +114,18 @@ if __name__ == "__main__":
         stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
 
         stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
+        haveStent = True
     elif (len(confData["stent_mesh_base"]) > 0):
         stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
-
-    if os.path.isfile(stentGeomFile):
         haveStent = True
+
+    # A non-empty 'stent_folder'/'stent_mesh_base' means the config explicitly asks for a
+    # stent. Silently falling back to "no stent" when that file is missing (e.g. a typo or
+    # a path-resolution bug) would produce a result without a flow diverter and no warning
+    # that anything was wrong, so treat a configured-but-missing stent file as fatal.
+    if haveStent and not os.path.isfile(stentGeomFile):
+        print("!!! ERROR: stent geometry file specified in config but not found:", stentGeomFile)
+        sys.exit(-1)
 
     stentGeomBase = stentGeomFile.replace('mesh.stl','')
 
