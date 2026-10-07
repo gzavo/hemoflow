@@ -7,7 +7,7 @@
 
         <outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 
-        <simLength>$t_end</simLength> <!-- [s] -->
+       	<cycle>2</cycle> <!-- number of heart cycles to run; output is only written for the last cycle -->
 
         <saveFrequency>$save_dt</saveFrequency> <!-- [s] -->
 

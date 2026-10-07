@@ -351,7 +351,7 @@ if __name__ == "__main__":
             nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
 
     if haveStent:
-        stentLabel = 17  # Hardcoded, visualization-only.
+        stentLabel = 20  # Hardcoded, visualization-only.
         print("Marking stent voxels in geometry flag with label", stentLabel)
         paintedOpenings[voxel_stent_final.astype(bool)] = stentLabel
 

@@ -27,10 +27,10 @@ def run_sensitivity_study(client_param):
     campaign = uq.Campaign(name="temp_aneurisk_sensitivity_", work_dir=work_dir)
 
     params = {
-        "u": {"type": "float", "default": 0.5},
-        "l": {"type": "integer", "default": 0},
-        "q": {"type": "integer", "default": 0},
-        "dt": {"type": "float", "default": 2e-5},
+        "u": {"type": "float", "default": 0.8},
+        "l": {"type": "integer", "default": 100},
+        "q": {"type": "integer", "default": 100},
+        "dt": {"type": "float", "default": 5e-6},
         "dx": {"type": "float", "default": 0.1},
         "elem": {"type": "integer", "default": int(5e4)},
         "save_dt": {"type": "float", "default": 0.016},  # default 0.016
