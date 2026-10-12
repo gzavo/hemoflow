@@ -405,8 +405,9 @@ int main(int argc, char *argv[])
             pcout << "No mode is defined, all BCs must be declared in XML." << std::endl;
             mode = "";
         }
+        pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
         // Loop through the openings following the xml config
-        if (mode == "aneurysm")
+        if (mode == "murray")
         {
             pcout << "Aneurysm boundary condition mode activated";
             for (unsigned int o = 0; o < numOpenings; o++)
@@ -484,6 +485,56 @@ int main(int argc, char *argv[])
                     opening->setBCType(lattice);
                     opening->setBCParameter(0, sim);
                     opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+            }
+        }
+        else if (mode == "pzero")
+        {
+            // Label 10 is the velocity inlet (parameters from the opening_0 xml tag),
+            // every other opening is a zero-pressure outlet.
+            pcout << "pzero boundary condition mode activated" << std::endl;
+            const int inletLabel = 10;
+            if (findIndex(oiData, numOpenings, inletLabel) == -1)
+                pcout << "ERROR: Inlet label " << inletLabel << " was not found in the geometry file!" << endl;
+
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                int label = oiData[o];
+                int s = openingNormal.shape[1];
+                vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+                pcout << "Processing opening: " << o << " (label " << label << ")" << std::endl;
+
+                if (label == inletLabel)
+                {
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(1), orData[o] / sim.C_l, dir);
+                    opening->setName("Velocity inlet");
+                    opening->setBCType(lattice);
+
+                    string parameterStr;
+                    double parameter = 0;
+                    xml["geometry"]["opening_0"]["parameter"].read(parameterStr);
+                    if (!parameterStr.empty())
+                        parameter = std::stod(parameterStr);
+                    opening->setBCParameter(parameter * 2, sim); //*2 because we are putting in avg velo not parabolic
+
+                    string flowrateFunc;
+                    xml["geometry"]["opening_0"]["timeScaleFunction"].read(flowrateFunc);
+                    if (!flowrateFunc.empty())
+                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                else
+                {
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(3), orData[o] / sim.C_l, dir);
+                    opening->setName("Pressure outlet " + std::to_string(label));
+                    opening->setBCType(lattice);
+                    opening->setBCParameter(0, sim);
+                    opening->createConstantPressureProfile();
                     opening->printOpeningDetails(sim);
                     openings.push_back(opening);
                 }
