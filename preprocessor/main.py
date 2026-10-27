@@ -12,6 +12,7 @@ from readCL import getOpeningsFromCenterline, convertToVoxelspace
 from voxelizeStl import voxelize
 from createFluidSolid import createWalls
 from detectOpenings import detectOpenings, paint_inlets_outlets
+from stentPorosity import coilSolidFraction, selectStentVoxels, SELECT_MODES
 from vtk.numpy_interface import dataset_adapter as dsa
 from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
 from vtk.util import numpy_support
@@ -128,6 +129,30 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     stentGeomBase = stentGeomFile.replace('mesh.stl','')
+
+    # Optional porosity mode (see stentPorosity.py): the coil's porosity N per voxel is
+    # measured on sub-voxels, and a fluid voxel becomes a coil voxel with probability 1 - N.
+    # Without "stent_porosity_subvoxels" every voxel the coil touches is a coil voxel, as before.
+    stentPorosityMode = haveStent and "stent_porosity_subvoxels" in confData
+    if stentPorosityMode:
+        stentPorositySubvoxels = int(confData["stent_porosity_subvoxels"])
+        stentPorositySeed = int(confData.get("stent_porosity_seed", 0))
+        # Which voxels become coil voxels: "draw" (probability 1 - N, the default),
+        # "threshold" (solid fraction >= stent_porosity_threshold) or "touched" (solid fraction > 0).
+        stentSelectMode = confData.get("stent_porosity_mode", "draw")
+        stentSelectThreshold = float(confData.get("stent_porosity_threshold", 0.5))
+        if stentSelectMode not in SELECT_MODES:
+            print("!!! ERROR: stent_porosity_mode must be one of", SELECT_MODES, "got:", stentSelectMode)
+            sys.exit(1)
+        # "stent_as_wall": coil voxels become wall (label 1, bounce-back) instead of porous voxels.
+        stentAsWall = str(confData.get("stent_as_wall", "0")).lower() in ("1", "true", "yes")
+        print("Stent porosity mode: {} sub-voxels per voxel edge, selection '{}', random seed {}, threshold {}, as wall: {}".format(
+            stentPorositySubvoxels, stentSelectMode, stentPorositySeed, stentSelectThreshold, stentAsWall))
+    elif haveStent and "stent_as_wall" in confData:
+        print("!!! ERROR: stent_as_wall needs porosity mode (stent_porosity_subvoxels)")
+        sys.exit(1)
+    else:
+        stentAsWall = False
 
     centerLineFile = workDir + "/" + confData["centerline_vtp"]
 
@@ -263,7 +288,11 @@ if __name__ == "__main__":
     if len(openingIndex) != len(openingCenters):
         print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
 
-    if haveStent:
+    if haveStent and stentPorosityMode:
+        print("\n### Measuring the coil's solid volume fraction on sub-voxels ###")
+        # Kept as a fraction (0..1) through the cutting below; drawn into 0/1 afterwards.
+        sdomain_full = coilSolidFraction(stentGeomFile, domainData, voxelVol.shape, stentPorositySubvoxels)
+    elif haveStent:
         print("\n### Voxelizing flow diverter geometry from 3 projections ###")
         print("-> Voxelizing flow diverter geometry projection #1")
         voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData)
@@ -274,8 +303,11 @@ if __name__ == "__main__":
         print("-> Voxelizing flow diverter geometry projection #3")
         voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1)
 
+        sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
+
+    if haveStent:
         print("Starting stent interpolation")
-        xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
+        xg, yg, zg = np.mgrid[0:voxelVol.shape[0], 0:voxelVol.shape[1], 0:voxelVol.shape[2]]
 
         stentVoxelLinearInterpolate=1
         stentVoxelQuadraticInterpolate=1
@@ -299,8 +331,6 @@ if __name__ == "__main__":
         elif (INHOMOGEN):
             print("INHOMOGEN resistance values not found!")
 
-        print("-> Merging projections")
-        sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
         linear = stentVoxelLinearInterpolate*sdomain_full
         quadratic = stentVoxelQuadraticInterpolate*sdomain_full
 
@@ -339,6 +369,15 @@ if __name__ == "__main__":
         voxel_linear_final = linear_full
         voxel_quadratic_final = quadratic_full
 
+        if stentPorosityMode:
+            print("\n### Choosing coil voxels ('%s'), fluid voxels only ###" % stentSelectMode)
+            voxel_porosity_final = 1.0 - sdomain_full
+            voxel_stent_final = selectStentVoxels(sdomain_full, paintedOpenings, stentSelectMode,
+                                                  stentPorositySeed, stentSelectThreshold)
+            voxel_linear_final = voxel_stent_final
+            voxel_quadratic_final = voxel_stent_final
+            nrrd.write(outputBaseName + "stent_porosity.nrrd", voxel_porosity_final.astype(np.single, copy=False))
+
         print("Min and max of linear coefficients:", np.nanmin(voxel_linear_final), np.nanmax(voxel_linear_final))
         print("Min and max of quadratic coefficients:", np.nanmin(voxel_quadratic_final), np.nanmax(voxel_quadratic_final))
 
@@ -350,7 +389,11 @@ if __name__ == "__main__":
             nrrd.write(outputBaseName + "stent_linear.nrrd", voxel_linear_final.astype(np.single, copy=False))
             nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
 
-    if haveStent:
+    if stentAsWall:
+        # Solid coil: wall voxels (bounce-back in the solver) and no porous arrays in the .npz.
+        print("Marking", np.count_nonzero(voxel_stent_final), "coil voxels as wall (label 1)")
+        paintedOpenings[voxel_stent_final.astype(bool)] = 1
+    elif haveStent:
         stentLabel = 20  # Hardcoded, visualization-only.
         print("Marking stent voxels in geometry flag with label", stentLabel)
         paintedOpenings[voxel_stent_final.astype(bool)] = stentLabel
@@ -362,7 +405,7 @@ if __name__ == "__main__":
     print("File:", outputBaseName + "c.npz")
 
     # np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
-    if haveStent:
+    if haveStent and not stentAsWall:
         np.savez_compressed(
             outputBaseName + "c.npz",
             geometryFlag=paintedOpenings,

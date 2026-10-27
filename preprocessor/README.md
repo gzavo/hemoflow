@@ -43,3 +43,30 @@ After cloning the directory use miniconda to create the required environment (ru
 - 10 inlet (velocity)
 - 11 outlet 1 (pressure)
 - 12... other outlets (velocity)
+
+## Coil porosity mode (optional)
+
+With a coil/stent STL configured (`stent_mesh_base`), two extra config keys switch on porosity mode:
+
+    "stent_porosity_subvoxels" : "5",   sub-voxels per voxel edge used to measure the coil
+    "stent_porosity_seed" : "0",        random seed (default 0), so the draw is reproducible
+
+The coil STL (must be watertight) is voxelized on a grid `stent_porosity_subvoxels` times finer than
+the CFD grid; the share of sub-voxels inside the coil is the solid fraction of each voxel, and its
+porosity is N = 1 - that. A fluid voxel then becomes a coil voxel (`stent` = 1, label 20) with
+probability 1 - N. Wall and opening voxels are never changed. Use an odd number of sub-voxels: the
+sub-voxels are then exactly centred on each voxel. The porosity is also written to
+`<output_base_name>stent_porosity.nrrd`. See `stentPorosity.py`.
+
+Three more keys (porosity mode only) choose other coil models from the same solid fraction:
+
+    "stent_porosity_mode" : "draw",       draw (default): probability 1 - N
+                                          threshold: solid fraction >= stent_porosity_threshold
+                                          touched: solid fraction > 0, every voxel the wire reaches
+    "stent_porosity_threshold" : "0.5",   used by "threshold" (default 0.5)
+    "stent_as_wall" : "1",                coil voxels become wall (label 1, bounce-back) instead of
+                                          porous voxels; the .npz then has no stent arrays
+
+All modes only change fluid voxels.
+
+Without these keys every voxel the coil surface touches is a coil voxel, as before.
