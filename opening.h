@@ -35,7 +35,9 @@ public:
     bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
     T getProfileVelSum();
     T getFlowRate(SimPar s);
-    T getScaledFlowRate();
+    T getScaledFlowRate(SimPar s);
+    bool getHasScaleFunction() const { return hasScaleFunction; }
+    T getPeriod() const { return hasScaleFunction ? scaleTime.back() : -1.0; }
     T getRadius() const { return R; }
     T getArea() const { return nodes.size(); }
     vec3d getCenter() { return center; }

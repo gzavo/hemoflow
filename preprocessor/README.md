@@ -19,12 +19,12 @@ Cutlist meaning -> cut one layer from the planes:
     # 2,3 => Ymin, Ymax
     # 4,5 => Zmin, Zmax
 
-### Dependencies
+## Installation
+After cloning the directory use miniconda to create the required environment (run in repository directory):
 
-Tested with Anaconda and Python 3.7
+    conda env create -f environment.yml
+    conda activate lbmpre
 
-- pynrrd (PIP/conda-forge)
-- numpy-stl (PIP/conda-forge)
 
 ### Known problems
 
@@ -43,4 +43,3 @@ Tested with Anaconda and Python 3.7
 - 10 inlet (velocity)
 - 11 outlet 1 (pressure)
 - 12... other outlets (velocity)
-

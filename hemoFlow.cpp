@@ -17,6 +17,8 @@ using namespace std;
 
 
 /* ********** GLOBAL VARIABLES ************/
+bool DEBUG = false;
+bool CHECKPOINTING = false;
 
 // Domain size
 int Nx=0;
@@ -40,14 +42,16 @@ SimPar sim;
 
 // Technical simulation parameters
 bool useCheckpoint = true;
-bool saveInitState = true;
 int blockSize;
 int envelopeWidth = 1;
 string outputFolder;
 string workingFolder;
 T simLength;
+int numCycles;
+T cyclePeriod;
 T saveFreqTime;
 T checkpointFreqTime;
+string mode;
 
 // Vector of openings
 vector<OpeningHandler*> openings;
@@ -100,7 +104,10 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
     sim.C_m = sim.C_r * sim.C_l * sim.C_l * sim.C_l;
 
     // TODO: convert linCoeff and quadCoeff
-    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ]
+    //!!!!NOTE it is multiplied with one lattice lenght unit
+    //https://youtu.be/sOQMXxoKFQM?t=1168
+    
+    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ] 
     quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
 
     // TODO: add sanity check on parameters here
@@ -118,10 +125,10 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
 }
 
 // Progress timer for the openings and impose BC values
-void imposeOpenings(T dt)
+void imposeOpenings(T dt, SimPar &sim)
 {
     T murrayExponent = 3.0;
-    T murrayOutletTotalRadii = 0.0;
+    T murrayOutletTotalDiamt = 0.0;
     T sumInflowRate = 0.0;
 
     // Phase I - Defined BCs
@@ -134,11 +141,11 @@ void imposeOpenings(T dt)
         { // All non-Murray velocity BCs
 
             o->progressTime(lattice, dt);
-            sumInflowRate += o->getScaledFlowRate();
+            sumInflowRate += o->getScaledFlowRate(sim); //LBM units
         }
         else
         {
-            murrayOutletTotalRadii += pow(o->getRadius()*2, murrayExponent); // LBM units with Murray exponent
+            murrayOutletTotalDiamt += pow(o->getRadius() * 2, murrayExponent); // LBM units with Murray exponent
         }
     }
 
@@ -150,15 +157,26 @@ void imposeOpenings(T dt)
     {
         if (o->getOpeningType() == OPENING_MURRAY)
         {
-            T flowRate = -1 * (pow(o->getRadius()*2, murrayExponent) / murrayOutletTotalRadii) * sumInflowRate; //-1 cause it is an outlet
-            T murrayVelocity = flowRate / (pow(o->getRadius(), 2)*3.14); // Q/A
+            T diameter = o->getRadius() * 2; //LBM units
+            T area = pow(o->getRadius(), 2) * 3.14; //LBM units
+            T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet, LBM units
+            T murrayVelocity = flowRate / area;                                                          // v=Q/A
             // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
             // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
-            T profileFlowRate = 0.5;
-            o->setBCParameter(murrayVelocity / profileFlowRate);
+            T profileFlowRate = 0.5; 
+            o->setBCParameter(murrayVelocity / profileFlowRate); //LBM units VFR correction factor for voxeled circle outlets? (0.95)
             o->progressTime(lattice, dt);
         }
     }
+}
+
+void print_help()
+{
+    std::cout << "Usage: ./hemoFlow ./input.xml ./checkpoint [OPTIONS]" << endl
+              << "Options:" << endl
+              << "  -d, --debug         Enable debug mode" << endl
+              << "  -c, --checkpoint    Enable checkpointing" << endl
+              << "  -h, --help          Show this help message" << endl;
 }
 
 // *** Main simulation entry point
@@ -171,10 +189,38 @@ int main(int argc, char *argv[])
             << "********************************* " << endl;
 
     // *** Reading in command line arguments
-    if(global::argc() < 2) {
-        pcout << "Not enough arguments; the syntax is: "
-              << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
+    if (global::argc() < 2)
+    {
+        pcout << "Not enough arguments" << endl;
+        print_help();
         return -1;
+    }
+
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+
+        if (arg == "-h" || arg == "--help")
+        {
+            print_help();
+            return 0;
+        }
+        else if (arg == "-d" || arg == "--debug")
+        {
+            DEBUG = true;
+            pcout << "Debug mode enabled" << endl;
+        }
+        else if (arg == "-c" || arg == "--checkpoint")
+        {
+            CHECKPOINTING = true;
+            pcout << "Checkpointing enabled" << endl;
+        }
+        else
+        {
+            std::cout << "Unknown argument: " << arg << "\n";
+            print_help();
+            return 1;
+        }
     }
 
     // Reading in the config file name
@@ -186,24 +232,6 @@ int main(int argc, char *argv[])
         pcout << "Wrong input XML; the syntax is: "
               << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
         return -1;
-    }
-    
-    // Check if we have the checkpoint flag
-    string checkpointFlag;
-    bool isCheckpointed = false;
-    if(global::argc() > 2) {
-        try {
-            global::argv(2).read(checkpointFlag);
-            if(checkpointFlag.compare("-r")==0) {
-                isCheckpointed = true;
-                pcout << std::endl << "Restart from checkpoint is requested! The checkpoint data will be loaded after the geometry setup." << std::endl << std::endl;
-            }
-            else
-                pcout << "Unknown command line argument: " << checkpointFlag << std::endl;
-        }
-        catch (PlbIOException& exception) {
-            // No flag, nothing to do
-        }
     }
 
     string outDir; // Output directory
@@ -241,7 +269,7 @@ int main(int argc, char *argv[])
 
         // Reading main simulation parameters
         xml["simulation"]["blockSize"].read(blockSize);
-        xml["simulation"]["simLength"].read(simLength);
+        xml["simulation"]["cycle"].read(numCycles);
         xml["simulation"]["saveFrequency"].read(saveFreqTime);
         
         // Check for optional checkpoint argument
@@ -368,63 +396,230 @@ int main(int argc, char *argv[])
             pcout << oiData[o] << " ";
         pcout << endl;
 
-        // Loop through the openings following the xml config
-        for(unsigned int o=0; o < numOpenings; o++){
-            pcout << "Processing opening: " << o << std::endl;
-            
-            string xmlTagOpening = "opening_"+std::to_string(o);
-     
-            string name;    xml["geometry"][xmlTagOpening]["name"].read(name);
-            int type;       xml["geometry"][xmlTagOpening]["type"].read(type);
-            int label;      xml["geometry"][xmlTagOpening]["label"].read(label);
-
-            int openingIdx = findIndex(oiData, numOpenings, label);    
-            if(openingIdx == -1) 
-                pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
-
-            // Get the direction of the opening 
-            int s = openingNormal.shape[1];
-            vec3d dir(onData[gT2D(s,openingIdx,0)], onData[gT2D(s,openingIdx,1)], onData[gT2D(s,openingIdx,2)]);
-
-            // Create the opening
-            auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
-            
-            opening->setName(name);
-            opening->setBCType(lattice);
-
-            string parameterStr; 
-            double parameter;
-            xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
-            if(!parameterStr.empty())
-                parameter = std::stod(parameterStr);
-
-            opening->setBCParameter(parameter, sim);
-
-            // Load scale function (fileName from XML)
-            string flowrateFunc;
-            xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
-            if(!flowrateFunc.empty())
-                opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
-            // Set profile
-            if(type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW){
-                opening->createPoiseauilleProfile();    // Normalized to max_vel = 1.0 (LBM units)
-                // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
-            } 
-            else if(type == OPENING_PRESSURE) {
-                opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
-            }
-
-            opening->printOpeningDetails(sim);
-                
-            openings.push_back(opening);
-
+        try
+        {
+            xml["simulation"]["mode"].read(mode);
         }
+        catch (PlbIOException &exception)
+        {
+            pcout << "No mode is defined, all BCs must be declared in XML." << std::endl;
+            mode = "";
+        }
+        pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
+        // Loop through the openings following the xml config
+        if (mode == "murray")
+        {
+            pcout << "Aneurysm boundary condition mode activated";
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                if (o == 0)
+                {
+                    int label = oiData[o];
+                    int type_velocity = 1;
+                    pcout << "Processing opening: " << o << std::endl;
+
+                    string xmlTagOpening = "opening_" + std::to_string(o);
+
+                    // Get the direction of the opening
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_velocity), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Velocity inlet");
+                    opening->setBCType(lattice);
+
+                    string parameterStr;
+                    double parameter = 0;
+                    xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
+                    if (!parameterStr.empty())
+                        parameter = std::stod(parameterStr);
+                    
+                    //*2 because we are putting in avg velo not parabolic
+                    opening->setBCParameter(parameter*2, sim);
+
+                    // Load scale function (fileName from XML)
+                    string flowrateFunc;
+                    xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
+                    if (!flowrateFunc.empty())
+                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                    // Set profile
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                //TODO: be consistent in opening labeling (area descending?->smallest is pressure)
+                else if (o == numOpenings - 1)
+                {
+                    int label = oiData[o];
+                    int type_pressure = 3;
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_pressure), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Pressure outlet");
+                    opening->setBCType(lattice);
+                    opening->setBCParameter(0, sim);
+                    opening->createConstantPressureProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                else
+                {
+                    int label = oiData[o];
+                    int type_murray = 2;
+                    string xmlTagOpening = "opening_" + std::to_string(o);
+
+                    pcout << "Processing opening: " << o << std::endl;
+                    // Get the direction of the opening
+                    int s = openingNormal.shape[1];
+                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+
+                    // Create the opening
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_murray), orData[o] / sim.C_l, dir);
+
+                    opening->setName("Murray outlet");
+                    opening->setBCType(lattice);
+                    opening->setBCParameter(0, sim);
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+            }
+        }
+        else if (mode == "pzero")
+        {
+            // Label 10 is the velocity inlet (parameters from the opening_0 xml tag),
+            // every other opening is a zero-pressure outlet.
+            pcout << "pzero boundary condition mode activated" << std::endl;
+            const int inletLabel = 10;
+            if (findIndex(oiData, numOpenings, inletLabel) == -1)
+                pcout << "ERROR: Inlet label " << inletLabel << " was not found in the geometry file!" << endl;
+
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                int label = oiData[o];
+                int s = openingNormal.shape[1];
+                vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+                pcout << "Processing opening: " << o << " (label " << label << ")" << std::endl;
+
+                if (label == inletLabel)
+                {
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(1), orData[o] / sim.C_l, dir);
+                    opening->setName("Velocity inlet");
+                    opening->setBCType(lattice);
+
+                    string parameterStr;
+                    double parameter = 0;
+                    xml["geometry"]["opening_0"]["parameter"].read(parameterStr);
+                    if (!parameterStr.empty())
+                        parameter = std::stod(parameterStr);
+                    opening->setBCParameter(parameter * 2, sim); //*2 because we are putting in avg velo not parabolic
+
+                    string flowrateFunc;
+                    xml["geometry"]["opening_0"]["timeScaleFunction"].read(flowrateFunc);
+                    if (!flowrateFunc.empty())
+                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                    opening->createPoiseauilleProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+                else
+                {
+                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(3), orData[o] / sim.C_l, dir);
+                    opening->setName("Pressure outlet " + std::to_string(label));
+                    opening->setBCType(lattice);
+                    opening->setBCParameter(0, sim);
+                    opening->createConstantPressureProfile();
+                    opening->printOpeningDetails(sim);
+                    openings.push_back(opening);
+                }
+            }
+        }
+        else
+        {
+            for (unsigned int o = 0; o < numOpenings; o++)
+            {
+                pcout << "Processing opening: " << o << std::endl;
+
+                string xmlTagOpening = "opening_" + std::to_string(o);
+
+                string name;
+                xml["geometry"][xmlTagOpening]["name"].read(name);
+                int type;
+                xml["geometry"][xmlTagOpening]["type"].read(type);
+                int label;
+                xml["geometry"][xmlTagOpening]["label"].read(label);
+
+                int openingIdx = findIndex(oiData, numOpenings, label);
+                if (openingIdx == -1)
+                    pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
+
+                // Get the direction of the opening
+                int s = openingNormal.shape[1];
+                vec3d dir(onData[gT2D(s, openingIdx, 0)], onData[gT2D(s, openingIdx, 1)], onData[gT2D(s, openingIdx, 2)]);
+
+                // Create the opening
+                auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
+
+                opening->setName(name);
+                opening->setBCType(lattice);
+
+                string parameterStr;
+                double parameter = 0;
+                xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
+                if (!parameterStr.empty())
+                    parameter = std::stod(parameterStr);
+
+                opening->setBCParameter(parameter, sim);
+
+                // Load scale function (fileName from XML)
+                string flowrateFunc;
+                xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
+                if (!flowrateFunc.empty())
+                    opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
+
+                // Set profile
+                if (type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW)
+                {
+                    opening->setBCParameter(parameter*2, sim); //*2 because we are putting in avg velo not parabolic
+                    opening->createPoiseauilleProfile(); // Normalized to max_vel = 1.0 (LBM units)
+                    // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
+                }
+                else if (type == OPENING_PRESSURE)
+                {
+                    opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
+                }
+
+                opening->printOpeningDetails(sim);
+
+                openings.push_back(opening);
+            }
+    }
 
         // Sanity check
         if(numOpenings != openings.size()) {
-            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl; 
+            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl;
         }
+
+        // Derive the cardiac cycle period from the first opening with a loaded waveform
+        cyclePeriod = -1.0;
+        for (auto &o : openings) {
+            if (o->getHasScaleFunction()) {
+                cyclePeriod = o->getPeriod();
+                break;
+            }
+        }
+        if (cyclePeriod <= 0.0) {
+            pcout << "ERROR: No opening with a timeScaleFunction was found; cannot derive a cardiac cycle period for <cycle>. Exiting..." << std::endl;
+            return -1;
+        }
+        simLength = numCycles * cyclePeriod;
+        pcout << "Cardiac cycle period: " << cyclePeriod << " s. Running " << numCycles << " cycles -> simLength = " << simLength << " s." << std::endl;
 
     }
     catch (PlbIOException& exception) {
@@ -448,8 +643,11 @@ int main(int argc, char *argv[])
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
     int checkpointFrequency = (int)round(checkpointFreqTime/sim.C_t);
-    
-    if(useCheckpoint)     
+
+    int lastCycleStartIter = (int)round((numCycles - 1) * cyclePeriod / sim.C_t);
+    pcout << "Writing output only from iteration " << lastCycleStartIter << " onward (last cycle)." << endl;
+
+    if(useCheckpoint)
         pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
     
     // Checkpoint file names relative to the output folder
@@ -479,13 +677,13 @@ int main(int argc, char *argv[])
     lattice->initialize();
 
     // Set all the boundaries in the initialized lattice
-    imposeOpenings(0.0);
+    imposeOpenings(0.0,sim);
 
     // iteration counter
     int stat_cycle = 0;
     
     // Check if the simulation was checkpointed
-    if(isCheckpointed) {
+    if(CHECKPOINTING) {
         pcout << endl << "*********** Restoring checkpoint ***********" << endl;
         
         // Load in the iteration counter
@@ -505,53 +703,7 @@ int main(int argc, char *argv[])
         
         pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
     }
-    else { // If not, then let's chek the initial state and do a warm up.
-        pcout << endl << "*********** Entering stationary warmup phase ***********" << endl;
-           
-        int convergenceSteps = 10*max(max(Nx, Ny), Nz);
-        T minDE = 1e-11; T dE = 100; T prevE = 0;
-    
-        // imposeOpenings(0.0);
 
-        T cE = computeAverageEnergy(*lattice);
-        if(isnan(cE)) {
-            pcout << "WARNING: Energy (velocity) is NaN! Please check the simulation setup! Exiting..." << endl;
-            return -1;
-        }
-
-        if(saveInitState) {
-            pcout << "Energy at the initial state: "<< cE << endl;
-            pcout << "Saving initial state with flow diverter..." << endl;
-            // writeVTK(*lattice, sim, -1, porosityField);
-            writeHDF5(*lattice, sim, -1, outDir, porosityField);
-        }
-
-        while(abs(dE) > minDE && stat_cycle < convergenceSteps )
-        {
-            lattice->collideAndStream();
-    
-            T cE = computeAverageEnergy(*lattice);
-            dE = cE - prevE; prevE = cE;
-    
-            if(stat_cycle % 500 == 0) {
-                pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-            }
-            
-            stat_cycle++;
-        }
-        pcout << "Delta energy: " << abs(dE) << "/" << minDE << "  Cycle: [" << stat_cycle << "/" << convergenceSteps <<"]" << std::endl;
-    
-        pcout << endl << "*********** Entering transient simulation phase ***********" << endl;
-    
-        pcout << "Saving time step 0..." << endl;
-        // writeVTK(*lattice, 0);
-        // writeNPZ(*lattice, 0);
-        writeHDF5(*lattice, sim, 0, outDir);
-        
-        // Set the counter back
-        stat_cycle = 0;
-    }
-    
     pcout << "Starting computation..." << endl;
 
     while(stat_cycle*sim.C_t <= simLength + sim.C_t)
@@ -564,17 +716,21 @@ int main(int argc, char *argv[])
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
-                writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
+                writeVTK(*lattice, sim, stat_cycle);
+                //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
                 return 0;
             }
             for (auto &o : openings)
             {
-                pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate() << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+                if (DEBUG)
+                {
+                    pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate(sim) << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+                }
             }
         }
 
         // Impose boundary conditions with dt progress in time
-        imposeOpenings(sim.C_t);
+        imposeOpenings(sim.C_t,sim);
 
         // Calculate next step
         lattice->collideAndStream();
@@ -582,12 +738,12 @@ int main(int argc, char *argv[])
         // Advance time
         stat_cycle++;
 
-        // Save output 
-        if(stat_cycle % saveFrequency == 0) {
+        // Save output
+        if(stat_cycle >= lastCycleStartIter && stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
-            // writeVTK(*lattice, sim, stat_cycle);
+            writeVTK(*lattice, sim, stat_cycle);
             // writeNPZ(*lattice, sim, stat_cycle);
-            writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
+            //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
         }
         
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {

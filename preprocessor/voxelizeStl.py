@@ -9,11 +9,11 @@ from util import padVoxelArray
 
 from stl import mesh
 
-def voxelize(inputFile, targetElements, isMeshAShell = False, domainData = None, rotation =-1):
+def voxelize(inputFile, targetElements, isMeshAShell = False, domainData = None, rotation =-1, target_dx=None):
     mesh = list(import_stl_file(inputFile))
 
     if domainData is None:
-        scale, shift, domain, bounding_box = slice.calculateScaleAndShift(mesh, targetElements)
+        scale, shift, domain, bounding_box = slice.calculateScaleAndShift(mesh, targetElements, target_dx=target_dx)
     else:
         scale, shift, domain, bounding_box = domainData
 

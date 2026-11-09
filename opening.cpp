@@ -123,9 +123,9 @@ T OpeningHandler::getFlowRate(SimPar s)
 }
 
 // Get the current flowrate on a defined velocity boundary
-T OpeningHandler::getScaledFlowRate()
+T OpeningHandler::getScaledFlowRate(SimPar s)
 {
-    return bcParameter * 0.5 * getArea() * cScale;
+    return bcParameter * 0.5 * pow(getRadius(), 2) * 3.14 * cScale; // * s.C_l * s.C_l * s.C_l / s.C_t;
 }
 
 // Scale the flow velocity array
@@ -352,18 +352,20 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T
         int len = scaleTime.size();
 
         cTimeVal += dt;
-        if(scaleTime[cTimePos] < cTimeVal)  // TODO : We might need to skip some positions if simulation dt is too large. (With LBM, heck no....)
+
+        // Wrap fully into range first: scaleTime[len-1] is the period boundary,
+        // so once cTimeVal reaches it we drop a full period and restart the
+        // segment pointer at the beginning of the waveform.
+        while (cTimeVal >= scaleTime[len-1]) {
+            cTimeVal -= scaleTime[len-1];
+            cTimePos = 0;
+        }
+        // Advance the segment pointer, never letting cTimePos+1 exceed len-1
+        // (avoids the out-of-bounds read that used to happen at cTimePos==len-1).
+        while (cTimePos < len-2 && scaleTime[cTimePos+1] < cTimeVal)  // TODO : We might need to skip some positions if simulation dt is too large. (With LBM, heck no....)
             cTimePos++;
 
-        if (cTimePos > len-1) {
-            cTimePos = 0;
-            cTimeVal -= scaleTime[len-1];
-        }
-
-        if(cTimePos < len-1)
-            cScale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos+1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos+1]);
-        else
-            cScale = interpolate(scaleTime[cTimePos], scaleTime[0], cTimeVal, scaleSignal[cTimePos], scaleSignal[0]);
+        cScale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos+1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos+1]);
     }
 
     // Apply the previously defined profile scaled with 'parameter' and the scale function if it exists.

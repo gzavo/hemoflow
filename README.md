@@ -8,6 +8,7 @@ The code supports MPI execution and sparse domain decomposition.
 All input parameters should be either SI or non-dimensional!
 
 # Setup
+## Solver
 The code builds on the Palabos open-source code. If not present, copy it to the 'palabos' directory, or use the 'setup.sh' script to clone it from the repository.
 Afterwards use CMake to build the executable, e.g.:
 
@@ -18,6 +19,13 @@ cmake ..
 make -j 4
 ```
 
+## Voxelization
+The voxelization code runs on python, the environment can be set up using conda:
+```bash
+conda env create -f preprocessor/environment.yml
+conda activate lbmpre
+```
+## Troubleshooting
 ### HDF5 problems on Ubuntu
 HighFive requires 1.13+ parallel HDF5 version which is not available from apt-get (yet).
 Can be compiled manually using
@@ -37,6 +45,14 @@ When compiling hemoflow cmake needs help to find our custom HDF5:
 cmake -DHDF5_ROOT=/opt/hdf5 ..
 make -j 4
 ```
+### Compilation on newer systems
+
+Newer compilers can throw an error, which can be disabled in the CmakeLists adding
+
+    -Wno-error=template-body
+
+to the flags
+
 
 ## Shortcomings
 - Openings must be on the axis aligned (AA) bounding box border for now to make geometry preparation automatic.
@@ -47,6 +63,7 @@ make -j 4
 - [X] New outlet pressure distribution based on Murray-law
 - [X] Pass the angle of the openings based on centerline calculations (new ID / opening, every centerline goes from the inlet to an opening)
 - [X] Calculate proper axis aligned Pouseuille profile even if the boundary is not perpendicular.
+- [] Bump up preprocessor to python 3.12 and corresponding numpy.
 - [] Validate and verify
 
 

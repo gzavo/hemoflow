@@ -90,6 +90,8 @@ def getOpeningsFromCenterline(fileName):
         # print(r1, pArray[0], v1)
         # print(r2, pArray[-1], v2)
         
+    rTanData.sort(key=lambda rTanData: rTanData[0],reverse=True)
+
     return rTanData
 
 
