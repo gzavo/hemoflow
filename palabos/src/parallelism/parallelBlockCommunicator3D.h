@@ -116,6 +116,9 @@ private:
     void communicate(
         CommunicationPattern3D &communication, MultiBlock3D const &originMultiBlock,
         MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const;
+    void communicateRaw(
+        CommunicationPattern3D &communication, MultiBlock3D const &originMultiBlock,
+        MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const;
 
 private:
     mutable bool overlapsModified;

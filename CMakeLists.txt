@@ -11,10 +11,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-# HighFive (HDF5 output) requires C++14. A higher standard can be requested
-# with -DCMAKE_CXX_STANDARD=17.
+# Palabos (upstream master after 2.3.0) is written for C++20; its accelerated
+# lattice headers, included by palabos3D.h, use C++17 parallel algorithms.
 if(NOT DEFINED CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 14)
+    set(CMAKE_CXX_STANDARD 20)
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -89,7 +89,8 @@ target_compile_options(palabos PRIVATE ${HEMOFLOW_WARNING_FLAGS})
 target_compile_definitions(palabos PUBLIC $<$<CONFIG:Debug>:PLB_DEBUG>)
 
 if(ENABLE_MPI)
-    target_compile_definitions(palabos PUBLIC PLB_MPI_PARALLEL)
+    # Skip the deprecated MPI C++ bindings (as upstream Palabos does)
+    target_compile_definitions(palabos PUBLIC PLB_MPI_PARALLEL OMPI_SKIP_MPICXX MPICH_SKIP_MPICXX)
     target_link_libraries(palabos PUBLIC MPI::MPI_CXX)
 endif()
 if(WIN32 OR CYGWIN)

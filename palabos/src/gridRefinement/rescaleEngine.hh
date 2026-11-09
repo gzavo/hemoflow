@@ -96,7 +96,7 @@ void ConvectiveNoForceRescaler<T, Descriptor>::rescale(
     T prefactor = relFreq[0] / resRelFreq[0] * xDt;
     for (plint iPop = 0; iPop
                          < ((rawData.size() - Descriptor<T>::ExternalField::numScalars)
-                            - ((T)1 + Descriptor<T>::d));
+                            - ((T)1 + (int)Descriptor<T>::d));
          ++iPop)
     {
         rawData[1 + Descriptor<T>::d + iPop] *= prefactor;

@@ -51,7 +51,16 @@ struct CommunicationInfo3D {
     plint toBlockId;
     int toProcessId;
     Box3D toDomain;
+    plint to_nx, to_ny, to_nz;
+    mutable char *buffer = nullptr;
+    mutable plint bufferSize = 0;
+    mutable char *indices = nullptr;
     Dot3D absoluteOffset;
+    ~CommunicationInfo3D()
+    {
+        releaseBytes(buffer);
+        releaseBytes(indices);
+    }
 };
 
 typedef std::vector<CommunicationInfo3D> CommunicationPackage3D;

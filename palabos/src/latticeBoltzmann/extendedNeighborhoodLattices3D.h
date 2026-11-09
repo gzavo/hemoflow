@@ -103,6 +103,7 @@ struct ForcedD3Q121Descriptor : public D3Q121DescriptorBase<T>, public Force3dDe
 /// d3q39 lattice constants
 template <typename T>
 struct D3Q39Constants {
+    enum { numRelaxationTimes = 5 };
     enum { d = 3, q = 39 };        ///< number of dimensions/distr. functions
     static const T invD;           ///< 1 / (number of dimensions)
     static const int vicinity;     ///< size of neighborhood
@@ -111,6 +112,45 @@ struct D3Q39Constants {
     static const T t[q];           ///< lattice weights
     static const T cs2;     ///< lattice constant cs2 (in BGK, this is the square-speed-of-sound)
     static const T invCs2;  ///< 1 / cs2
+    static constexpr T cs2_gpu = (T)2 / (T)3;
+    static constexpr T invCs2_gpu = (T)3 / (T)2;
+    static constexpr int c_gpu(int iPop, int iD)
+    {
+        constexpr int c_[q][d] = {
+            {0, 0, 0},  // 0
+
+            {-3, 0, 0},                                                      // 1
+            {-2, -2, 0},  {-2, 0, -2}, {-2, 0, 0}, {-2, 0, 2},  {-2, 2, 0},  // 2, 3, 4, 5, 6
+            {-1, -1, -1}, {-1, -1, 1}, {-1, 0, 0}, {-1, 1, -1}, {-1, 1, 1},  // 7, 8, 9,10,11
+            {0, -3, 0},   {0, -2, -2}, {0, -2, 0}, {0, -2, 2},               // 12,13,14,15
+            {0, -1, 0},   {0, 0, -3},  {0, 0, -2}, {0, 0, -1},               // 16,17,18,19
+
+            {3, 0, 0},                                                        // 20
+            {2, 2, 0},    {2, 0, 2},   {2, 0, 0},  {2, 0, -2},  {2, -2, 0},   // 21,22,23,24,25
+            {1, 1, 1},    {1, 1, -1},  {1, 0, 0},  {1, -1, 1},  {1, -1, -1},  // 26,27,28,29,30
+            {0, 3, 0},    {0, 2, 2},   {0, 2, 0},  {0, 2, -2},                // 31,32,33,34
+            {0, 1, 0},    {0, 0, 3},   {0, 0, 2},  {0, 0, 1}                  // 35,36,37,38
+
+        };
+        return c_[iPop][iD];
+    }
+    static constexpr T t_gpu(int iPop)
+    {
+        constexpr T t_[q] = {
+
+            (T)1 / (T)12,
+
+            (T)1 / (T)1620, (T)1 / (T)432,  (T)1 / (T)432, (T)2 / (T)135, (T)1 / (T)432,
+            (T)1 / (T)432,  (T)1 / (T)27,   (T)1 / (T)27,  (T)1 / (T)12,  (T)1 / (T)27,
+            (T)1 / (T)27,   (T)1 / (T)1620, (T)1 / (T)432, (T)2 / (T)135, (T)1 / (T)432,
+            (T)1 / (T)12,   (T)1 / (T)1620, (T)2 / (T)135, (T)1 / (T)12,
+
+            (T)1 / (T)1620, (T)1 / (T)432,  (T)1 / (T)432, (T)2 / (T)135, (T)1 / (T)432,
+            (T)1 / (T)432,  (T)1 / (T)27,   (T)1 / (T)27,  (T)1 / (T)12,  (T)1 / (T)27,
+            (T)1 / (T)27,   (T)1 / (T)1620, (T)1 / (T)432, (T)2 / (T)135, (T)1 / (T)432,
+            (T)1 / (T)12,   (T)1 / (T)1620, (T)2 / (T)135, (T)1 / (T)12};
+        return t_[iPop];
+    }
 };
 
 template <typename T>

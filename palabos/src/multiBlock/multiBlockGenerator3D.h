@@ -50,6 +50,7 @@
 #include "multiBlock/multiBlockLattice3D.h"
 #include "multiBlock/multiContainerBlock3D.h"
 #include "multiBlock/multiDataField3D.h"
+#include "multiBlock/acceleratedLattice3D.h"
 #include "multiBlock/sparseBlockStructure3D.h"
 #include "particles/multiParticleField3D.h"
 
@@ -468,6 +469,14 @@ std::unique_ptr<MultiBlockLattice3D<T, Descriptor> > generateMultiBlockLattice(
 ///   envelope-width, etc. A default dummy argument is used for technical reasons.
 template <typename T, template <typename U> class Descriptor>
 std::unique_ptr<MultiBlockLattice3D<T, Descriptor> > defaultGenerateMultiBlockLattice3D(
+    MultiBlockManagement3D const &management, plint unnamedDummyArg = 1);
+
+/// Generate an accelerated lattice from scratch. As opposed to the standard
+///   constructor, this factory function takes the explicit block-management
+///   object, which includes stuff like block-distribution, parallelization,
+///   envelope-width, etc. A default dummy argument is used for technical reasons.
+template <typename T, template <typename U> class Descriptor>
+std::unique_ptr<AcceleratedLattice3D<T, Descriptor> > defaultGenerateAcceleratedLattice3D(
     MultiBlockManagement3D const &management, plint unnamedDummyArg = 1);
 
 /// Generate a multi-block-lattice from scratch. As opposed to the standard

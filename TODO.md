@@ -15,6 +15,31 @@ conda create -n hemoflow-post -c conda-forge python=3.12 pyvista pandas matplotl
 Quick regression check: `tests/verification/0-pipe` (README, test case 1).
 Reference: 80.6 Pa pressure drop, inlet/outlet flow 1.537/1.539·10⁻⁵ m³/s.
 
+## 0. Palabos upgrade
+
+The vendored Palabos was moved from the 2024 snapshot to upstream master (after
+release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
+
+- [x] Replace `palabos/` with the new version
+- [x] Review upstream changes that touch the models HemoFlow uses (collision templates
+      only switched to an identical `constexpr` constant; the removed `addGuoForce` call
+      fixes double forcing in the Smagorinsky variant, which HemoFlow does not use)
+- [x] Adapt the build: C++20 default, skip the MPI C++ bindings
+- [x] Local patch: `inline` added to `replaceAll()` in
+      `palabos/src/acceleratedLattice/acceleratedProcessors3D.hh` (non-inline function in a
+      header, so programs with several source files fail to link). Report upstream and drop
+      the patch once fixed there.
+- [x] Build with GCC 13 (system) and GCC 15 (conda)
+- [x] Regression-test against the old Palabos: bit-identical results for the pipe,
+      NAP180 with flow diverter, C0002 Murray split, 100 Pa outlet with waveform, free
+      outflow, velocity outlet, checkpoint restart and sparse decomposition; pipe
+      validation unchanged (80.6 Pa); same speed
+- [x] Remove `palabos_old/` (the previous version is in git history, commit 9e06177)
+- [x] Trim the vendored copy to what HemoFlow builds: `src/`, `externalLibraries/`,
+      `dco/`, `COPYING`, `README.md`, `CHANGELOG.md` (examples, docker, utility,
+      coupledSimulators, upstream CMake and CI files removed; 49 MB -> 25 MB). A pinned
+      submodule remains an option (section 8).
+
 ## 1. Correctness and verification
 
 - [ ] **Sparse decomposition differs from dense in one case.** `<sparse>true</sparse>`
@@ -117,8 +142,9 @@ Reference: 80.6 Pa pressure drop, inlet/outlet flow 1.537/1.539·10⁻⁵ m³/s.
 ## 8. Repository hygiene
 
 - [ ] Track Palabos as a pinned git submodule or CMake `FetchContent` instead of a
-      vendored snapshot; record the HighFive and cnpy versions (cnpy has a local patch
-      for ZIP64 `.npz` files written by Python ≥ 3.12).
+      vendored snapshot (keeping the `replaceAll` patch, see section 0); record the
+      HighFive and cnpy versions (cnpy has a local patch for ZIP64 `.npz` files written by
+      Python ≥ 3.12).
 - [ ] Remove or update stale scripts: `scripts/cartesius_job.sh` (Cartesius is
       decommissioned), `utils/update_times.sh`, the duplicate `compress_output.py`
       (root and `utils/`), the empty `preprocessor/run.sh`.

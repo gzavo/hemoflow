@@ -52,6 +52,8 @@ template <typename T, template <typename U> class Descriptor>
 class BlockLatticeBase3D;
 template <typename T, template <typename U> class Descriptor>
 class BlockLattice3D;
+template <typename T, template <typename U> class Descriptor>
+class AtomicAcceleratedLattice3D;
 template <typename T>
 class ScalarFieldBase3D;
 template <typename T>
@@ -186,6 +188,16 @@ struct BoxProcessingFunctional3D_L : public BoxProcessingFunctional3D {
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };
 
+/// Easy instantiation of boxed data processor for a single acceleratedLattice
+template <typename T, template <typename U> class Descriptor>
+struct BoxProcessingFunctional3D_A : public BoxProcessingFunctional3D {
+    virtual void process(Box3D domain, AtomicAcceleratedLattice3D<T, Descriptor> &lattice) = 0;
+    virtual BoxProcessingFunctional3D_A<T, Descriptor> *clone() const = 0;
+
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
 /// Easy instantiation of boxed data processor for a single lattice with bool mask.
 template <typename T, template <typename U> class Descriptor>
 struct MaskedBoxProcessingFunctional3D_L : public BoxProcessingFunctional3D {
@@ -244,6 +256,34 @@ struct BoxProcessingFunctional3D_LL : public BoxProcessingFunctional3D {
         Box3D domain, BlockLattice3D<T1, Descriptor1> &lattice1,
         BlockLattice3D<T2, Descriptor2> &lattice2) = 0;
     virtual BoxProcessingFunctional3D_LL<T1, Descriptor1, T2, Descriptor2> *clone() const = 0;
+
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for acceleratedLattice-acceleratedLattice coupling
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+struct BoxProcessingFunctional3D_AA : public BoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, AtomicAcceleratedLattice3D<T1, Descriptor1> &lattice1,
+        AtomicAcceleratedLattice3D<T2, Descriptor2> &lattice2) = 0;
+    virtual BoxProcessingFunctional3D_AA<T1, Descriptor1, T2, Descriptor2> *clone() const = 0;
+
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for acceleratedLattice-acceleratedLattice coupling
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+struct BoxProcessingFunctional3D_LA : public BoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, BlockLattice3D<T1, Descriptor1> &lattice1,
+        AtomicAcceleratedLattice3D<T2, Descriptor2> &lattice2) = 0;
+    virtual BoxProcessingFunctional3D_LA<T1, Descriptor1, T2, Descriptor2> *clone() const = 0;
 
     /// Invoke parent-method "processGenericBlocks" through a type-cast
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
@@ -320,12 +360,34 @@ struct BoxProcessingFunctional3D_LS : public BoxProcessingFunctional3D {
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };
 
+/// Easy instantiation of boxed data processor for AcceleratedLattice-ScalarField coupling
+template <typename T1, template <typename U> class Descriptor, typename T2>
+struct BoxProcessingFunctional3D_AS : public BoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, AtomicAcceleratedLattice3D<T1, Descriptor> &lattice,
+        ScalarField3D<T2> &field) = 0;
+    virtual BoxProcessingFunctional3D_AS<T1, Descriptor, T2> *clone() const = 0;
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
 /// Easy instantiation of boxed data processor for Lattice-TensorField coupling
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
 struct BoxProcessingFunctional3D_LT : public BoxProcessingFunctional3D {
     virtual void process(
         Box3D domain, BlockLattice3D<T1, Descriptor> &lattice, TensorField3D<T2, nDim> &field) = 0;
     virtual BoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim> *clone() const = 0;
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for AcceleratedLattice-TensorField coupling
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+struct BoxProcessingFunctional3D_AT : public BoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, AtomicAcceleratedLattice3D<T1, Descriptor> &lattice,
+        TensorField3D<T2, nDim> &field) = 0;
+    virtual BoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim> *clone() const = 0;
     /// Invoke parent-method "processGenericBlocks" through a type-cast
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };
@@ -358,6 +420,17 @@ template <typename T, template <typename U> class Descriptor>
 struct LatticeBoxProcessingFunctional3D : public BoxProcessingFunctional3D {
     virtual void process(Box3D domain, std::vector<BlockLattice3D<T, Descriptor> *> lattices) = 0;
     virtual LatticeBoxProcessingFunctional3D<T, Descriptor> *clone() const = 0;
+
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for multiple lattices
+template <typename T, template <typename U> class Descriptor>
+struct AcceleratedBoxProcessingFunctional3D : public BoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices) = 0;
+    virtual AcceleratedBoxProcessingFunctional3D<T, Descriptor> *clone() const = 0;
 
     /// Invoke parent-method "processGenericBlocks" through a type-cast
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);

@@ -39,7 +39,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <execution>
 #include <typeinfo>
+#include <numeric>  // transform_reduce
+#include <ranges>
 
 #include "atomicBlock/atomicBlock3D.h"
 #include "atomicBlock/dataField3D.h"
@@ -48,6 +51,65 @@
 namespace plb {
 
 /////// Class ScalarField3D //////////////////////////////////
+
+template <typename T>
+template <class Functional>
+void ScalarField3D<T>::for_each(Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    std::for_each(
+        std::execution::par_unseq, this->rawData, this->rawData + N, [this, functional](T &value) {
+            plint i = (plint)(&value - this->rawData);
+            functional(i, value);
+        });
+}
+
+template <typename T>
+template <class Functional>
+void ScalarField3D<T>::for_each(Box3D const &domain, Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    std::for_each(
+        std::execution::par_unseq, this->rawData, this->rawData + N,
+        [this, domain, functional](T &value) {
+            plint i = (plint)(&value - this->rawData);
+            plint nynz = this->getNy() * this->getNz();
+            plint iX = i / nynz;
+            plint remainder = i % nynz;
+            plint iY = remainder / this->getNz();
+            plint iZ = remainder % this->getNz();
+            if (iX >= domain.x0 && iX <= domain.x1 && iY >= domain.y0 && iY <= domain.y1
+                && iZ >= domain.z0 && iZ <= domain.z1)
+            {
+                functional(i, iX, iY, iZ, value);
+            }
+        });
+}
+
+template <typename T>
+template <class Functional, class BinaryReductionOp>
+T ScalarField3D<T>::transform_reduce(
+    Box3D const &domain, T neutral, BinaryReductionOp reduce, Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    auto indices = std::views::iota(plint(0), N);
+    return std::transform_reduce(
+        std::execution::par_unseq, indices.begin(), indices.end(), neutral, reduce,
+        [this, domain, neutral, functional](plint i) {
+            plint nynz = this->getNy() * this->getNz();
+            plint iX = i / nynz;
+            plint remainder = i % nynz;
+            plint iY = remainder / this->getNz();
+            plint iZ = remainder % this->getNz();
+            if (iX >= domain.x0 && iX <= domain.x1 && iY >= domain.y0 && iY <= domain.y1
+                && iZ >= domain.z0 && iZ <= domain.z1)
+            {
+                return functional(i, iX, iY, iZ, this->rawData[i]);
+            } else {
+                return neutral;
+            }
+        });
+}
 
 template <typename T>
 ScalarField3D<T>::ScalarField3D(plint nx_, plint ny_, plint nz_, T iniVal) :
@@ -252,6 +314,66 @@ void ScalarFieldDataTransfer3D<T>::attribute(
 }
 
 //////// Class TensorField3D //////////////////////////////////
+
+template <typename T, int nDim>
+template <class Functional>
+void TensorField3D<T, nDim>::for_each(Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    std::for_each(
+        std::execution::par_unseq, this->rawData, this->rawData + N,
+        [this, functional](Array<T, nDim> &value) {
+            plint i = (plint)(&value - this->rawData);
+            functional(i, value);
+        });
+}
+
+template <typename T, int nDim>
+template <class Functional>
+void TensorField3D<T, nDim>::for_each(Box3D const &domain, Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    std::for_each(
+        std::execution::par_unseq, this->rawData, this->rawData + N,
+        [this, domain, functional](Array<T, nDim> &value) {
+            plint i = (plint)(&value - this->rawData);
+            plint nynz = this->getNy() * this->getNz();
+            plint iX = i / nynz;
+            plint remainder = i % nynz;
+            plint iY = remainder / this->getNz();
+            plint iZ = remainder % this->getNz();
+            if (iX >= domain.x0 && iX <= domain.x1 && iY >= domain.y0 && iY <= domain.y1
+                && iZ >= domain.z0 && iZ <= domain.z1)
+            {
+                functional(i, iX, iY, iZ, value);
+            }
+        });
+}
+
+template <typename T, int nDim>
+template <class Functional, class BinaryReductionOp>
+Array<T, nDim> TensorField3D<T, nDim>::transform_reduce(
+    Box3D const &domain, Array<T, nDim> neutral, BinaryReductionOp reduce, Functional functional)
+{
+    plint N = this->getNx() * this->getNy() * this->getNz();
+    auto indices = std::views::iota(plint(0), N);
+    return std::transform_reduce(
+        std::execution::par_unseq, indices.begin(), indices.end(), neutral, reduce,
+        [this, domain, neutral, functional](plint i) {
+            plint nynz = this->getNy() * this->getNz();
+            plint iX = i / nynz;
+            plint remainder = i % nynz;
+            plint iY = remainder / this->getNz();
+            plint iZ = remainder % this->getNz();
+            if (iX >= domain.x0 && iX <= domain.x1 && iY >= domain.y0 && iY <= domain.y1
+                && iZ >= domain.z0 && iZ <= domain.z1)
+            {
+                return functional(i, iX, iY, iZ, this->rawData[i]);
+            } else {
+                return neutral;
+            }
+        });
+}
 
 template <typename T, int nDim>
 TensorField3D<T, nDim>::TensorField3D(plint nx_, plint ny_, plint nz_) :

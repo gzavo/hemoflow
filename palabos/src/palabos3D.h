@@ -40,6 +40,7 @@
 #include <core/globalDefs.h>
 #include <core/headers3D.h>
 #include <dataProcessors/headers3D.h>
+#include <acceleratedLattice/headers3D.h>
 #include <finiteDifference/headers3D.h>
 #include <gridRefinement/headers3D.h>
 #include <io/headers3D.h>

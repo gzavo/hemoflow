@@ -40,6 +40,7 @@
 #include "atomicBlock/dataProcessingFunctional3D.h"
 #include "core/dynamics.h"
 #include "core/globalDefs.h"
+#include <cstdint>
 
 namespace plb {
 
@@ -279,6 +280,29 @@ public:
 private:
     Dynamics<T, Descriptor> *dynamics;
     int whichFlag;
+};
+
+/* ************* Class DynamicsFromFloatMaskFunctional3D ************************ */
+
+/// Assign dynamics to nodes specified by a boolean mask.
+template <typename T, template <typename U> class Descriptor>
+class DynamicsFromFloatMaskFunctional3D :
+    public BoxProcessingFunctional3D_LS<T, Descriptor, float> {
+public:
+    DynamicsFromFloatMaskFunctional3D(Dynamics<T, Descriptor> *dynamics_, float lowerBound_);
+    DynamicsFromFloatMaskFunctional3D(DynamicsFromFloatMaskFunctional3D<T, Descriptor> const &rhs);
+    DynamicsFromFloatMaskFunctional3D<T, Descriptor> &operator=(
+        DynamicsFromFloatMaskFunctional3D<T, Descriptor> const &rhs);
+    virtual ~DynamicsFromFloatMaskFunctional3D();
+    virtual void process(
+        Box3D domain, BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<float> &mask);
+    virtual BlockDomain::DomainT appliesTo() const;
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
+    virtual DynamicsFromFloatMaskFunctional3D<T, Descriptor> *clone() const;
+
+private:
+    Dynamics<T, Descriptor> *dynamics;
+    float lowerBound;
 };
 
 /* *************** Class RecomposeFromOrderZeroVariablesFunctional3D ******************* */

@@ -67,7 +67,9 @@ void MpiManager::init(int *argc, char ***argv, bool verbous)
     if (verbous) {
         std::cerr << "Constructing an MPI thread" << std::endl;
     }
-    int ok1 = MPI_Init(argc, argv);
+    // int ok1 = MPI_Init(argc, argv);
+    int provided_guarantee = MPI_THREAD_FUNNELED;
+    int ok1 = MPI_Init_thread(argc, argv, MPI_THREAD_FUNNELED, &provided_guarantee);
     // If I'm the one who calls MPI_Init, then I need to be
     // the one who calls MPI_Finalize.
     responsibleForMpiMachine = true;
@@ -1426,6 +1428,17 @@ void MpiManager::iRecv<unsigned long long>(
         MPI_Irecv(
             static_cast<void *>(buf), count, MPI_UNSIGNED_LONG_LONG, source, tag,
             getGlobalCommunicator(), request);
+    }
+}
+
+template <>
+void MpiManager::iRecv<long long>(
+    long long *buf, int count, int source, MPI_Request *request, int tag)
+{
+    if (ok) {
+        MPI_Irecv(
+            static_cast<void *>(buf), count, MPI_LONG_LONG, source, tag, getGlobalCommunicator(),
+            request);
     }
 }
 

@@ -11,8 +11,9 @@ haemodynamic effect of a device can be compared against the untreated case.
 
 The solver is built on the [Palabos](https://palabos.unige.ch) library
 (D3Q19 lattice, regularized BGK collision with Guo forcing). Palabos is an
-external dependency that ships with this repository in `palabos/`; it is not
-developed here.
+external dependency that ships with this repository in `palabos/` (upstream
+master after release 2.3.0, with one local patch listed in [TODO.md](TODO.md));
+it is not developed here.
 
 * Language: C++ (solver), Python (preprocessing and post-processing scripts)
 * Parallelism: MPI (Palabos block decomposition)
@@ -78,7 +79,7 @@ developed here.
 | `tests/sensitivity/`, `tests/uncertainty/` | [EasyVVUQ](https://github.com/UCL-CCS/EasyVVUQ) sensitivity and uncertainty campaigns |
 | `doc/VV/` | Verification and validation notebook (`hemoflow_VV.ipynb`) and its data |
 | `doc/paraview_wss_calc.txt` | How to compute wall shear stress in ParaView from the stress output |
-| `palabos/` | Vendored Palabos library (external dependency) |
+| `palabos/` | Vendored Palabos library (external dependency): `src/` and `externalLibraries/` of upstream master after 2.3.0 |
 | `external/` | Vendored [HighFive](https://github.com/BlueBrain/HighFive) (HDF5 C++ wrapper) and [cnpy](https://github.com/rogersce/cnpy) (`.npz` reader) |
 | `scripts/`, `utils/` | Cluster job/environment scripts and small helpers (output compression) |
 
@@ -90,7 +91,7 @@ developed here.
 
 | Dependency | Notes |
 |---|---|
-| C++ compiler | GCC or Clang with C++14 support |
+| C++ compiler | GCC or Clang with C++20 support (Palabos requires it; tested with GCC 13 and 15) |
 | CMake | ≥ 3.13 |
 | MPI | e.g. OpenMPI or MPICH |
 | zlib | Needed to read the compressed geometry files |
@@ -131,7 +132,7 @@ current module versions will differ.
 | `CMAKE_BUILD_TYPE` | `Release` | `Release` (`-O3`), `RelWithDebInfo`, or `Debug` (`-O0 -g -DPLB_DEBUG`, executable `hemoFlowd`) |
 | `ENABLE_MPI` | `ON` | Build with MPI |
 | `BUILD_HDF5` | `ON` | Use parallel HDF5 if it is found (a warning is printed otherwise) |
-| `CMAKE_CXX_STANDARD` | `14` | A higher standard can be requested |
+| `CMAKE_CXX_STANDARD` | `20` | C++ standard; Palabos needs at least C++20 |
 
 Compile-time switches in `globals.h`:
 

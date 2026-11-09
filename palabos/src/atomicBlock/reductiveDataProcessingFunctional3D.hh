@@ -51,6 +51,15 @@ void ReductiveBoxProcessingFunctional3D_L<T, Descriptor>::processGenericBlocks(
     process(domain, dynamic_cast<BlockLattice3D<T, Descriptor> &>(*atomicBlocks[0]));
 }
 
+/* *************** ReductiveBoxProcessing3D_A ******************************************* */
+
+template <typename T, template <typename U> class Descriptor>
+void ReductiveBoxProcessingFunctional3D_A<T, Descriptor>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(domain, dynamic_cast<AtomicAcceleratedLattice3D<T, Descriptor> &>(*atomicBlocks[0]));
+}
+
 /* *************** ReductiveBoxProcessing3D_S ******************************************* */
 
 template <typename T>
@@ -181,6 +190,17 @@ void ReductiveBoxProcessingFunctional3D_LS<T1, Descriptor, T2>::processGenericBl
         dynamic_cast<ScalarField3D<T2> &>(*atomicBlocks[1]));
 }
 
+/* *************** ReductiveBoxProcessing3D_AS ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2>
+void ReductiveBoxProcessingFunctional3D_AS<T1, Descriptor, T2>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(
+        domain, dynamic_cast<AtomicAcceleratedLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
+        dynamic_cast<ScalarField3D<T2> &>(*atomicBlocks[1]));
+}
+
 /* *************** ReductiveBoxProcessing3D_LT ****************************************** */
 
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
@@ -189,6 +209,17 @@ void ReductiveBoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim>::processGen
 {
     process(
         domain, dynamic_cast<BlockLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
+        dynamic_cast<TensorField3D<T2, nDim> &>(*atomicBlocks[1]));
+}
+
+/* *************** ReductiveBoxProcessing3D_AT ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+void ReductiveBoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(
+        domain, dynamic_cast<AtomicAcceleratedLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
         dynamic_cast<TensorField3D<T2, nDim> &>(*atomicBlocks[1]));
 }
 

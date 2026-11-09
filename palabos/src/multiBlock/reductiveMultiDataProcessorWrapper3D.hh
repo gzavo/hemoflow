@@ -119,6 +119,18 @@ void applyProcessingFunctional(
     functional.getStatistics() = generator.getFunctional().getStatistics();
 }
 
+/* *************** ReductiveBoxProcessing3D_A ******************************************* */
+
+template <typename T, template <typename U> class Descriptor>
+void applyProcessingFunctional(
+    ReductiveBoxProcessingFunctional3D_A<T, Descriptor> &functional, Box3D domain,
+    AcceleratedLattice3D<T, Descriptor> &lattice)
+{
+    ReductiveBoxProcessorGenerator3D generator(functional.clone(), domain);
+    executeDataProcessor(generator, lattice);
+    functional.getStatistics() = generator.getFunctional().getStatistics();
+}
+
 /* *************** ReductiveBoxProcessing3D_S ******************************************* */
 
 template <typename T>
@@ -270,12 +282,36 @@ void applyProcessingFunctional(
     functional.getStatistics() = generator.getFunctional().getStatistics();
 }
 
+/* *************** ReductiveBoxProcessing3D_AS ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2>
+void applyProcessingFunctional(
+    ReductiveBoxProcessingFunctional3D_AS<T1, Descriptor, T2> &functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiScalarField3D<T2> &field)
+{
+    ReductiveBoxProcessorGenerator3D generator(functional.clone(), domain);
+    executeDataProcessor(generator, lattice, field);
+    functional.getStatistics() = generator.getFunctional().getStatistics();
+}
+
 /* *************** ReductiveBoxProcessing3D_LT ****************************************** */
 
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
 void applyProcessingFunctional(
     ReductiveBoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim> &functional, Box3D domain,
     MultiBlockLattice3D<T1, Descriptor> &lattice, MultiTensorField3D<T2, nDim> &field)
+{
+    ReductiveBoxProcessorGenerator3D generator(functional.clone(), domain);
+    executeDataProcessor(generator, lattice, field);
+    functional.getStatistics() = generator.getFunctional().getStatistics();
+}
+
+/* *************** ReductiveBoxProcessing3D_AT ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+void applyProcessingFunctional(
+    ReductiveBoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim> &functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiTensorField3D<T2, nDim> &field)
 {
     ReductiveBoxProcessorGenerator3D generator(functional.clone(), domain);
     executeDataProcessor(generator, lattice, field);

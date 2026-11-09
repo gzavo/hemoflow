@@ -81,6 +81,22 @@ void integrateProcessingFunctional(
     LatticeBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
     std::vector<BlockLattice3D<T, Descriptor> *> lattices, plint level = 0);
 
+/// Apply a functional on a sequence of block-lattices. If the number
+/// of lattices is 1 or 2, you should prefer the _L and _LL version
+/// of the functional.
+template <typename T, template <typename U> class Descriptor>
+void applyProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices);
+
+/// Integrate a functional into a sequence of block-lattices. If the
+/// number of lattices is 1 or 2, you should prefer the _L and _LL version
+/// of the functional.
+template <typename T, template <typename U> class Descriptor>
+void integrateProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices, plint level = 0);
+
 /// Apply a functional on a sequence of scalar-fields. If the number
 /// of lattices is 1 or 2, you should prefer the _S and _SS version
 /// of the functional.

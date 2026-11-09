@@ -35,6 +35,7 @@
  * Groups all the include files for the 3D multiBlock.
  */
 
+#include "multiBlock/acceleratedLattice3D.h"
 #include "multiBlock/combinedStatistics.h"
 #include "multiBlock/coupling3D.h"
 #include "multiBlock/defaultMultiBlockPolicy3D.h"

@@ -111,17 +111,17 @@ struct offEquilibriumTemplatesImpl {
         // the elements under the diagonal by symmetry
         for (int iAlpha = 0; iAlpha < L::d; ++iAlpha) {
             // Treat diagonal term first
-            fNeq += PiNeq[iPi] * (L::c[iPop][iAlpha] * L::c[iPop][iAlpha] - L::cs2);
+            fNeq += PiNeq[iPi] * (L::c_gpu(iPop, iAlpha) * L::c_gpu(iPop, iAlpha) - L::cs2_gpu);
             ++iPi;
             // Then, treat off-diagonal terms
             for (int iBeta = iAlpha + 1; iBeta < L::d; ++iBeta) {
                 // Multiply off-diagonal elements by 2 because
                 // the Q tensor is symmetric
-                fNeq += PiNeq[iPi] * (T)2 * L::c[iPop][iAlpha] * L::c[iPop][iBeta];
+                fNeq += PiNeq[iPi] * (T)2 * L::c_gpu(iPop, iAlpha) * L::c_gpu(iPop, iBeta);
                 ++iPi;
             }
         }
-        fNeq *= L::t[iPop] * L::invCs2 * L::invCs2 / (T)2;
+        fNeq *= L::t_gpu(iPop) * L::invCs2_gpu * L::invCs2_gpu / (T)2;
         return fNeq;
     }
 

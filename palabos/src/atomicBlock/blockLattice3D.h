@@ -234,6 +234,8 @@ public:
     friend class OnLinkExternalRhoJcollideAndStream3D;
     template <typename T_, template <typename U_> class Descriptor_>
     friend class GrayScaleCollideAndStream3D;
+    template <typename T_, template <typename U_> class Descriptor_>
+    friend class AtomicAcceleratedLattice3D;
 };
 
 template <typename T, template <typename U> class Descriptor>

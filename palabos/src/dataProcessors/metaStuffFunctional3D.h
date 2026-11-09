@@ -48,6 +48,20 @@
 namespace plb {
 
 template <typename T, template <typename U> class Descriptor>
+class AcceleratedStoreDynamicsFunctional3D : public PlainReductiveBoxProcessingFunctional3D {
+public:
+    AcceleratedStoreDynamicsFunctional3D();
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> fields);
+    virtual AcceleratedStoreDynamicsFunctional3D<T, Descriptor> *clone() const;
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
+    virtual BlockDomain::DomainT appliesTo() const;
+    pluint getMaxChainLength() const;
+
+private:
+    plint maxChainLengthId;
+};
+
+template <typename T, template <typename U> class Descriptor>
 class StoreDynamicsFunctional3D : public PlainReductiveBoxProcessingFunctional3D {
 public:
     StoreDynamicsFunctional3D();

@@ -60,6 +60,15 @@ void MaskedBoxProcessingFunctional3D_L<T, Descriptor>::processGenericBlocks(
         dynamic_cast<NTensorField3D<int> &>(*atomicBlocks[1]));
 }
 
+/* *************** BoxProcessing3D_A ******************************************* */
+
+template <typename T, template <typename U> class Descriptor>
+void BoxProcessingFunctional3D_A<T, Descriptor>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(domain, dynamic_cast<AtomicAcceleratedLattice3D<T, Descriptor> &>(*atomicBlocks[0]));
+}
+
 /* *************** BoxProcessing3D_S ******************************************* */
 
 template <typename T>
@@ -110,6 +119,34 @@ void BoxProcessingFunctional3D_LL<T1, Descriptor1, T2, Descriptor2>::processGene
     process(
         domain, dynamic_cast<BlockLattice3D<T1, Descriptor1> &>(*atomicBlocks[0]),
         dynamic_cast<BlockLattice3D<T2, Descriptor2> &>(*atomicBlocks[1]));
+}
+
+/* *************** BoxProcessing3D_LA******************************************* */
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void BoxProcessingFunctional3D_LA<T1, Descriptor1, T2, Descriptor2>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    PLB_PRECONDITION(atomicBlocks.size() == 2);
+    process(
+        domain, dynamic_cast<BlockLattice3D<T1, Descriptor1> &>(*atomicBlocks[0]),
+        dynamic_cast<AtomicAcceleratedLattice3D<T2, Descriptor2> &>(*atomicBlocks[1]));
+}
+
+/* *************** BoxProcessing3D_AA******************************************* */
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void BoxProcessingFunctional3D_AA<T1, Descriptor1, T2, Descriptor2>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    PLB_PRECONDITION(atomicBlocks.size() == 2);
+    process(
+        domain, dynamic_cast<AtomicAcceleratedLattice3D<T1, Descriptor1> &>(*atomicBlocks[0]),
+        dynamic_cast<AtomicAcceleratedLattice3D<T2, Descriptor2> &>(*atomicBlocks[1]));
 }
 
 /* *************** BoxProcessing3D_SS ****************************************** */
@@ -190,6 +227,17 @@ void BoxProcessingFunctional3D_LS<T1, Descriptor, T2>::processGenericBlocks(
         dynamic_cast<ScalarField3D<T2> &>(*atomicBlocks[1]));
 }
 
+/* *************** BoxProcessing3D_AS ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2>
+void BoxProcessingFunctional3D_AS<T1, Descriptor, T2>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(
+        domain, dynamic_cast<AtomicAcceleratedLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
+        dynamic_cast<ScalarField3D<T2> &>(*atomicBlocks[1]));
+}
+
 /* *************** BoxProcessing3D_LT ****************************************** */
 
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
@@ -198,6 +246,17 @@ void BoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim>::processGenericBlock
 {
     process(
         domain, dynamic_cast<BlockLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
+        dynamic_cast<TensorField3D<T2, nDim> &>(*atomicBlocks[1]));
+}
+
+/* *************** BoxProcessing3D_AT ****************************************** */
+
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+void BoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    process(
+        domain, dynamic_cast<AtomicAcceleratedLattice3D<T1, Descriptor> &>(*atomicBlocks[0]),
         dynamic_cast<TensorField3D<T2, nDim> &>(*atomicBlocks[1]));
 }
 
@@ -233,6 +292,20 @@ void LatticeBoxProcessingFunctional3D<T, Descriptor>::processGenericBlocks(
     std::vector<BlockLattice3D<T, Descriptor> *> lattices(atomicBlocks.size());
     for (pluint iLattice = 0; iLattice < atomicBlocks.size(); ++iLattice) {
         lattices[iLattice] = dynamic_cast<BlockLattice3D<T, Descriptor> *>(atomicBlocks[iLattice]);
+    }
+    process(domain, lattices);
+}
+
+/* *************** AcceleratedBoxProcessing3D ************************************** */
+
+template <typename T, template <typename U> class Descriptor>
+void AcceleratedBoxProcessingFunctional3D<T, Descriptor>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks)
+{
+    std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices(atomicBlocks.size());
+    for (pluint iLattice = 0; iLattice < atomicBlocks.size(); ++iLattice) {
+        lattices[iLattice] =
+            dynamic_cast<AtomicAcceleratedLattice3D<T, Descriptor> *>(atomicBlocks[iLattice]);
     }
     process(domain, lattices);
 }

@@ -1064,7 +1064,7 @@ std::unique_ptr<TensorField3D<T, 3> > computeVorticity(TensorField3D<T, 3> &velo
     return std::unique_ptr<TensorField3D<T, 3> >(vorticity);
 }
 
-/* *************** Vorticity, witout boundary treatment, from Velocity field **************** */
+/* *************** Vorticity, without boundary treatment, from Velocity field **************** */
 
 template <typename T>
 void computeBulkVorticity(TensorField3D<T, 3> &velocity, TensorField3D<T, 3> &vorticity)
@@ -1102,7 +1102,7 @@ std::unique_ptr<ScalarField3D<T> > computeHelicity(TensorField3D<T, 3> &velocity
     return std::unique_ptr<ScalarField3D<T> >(helicity);
 }
 
-/* *************** Helicity, witout boundary treatment, from Velocity field **************** */
+/* *************** Helicity, without boundary treatment, from Velocity field **************** */
 
 template <typename T>
 void computeBulkHelicity(TensorField3D<T, 3> &velocity, ScalarField3D<T> &helicity)
@@ -1120,7 +1120,7 @@ std::unique_ptr<ScalarField3D<T> > computeBulkHelicity(TensorField3D<T, 3> &velo
     return std::unique_ptr<ScalarField3D<T> >(helicity);
 }
 
-/* *************** Divergence, witout boundary treatment, from Velocity field *************** */
+/* *************** Divergence, without boundary treatment, from Velocity field *************** */
 
 template <typename T>
 void computeBulkDivergence(TensorField3D<T, 3> &velocity, ScalarField3D<T> &divergence)
@@ -1157,7 +1157,7 @@ std::unique_ptr<TensorField3D<T, 3> > computeStrainRate(TensorField3D<T, 3> &vel
     return std::unique_ptr<TensorField3D<T, 6> >(S);
 }
 
-/* *************** Str. rate, witout boundary treatment, from Velocity field ***************** */
+/* *************** Str. rate, without boundary treatment, from Velocity field ***************** */
 
 template <typename T>
 void computeBulkStrainRate(TensorField3D<T, 3> &velocity, TensorField3D<T, 6> &S)
@@ -4586,6 +4586,87 @@ template <typename T>
 std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticity(MultiTensorField3D<T, 3> &velocity)
 {
     return computeVorticity(velocity, velocity.getBoundingBox());
+}
+
+/* *************** Order 4 Vorticity from Velocity field ***************** */
+template <typename T>
+void computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain)
+{
+    plint envelopeWidth = 2;
+    applyProcessingFunctional(
+        new BoxVorticityOrderFourFunctional3D<T, 3>, domain, velocity, vorticity, envelopeWidth);
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain)
+{
+    std::unique_ptr<MultiTensorField3D<T, 3> > vorticity =
+        generateMultiTensorField<T, 3>(velocity, domain);
+    computeVorticityOrderFour(velocity, *vorticity, domain);
+    return vorticity;
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity)
+{
+    return computeVorticityOrderFour(velocity, velocity.getBoundingBox());
+}
+
+/* *************** Order 6 Vorticity from Velocity field ***************** */
+template <typename T>
+void computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain)
+{
+    plint envelopeWidth = 3;
+    applyProcessingFunctional(
+        new BoxVorticityOrderSixFunctional3D<T, 3>, domain, velocity, vorticity, envelopeWidth);
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain)
+{
+    std::unique_ptr<MultiTensorField3D<T, 3> > vorticity =
+        generateMultiTensorField<T, 3>(velocity, domain);
+    computeVorticityOrderSix(velocity, *vorticity, domain);
+    return vorticity;
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity)
+{
+    return computeVorticityOrderSix(velocity, velocity.getBoundingBox());
+}
+
+/* *************** Order 8 Vorticity from Velocity field ***************** */
+template <typename T>
+void computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain)
+{
+    plint envelopeWidth = 3;
+    applyProcessingFunctional(
+        new BoxVorticityOrderEightFunctional3D<T, 3>, domain, velocity, vorticity, envelopeWidth);
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain)
+{
+    std::unique_ptr<MultiTensorField3D<T, 3> > vorticity =
+        generateMultiTensorField<T, 3>(velocity, domain);
+    computeVorticityOrderEight(velocity, *vorticity, domain);
+    return vorticity;
+}
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity)
+{
+    return computeVorticityOrderEight(velocity, velocity.getBoundingBox());
 }
 
 /* *************** Vorticity, without boundary treatment, from Velocity field ***************** */

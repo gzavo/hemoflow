@@ -49,7 +49,7 @@ template <typename T>
 RefinementParameters<T>::RefinementParameters(RefinementParameters<T> const &rhs) :
     levelNumber(rhs.levelNumber),
     referenceLevel(rhs.referenceLevel),
-    originalParameters(rhs.parameters_)
+    originalParameters(rhs.parameters)
 { }
 
 template <typename T>

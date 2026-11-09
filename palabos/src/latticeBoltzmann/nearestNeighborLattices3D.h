@@ -81,6 +81,28 @@ struct D3Q13Constants {
     static const T invCs2;    ///< 1 / cs2
     static const T lambda_e;  ///< relaxation parameter for the bulk stress
     static const T lambda_h;  ///< additional relaxation parameter
+    static constexpr T cs2_gpu = (T)1 / (T)3;
+    static constexpr T invCs2_gpu = (T)3;
+    static constexpr int c_gpu(int iPop, int iD)
+    {
+        constexpr int c_[q][d] = {
+            {0, 0, 0},
+
+            {-1, -1, 0}, {-1, 1, 0}, {-1, 0, -1}, {-1, 0, 1}, {0, -1, -1}, {0, -1, 1},
+
+            {1, 1, 0},   {1, -1, 0}, {1, 0, 1},   {1, 0, -1}, {0, 1, 1},   {0, 1, -1}};
+        return c_[iPop][iD];
+    }
+    static constexpr T t_gpu(int iPop)
+    {
+        constexpr T t_[q] = {
+            (T)1 / (T)2,
+
+            (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24,
+
+            (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24, (T)1 / (T)24};
+        return t_[iPop];
+    }
 };
 
 template <typename T>
@@ -120,6 +142,34 @@ struct D3Q19Constants {
     static const T t[q];              ///< lattice weights
     static const T cs2;     ///< lattice constant cs2 (in BGK, this is the square-speed-of-sound)
     static const T invCs2;  ///< 1 / cs2
+    static constexpr T cs2_gpu = (T)1 / (T)3;
+    static constexpr T invCs2_gpu = (T)3;
+    static constexpr int c_gpu(int iPop, int iD)
+    {
+        constexpr int c_[q][d] = {
+            {0, 0, 0},  // 0
+
+            {-1, 0, 0},  {0, -1, 0},  {0, 0, -1},   // 1, 2, 3
+            {-1, -1, 0}, {-1, 1, 0},  {-1, 0, -1},  // 4, 5, 6
+            {-1, 0, 1},  {0, -1, -1}, {0, -1, 1},   // 7, 8, 9
+
+            {1, 0, 0},   {0, 1, 0},   {0, 0, 1},  // 10, 11, 12
+            {1, 1, 0},   {1, -1, 0},  {1, 0, 1},  // 13, 14, 15
+            {1, 0, -1},  {0, 1, 1},   {0, 1, -1}  // 16, 17, 18
+        };
+        return c_[iPop][iD];
+    }
+    static constexpr T t_gpu(int iPop)
+    {
+        constexpr T t_[q] = {(T)1 / (T)3,
+
+                             (T)1 / (T)18, (T)1 / (T)18, (T)1 / (T)18, (T)1 / (T)36, (T)1 / (T)36,
+                             (T)1 / (T)36, (T)1 / (T)36, (T)1 / (T)36, (T)1 / (T)36,
+
+                             (T)1 / (T)18, (T)1 / (T)18, (T)1 / (T)18, (T)1 / (T)36, (T)1 / (T)36,
+                             (T)1 / (T)36, (T)1 / (T)36, (T)1 / (T)36, (T)1 / (T)36};
+        return t_[iPop];
+    }
 };
 
 template <typename T>
@@ -140,6 +190,36 @@ struct D3Q27Constants {
     static const T t[q];              ///< lattice weights
     static const T cs2;     ///< lattice constant cs2 (in BGK, this is the square-speed-of-sound)
     static const T invCs2;  ///< 1 / cs2
+    static constexpr T cs2_gpu = (T)1 / (T)3;
+    static constexpr T invCs2_gpu = (T)3;
+    static constexpr int c_gpu(int iPop, int iD)
+    {
+        constexpr int c_[q][d] = {{0, 0, 0},
+
+                                  {-1, 0, 0},  {0, -1, 0},  {0, 0, -1},  {-1, -1, 0}, {-1, 1, 0},
+                                  {-1, 0, -1}, {-1, 0, 1},  {0, -1, -1}, {0, -1, 1},  {-1, -1, -1},
+                                  {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1},
+
+                                  {1, 0, 0},   {0, 1, 0},   {0, 0, 1},   {1, 1, 0},   {1, -1, 0},
+                                  {1, 0, 1},   {1, 0, -1},  {0, 1, 1},   {0, 1, -1},  {1, 1, 1},
+                                  {1, 1, -1},  {1, -1, 1},  {1, -1, -1}};
+        return c_[iPop][iD];
+    }
+
+    static constexpr T t_gpu(int iPop)
+    {
+        constexpr T t_[q] = {
+            (T)8 / (T)27,
+
+            (T)2 / (T)27,  (T)2 / (T)27,  (T)2 / (T)27,  (T)1 / (T)54, (T)1 / (T)54,
+            (T)1 / (T)54,  (T)1 / (T)54,  (T)1 / (T)54,  (T)1 / (T)54, (T)1 / (T)216,
+            (T)1 / (T)216, (T)1 / (T)216, (T)1 / (T)216,
+
+            (T)2 / (T)27,  (T)2 / (T)27,  (T)2 / (T)27,  (T)1 / (T)54, (T)1 / (T)54,
+            (T)1 / (T)54,  (T)1 / (T)54,  (T)1 / (T)54,  (T)1 / (T)54, (T)1 / (T)216,
+            (T)1 / (T)216, (T)1 / (T)216, (T)1 / (T)216};
+        return t_[iPop];
+    }
 };
 
 template <typename T>

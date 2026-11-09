@@ -69,7 +69,7 @@ public:
 template <typename T>
 class Xinterpolation2D : public DirectedInterpolation2D<T> {
 public:
-    Xinterpolation2D<T>() : DirectedInterpolation2D<T>()
+    Xinterpolation2D() : DirectedInterpolation2D<T>()
     {
         dOne = 1;
         dTwo = 1;
@@ -303,7 +303,7 @@ private:
 template <typename T>
 class Yinterpolation2D : public DirectedInterpolation2D<T> {
 public:
-    Yinterpolation2D<T>() : DirectedInterpolation2D<T>()
+    Yinterpolation2D() : DirectedInterpolation2D<T>()
     {
         dOne = 1;
         dTwo = 1;
@@ -534,7 +534,7 @@ private:
 template <typename T>
 class Zinterpolation2D : public DirectedInterpolation2D<T> {
 public:
-    Zinterpolation2D<T>() : DirectedInterpolation2D<T>()
+    Zinterpolation2D() : DirectedInterpolation2D<T>()
     {
         dOne = 1;
         dTwo = 1;

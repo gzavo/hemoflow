@@ -80,6 +80,20 @@ struct D2Q9Constants {
     static const T t[q];              ///< lattice weights
     static const T cs2;     ///< lattice constant cs2 (in BGK, this is the square-speed-of-sound)
     static const T invCs2;  ///< 1 / cs2
+    static const T cs2_gpu;
+    static const T invCs2_gpu;
+    static int c_gpu(int iPop, int iD)
+    {
+        static const int c_[q][d] = {{0, 0},  {-1, 1}, {-1, 0}, {-1, -1}, {0, -1},
+                                     {1, -1}, {1, 0},  {1, 1},  {0, 1}};
+        return c_[iPop][iD];
+    }
+    static T t_gpu(int iPop)
+    {
+        static const T t_[q] = {(T)4 / (T)9,  (T)1 / (T)36, (T)1 / (T)9,  (T)1 / (T)36, (T)1 / (T)9,
+                                (T)1 / (T)36, (T)1 / (T)9,  (T)1 / (T)36, (T)1 / (T)9};
+        return t_[iPop];
+    }
 };
 
 template <typename T>

@@ -41,6 +41,8 @@
 #include "core/dynamics.h"
 #include "core/globalDefs.h"
 
+#include <cstdint>
+
 namespace plb {
 
 /* *************** PART I ******************************************** */

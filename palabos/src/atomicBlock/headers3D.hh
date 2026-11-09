@@ -41,3 +41,4 @@
 #include "atomicBlock/dataProcessorWrapper3D.hh"
 #include "atomicBlock/reductiveDataProcessingFunctional3D.hh"
 #include "atomicBlock/reductiveDataProcessorWrapper3D.hh"
+#include "atomicBlock/atomicAcceleratedLattice3D.hh"

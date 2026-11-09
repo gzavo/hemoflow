@@ -52,6 +52,8 @@ template <typename T, template <typename U> class Descriptor>
 class BlockLatticeBase3D;
 template <typename T, template <typename U> class Descriptor>
 class BlockLattice3D;
+template <typename T, template <typename U> class Descriptor>
+class AtomicAcceleratedLattice3D;
 template <typename T>
 class ScalarFieldBase3D;
 template <typename T>
@@ -153,6 +155,14 @@ private:
 template <typename T, template <typename U> class Descriptor>
 struct ReductiveBoxProcessingFunctional3D_L : public PlainReductiveBoxProcessingFunctional3D {
     virtual void process(Box3D domain, BlockLattice3D<T, Descriptor> &lattice) = 0;
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for a single lattice
+template <typename T, template <typename U> class Descriptor>
+struct ReductiveBoxProcessingFunctional3D_A : public PlainReductiveBoxProcessingFunctional3D {
+    virtual void process(Box3D domain, AtomicAcceleratedLattice3D<T, Descriptor> &lattice) = 0;
     /// Invoke parent-method "processGenericBlocks" through a type-cast
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };
@@ -263,11 +273,31 @@ struct ReductiveBoxProcessingFunctional3D_LS : public PlainReductiveBoxProcessin
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };
 
+/// Easy instantiation of boxed data processor for Lattice-ScalarField coupling
+template <typename T1, template <typename U> class Descriptor, typename T2>
+struct ReductiveBoxProcessingFunctional3D_AS : public PlainReductiveBoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, AtomicAcceleratedLattice3D<T1, Descriptor> &lattice,
+        ScalarField3D<T2> &field) = 0;
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
 /// Easy instantiation of boxed data processor for Lattice-TensorField coupling
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
 struct ReductiveBoxProcessingFunctional3D_LT : public PlainReductiveBoxProcessingFunctional3D {
     virtual void process(
         Box3D domain, BlockLattice3D<T1, Descriptor> &lattice, TensorField3D<T2, nDim> &field) = 0;
+    /// Invoke parent-method "processGenericBlocks" through a type-cast
+    virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
+};
+
+/// Easy instantiation of boxed data processor for Lattice-TensorField coupling
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+struct ReductiveBoxProcessingFunctional3D_AT : public PlainReductiveBoxProcessingFunctional3D {
+    virtual void process(
+        Box3D domain, AtomicAcceleratedLattice3D<T1, Descriptor> &lattice,
+        TensorField3D<T2, nDim> &field) = 0;
     /// Invoke parent-method "processGenericBlocks" through a type-cast
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> atomicBlocks);
 };

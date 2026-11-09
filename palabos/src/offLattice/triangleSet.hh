@@ -256,15 +256,15 @@ bool TriangleSet<T>::isAsciiSTL(FILE *fp)
 {
     char buf[PLB_CBUFSIZ + 1];
 
-#ifdef PLB_DEBUG
     size_t sz = fread(buf, sizeof(char), PLB_CBUFSIZ, fp);
     if (sz != PLB_CBUFSIZ) {
         PLB_ASSERT(!ferror(fp));
+        if (ferror(fp)) {
+            rewind(fp);
+            return false;  // We return that the file is not ASCII STL. If the users try to read it
+                           // as a binary STL, they will fail.
+        }
     }
-#else
-    (void)fread(buf, sizeof(char), PLB_CBUFSIZ, fp);  // TODO: (void) does not suppress warning. We
-                                                      // should alway check return. throw exception.
-#endif
     buf[PLB_CBUFSIZ] = '\0';
     rewind(fp);
 
@@ -272,22 +272,21 @@ bool TriangleSet<T>::isAsciiSTL(FILE *fp)
         return false;
     }
 
-#ifdef PLB_DEBUG
     int rv = fseek(fp, 80L, SEEK_SET);
-#else
-    (void)fseek(fp, 80L, SEEK_SET);
-#endif
     PLB_ASSERT(rv != -1);
+    if (rv == -1) {
+        return false;
+    }
 
-#ifdef PLB_DEBUG
     sz = fread(buf, sizeof(char), PLB_CBUFSIZ, fp);
     if (sz != PLB_CBUFSIZ) {
         PLB_ASSERT(!ferror(fp));
+        if (ferror(fp)) {
+            rewind(fp);
+            return false;  // We return that the file is not ASCII STL. If the users try to read it
+                           // as a binary STL, they will fail.
+        }
     }
-#else
-    (void)fread(buf, sizeof(char), PLB_CBUFSIZ, fp);  // TODO: (void) does not suppress warning. We
-                                                      // should alway check return. throw exception.
-#endif
     buf[PLB_CBUFSIZ] = '\0';
     rewind(fp);
 
@@ -304,13 +303,11 @@ void TriangleSet<T>::readAsciiSTL(FILE *fp, TriangleSelector<T> *selector)
     char buf[PLB_CBUFSIZ];
     char *cp;
 
-#ifdef PLB_DEBUG
     char *sp = fgets(buf, PLB_CBUFSIZ, fp);
-#else
-    (void)fgets(buf, PLB_CBUFSIZ, fp);  // TODO: (void) does not suppress warning. We should alway
-                                        // check return. throw exception.
-#endif
-    PLB_ASSERT(sp != NULL);                   // The input file is badly structured.
+    PLB_ASSERT(sp != NULL);  // The input file is badly structured.
+    if (sp == NULL) {
+        return;
+    }
     PLB_ASSERT(checkForBufferOverflow(buf));  // Problem with reading one line of text.
 
     char fmt[32];
@@ -498,13 +495,12 @@ void TriangleSet<T>::readOFF(std::string fname, TriangleSelector<T> *selector)
     PLB_ASSERT(fp != 0);  // The input file cannot be read.
 
     char buf[PLB_CBUFSIZ];
-#ifdef PLB_DEBUG
     char *sp = fgets(buf, PLB_CBUFSIZ, fp);
-#else
-    (void)fgets(buf, PLB_CBUFSIZ, fp);  // TODO: (void) does not suppress warning. We should alway
-                                        // check return. throw exception.
-#endif
     PLB_ASSERT(sp != NULL);  // The input file cannot be read.
+    if (sp == NULL) {
+        fclose(fp);
+        return;
+    }
 
     char *cp = NULL;
 
@@ -1843,13 +1839,11 @@ void TriangleSet<T>::writeBinaryContentSTL(
     unsigned short abc = 0;
     char buf[80] = {'\0'};
 
-    char *name = (char *)malloc((solidName.length() + 1) * sizeof(char));
-    strcpy(name, solidName.c_str());
-    if (strlen(name) > 79) {
-        name[79] = '\0';
+    if (solidName.size() > 79) {
+        solidName.resize(80, '\0');
+        solidName[79] = '\0';
     }
-    strcpy(buf, name);
-    free(name);
+    strcpy(buf, solidName.c_str());
 
     fwrite(buf, sizeof(char), 80, fp);
     fwrite(&nt, sizeof(unsigned int), 1, fp);

@@ -25,8 +25,8 @@ Palabos is very easy to install since it does not depend on any external depende
 
 The mandatory packages are the following:
 
-- A modern C++ compiler `gcc` or `clang`
-- `clang-format` version 14
+- A compatible C++ 20 compiler `gcc` or `clang`
+- `clang-format` version 14 (for formatting)
 - `make`
 - `cmake`
 

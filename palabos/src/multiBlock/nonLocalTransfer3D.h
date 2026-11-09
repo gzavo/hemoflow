@@ -39,6 +39,7 @@
 #include "core/globalDefs.h"
 #include "multiBlock/localMultiBlockInfo3D.h"
 #include "multiBlock/multiBlockLattice3D.h"
+#include "multiBlock/acceleratedLattice3D.h"
 #include "multiBlock/multiDataField3D.h"
 
 namespace plb {
@@ -118,6 +119,16 @@ template <typename T, template <typename U> class Descriptor>
 void copy(
     MultiBlockLattice3D<T, Descriptor> const &from, Box3D const &fromDomain,
     MultiBlockLattice3D<T, Descriptor> &to, Box3D const &toDomain, modif::ModifT whichContent);
+
+/// Inter-domain copy between two block-lattices.
+/** The two blocks are not required to have same parallelization. If the two
+ *  domains have different extent, the smaller domain is taken to be the valid one
+ *  (this argument is reiterated independently in each space direction).
+ **/
+template <typename T, template <typename U> class Descriptor>
+void copy(
+    AcceleratedLattice3D<T, Descriptor> const &from, Box3D const &fromDomain,
+    AcceleratedLattice3D<T, Descriptor> &to, Box3D const &toDomain, modif::ModifT whichContent);
 
 /// Inter-domain copy of the populations and external scalars between two block-lattices.
 /** The two blocks are not required to have same parallelization. If the two

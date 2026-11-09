@@ -72,14 +72,12 @@ public:
     T *get(pluint)
     {
         PLB_PRECONDITION(false);
-        static T data = T();
-        return &data;
+        return nullptr;
     }
     T const *get(pluint) const
     {
         PLB_PRECONDITION(false);
-        static T data = T();
-        return &data;
+        return nullptr;
     }
 };
 
@@ -200,6 +198,8 @@ private:
     friend class BlockLattice2D;
     template <typename T_, template <typename U_> class Descriptor_>
     friend class BlockLattice3D;
+    template <typename T_, template <typename U_> class Descriptor_>
+    friend class AtomicAcceleratedLattice3D;
 #ifdef PLB_MPI_PARALLEL
     template <typename T_, template <typename U_> class Descriptor_>
     friend class ParallelCellAccess2D;

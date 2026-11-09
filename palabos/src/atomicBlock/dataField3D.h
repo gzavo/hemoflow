@@ -92,6 +92,15 @@ private:
 template <typename T>
 class ScalarField3D : public ScalarFieldBase3D<T>, public AtomicBlock3D {
 public:
+    template <class Functional>
+    void for_each(Functional functional);
+    template <class Functional>
+    void for_each(Box3D const &domain, Functional functional);
+    template <class Functional, class BinaryReductionOp>
+    T transform_reduce(
+        Box3D const &domain, T neutral, BinaryReductionOp reduce, Functional functional);
+
+public:
     ScalarField3D(plint nx_, plint ny_, plint nz_, T iniVal = T());
     ~ScalarField3D();
     ScalarField3D(ScalarField3D<T> const &rhs);
@@ -105,19 +114,19 @@ public:
     {
         return (pluint)this->getNx() * (pluint)this->getNy() * (pluint)this->getNz();
     }
-    virtual T &get(plint iX, plint iY, plint iZ)
+    virtual T &get(plint iX, plint iY, plint iZ) final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData[iZ + this->getNz() * (iY + this->getNy() * iX)];
     }
-    virtual T const &get(plint iX, plint iY, plint iZ) const
+    virtual T const &get(plint iX, plint iY, plint iZ) const final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData[iZ + this->getNz() * (iY + this->getNy() * iX)];
     }
     T &operator[](plint ind)
     {
@@ -188,6 +197,16 @@ private:
 template <typename T, int nDim>
 class TensorField3D : public TensorFieldBase3D<T, nDim>, public AtomicBlock3D {
 public:
+    template <class Functional>
+    void for_each(Functional functional);
+    template <class Functional>
+    void for_each(Box3D const &domain, Functional functional);
+    template <class Functional, class BinaryReductionOp>
+    Array<T, nDim> transform_reduce(
+        Box3D const &domain, Array<T, nDim> neutral, BinaryReductionOp reduce,
+        Functional functional);
+
+public:
     TensorField3D(plint nx_, plint ny_, plint nz_);
     TensorField3D(plint nx_, plint ny_, plint nz_, Array<T, nDim> const &iniVal);
     ~TensorField3D();
@@ -198,19 +217,19 @@ public:
 
 public:
     virtual void reset();
-    virtual Array<T, nDim> &get(plint iX, plint iY, plint iZ)
+    virtual Array<T, nDim> &get(plint iX, plint iY, plint iZ) final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData[iZ + this->getNz() * (iY + this->getNy() * iX)];
     }
-    virtual Array<T, nDim> const &get(plint iX, plint iY, plint iZ) const
+    virtual Array<T, nDim> const &get(plint iX, plint iY, plint iZ) const final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData[iZ + this->getNz() * (iY + this->getNy() * iX)];
     }
     Array<T, nDim> &operator[](plint ind)
     {
@@ -294,19 +313,19 @@ public:
 
 public:
     virtual void reset();
-    virtual T *get(plint iX, plint iY, plint iZ)
+    virtual T *get(plint iX, plint iY, plint iZ) final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData + this->getNdim() * (iZ + this->getNz() * (iY + this->getNy() * iX));
     }
-    virtual T const *get(plint iX, plint iY, plint iZ) const
+    virtual T const *get(plint iX, plint iY, plint iZ) const final
     {
         PLB_PRECONDITION(iX >= 0 && iX < this->getNx());
         PLB_PRECONDITION(iY >= 0 && iY < this->getNy());
         PLB_PRECONDITION(iZ >= 0 && iZ < this->getNz());
-        return field[iX][iY][iZ];
+        return rawData + this->getNdim() * (iZ + this->getNz() * (iY + this->getNy() * iX));
     }
     T &operator[](plint ind)
     {

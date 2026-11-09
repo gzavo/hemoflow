@@ -35,6 +35,7 @@
  * Groups all the template instantiations for the 3D multiBlock.
  */
 
+#include "multiBlock/acceleratedLattice3D.hh"
 #include "multiBlock/coupling3D.hh"
 #include "multiBlock/group3D.hh"
 #include "multiBlock/multiBlockGenerator3D.hh"

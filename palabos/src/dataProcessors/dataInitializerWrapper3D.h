@@ -98,6 +98,16 @@ void defineDynamics(
     Dynamics<T, Descriptor> *dynamics, int whichFlag);
 
 template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<float> &floatMask, Box3D domain,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound);
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<float> &floatMask,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound);
+
+template <typename T, template <typename U> class Descriptor>
 void recomposeFromFlowVariables(
     BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<T> &density,
     TensorField3D<T, 3> &velocity, TensorField3D<T, 6> &strainRate, Box3D domain);
@@ -264,6 +274,16 @@ template <typename T, template <typename U> class Descriptor>
 void defineDynamics(
     MultiBlockLattice3D<T, Descriptor> &lattice, MultiScalarField3D<int> &intMask,
     Dynamics<T, Descriptor> *dynamics, int whichFlag);
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    MultiBlockLattice3D<T, Descriptor> &lattice, MultiScalarField3D<float> &floatMask, Box3D domain,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound);
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    MultiBlockLattice3D<T, Descriptor> &lattice, MultiScalarField3D<float> &floatMask,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound);
 
 template <typename T, template <typename U> class Descriptor>
 void recomposeFromFlowVariables(

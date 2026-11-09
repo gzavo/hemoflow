@@ -252,12 +252,10 @@ void BouzidiOffLatticeModel3D<T, Descriptor>::cellCompletion(
         if (bdType == OffBoundary::dirichlet) {
             T u_ci = D::c[iPop][0] * wall_vel[0] + D::c[iPop][1] * wall_vel[1]
                      + D::c[iPop][2] * wall_vel[2];
-            plint numUnknown = 0;
             if (q < (T)0.5) {
                 if (hasFluidNeighbor[i]) {
                     cell[oppPop] = 2. * q * iCell[iPop] + (1. - 2. * q) * cell[iPop];
                 } else {
-                    ++numUnknown;
                     cell[oppPop] = iCell[iPop];
                 }
                 cell[oppPop] -= 2. * u_ci * D::t[iPop] * D::invCs2;

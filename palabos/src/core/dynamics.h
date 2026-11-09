@@ -590,6 +590,38 @@ public:
         Dynamics<T, Descriptor> *baseDynamics_, bool automaticPrepareCollision_ = true);
 };
 
+template <typename T, template <typename U> class Descriptor>
+class HalfwayBounceBack : public CompositeDynamics<T, Descriptor> {
+public:
+    HalfwayBounceBack(Dynamics<T, Descriptor> *baseDynamics_);
+    HalfwayBounceBack(HierarchicUnserializer &unserializer);
+
+    T const &getData(int iPop) const;
+    T &getData(int iPop);
+    void resetData();
+    void setVelocity(int iPop, Array<T, Descriptor<T>::d> u);
+
+    /// Clone the object on its dynamic type.
+    virtual HalfwayBounceBack<T, Descriptor> *clone() const;
+    virtual void prepareCollision(Cell<T, Descriptor> &cell) { }
+
+    /// Return a unique ID for this class.
+    virtual int getId() const;
+    /// Serialize the dynamics object.
+    virtual void serialize(HierarchicSerializer &serializer) const;
+    /// Un-Serialize the dynamics object.
+    virtual void unserialize(HierarchicUnserializer &unserializer);
+
+    virtual void collide(Cell<T, Descriptor> &cell, BlockStatistics &statistics_);
+    virtual void collideExternal(
+        Cell<T, Descriptor> &cell, T rhoBar, Array<T, Descriptor<T>::d> const &j, T thetaBar,
+        BlockStatistics &stat);
+
+private:
+    Array<T, Descriptor<T>::q> data;
+    static int id;
+};
+
 /// Implementation of "full-way bounce-back" dynamics
 /** This is a very popular way to implement no-slip boundary conditions,
  * because the dynamics are independent of the orientation of the boundary.

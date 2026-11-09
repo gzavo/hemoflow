@@ -110,6 +110,14 @@ void copy(
 }
 
 template <typename T, template <typename U> class Descriptor>
+void copy(
+    AcceleratedLattice3D<T, Descriptor> const &from, Box3D const &fromDomain,
+    AcceleratedLattice3D<T, Descriptor> &to, Box3D const &toDomain, modif::ModifT whichContent)
+{
+    copy_generic(from, fromDomain, to, toDomain, whichContent);
+}
+
+template <typename T, template <typename U> class Descriptor>
 void copyPopulations(
     MultiBlockLattice3D<T, Descriptor> const &from, Box3D const &fromDomain,
     MultiBlockLattice3D<T, Descriptor> &to, Box3D const &toDomain)

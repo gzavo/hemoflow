@@ -108,9 +108,9 @@ class PlbException : public std::exception { };
 
 class PlbGenericException : public PlbException {
 public:
-    PlbGenericException(std::string message_) throw();
-    virtual ~PlbGenericException() throw() { }
-    virtual const char *what() const throw();
+    PlbGenericException(std::string message_);
+    virtual ~PlbGenericException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;
@@ -118,9 +118,9 @@ private:
 
 class PlbMemoryException : public PlbException {
 public:
-    PlbMemoryException(std::string message_) throw();
-    virtual ~PlbMemoryException() throw() { }
-    virtual const char *what() const throw();
+    PlbMemoryException(std::string message_);
+    virtual ~PlbMemoryException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;
@@ -128,9 +128,9 @@ private:
 
 class PlbIOException : public PlbException {
 public:
-    PlbIOException(std::string message_) throw();
-    virtual ~PlbIOException() throw() { }
-    virtual const char *what() const throw();
+    PlbIOException(std::string message_);
+    virtual ~PlbIOException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;
@@ -138,9 +138,9 @@ private:
 
 class PlbNetworkException : public PlbException {
 public:
-    PlbNetworkException(std::string message_) throw();
-    virtual ~PlbNetworkException() throw() { }
-    virtual const char *what() const throw();
+    PlbNetworkException(std::string message_);
+    virtual ~PlbNetworkException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;
@@ -148,9 +148,9 @@ private:
 
 class PlbLogicException : public PlbException {
 public:
-    PlbLogicException(std::string message_) throw();
-    virtual ~PlbLogicException() throw() { }
-    virtual const char *what() const throw();
+    PlbLogicException(std::string message_);
+    virtual ~PlbLogicException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;
@@ -158,9 +158,9 @@ private:
 
 class PlbOutOfRangeException : public PlbException {
 public:
-    PlbOutOfRangeException(std::string message_) throw();
-    virtual ~PlbOutOfRangeException() throw() { }
-    virtual const char *what() const throw();
+    PlbOutOfRangeException(std::string message_);
+    virtual ~PlbOutOfRangeException() { }
+    virtual const char *what() const noexcept;
 
 private:
     std::string message;

@@ -6068,6 +6068,344 @@ BlockDomain::DomainT BoxVorticityFunctional3D<T, nDim>::appliesTo() const
 }
 
 template <typename T, int nDim>
+void BoxVorticityOrderFourFunctional3D<T, nDim>::processBulk(
+    Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::bulkVorticityXOrderFour(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::bulkVorticityYOrderFour(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::bulkVorticityZOrderFour(velocity, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderFourFunctional3D<T, nDim>::processPlane(
+    int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::planeVorticityX(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::planeVorticityY(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::planeVorticityZ(velocity, direction, orientation, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderFourFunctional3D<T, nDim>::processEdge(
+    int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::edgeVorticityX(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::edgeVorticityY(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::edgeVorticityZ(velocity, plane, normal1, normal2, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderFourFunctional3D<T, nDim>::processCorner(
+    int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::cornerVorticityX(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::cornerVorticityY(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::cornerVorticityZ(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+BoxVorticityOrderFourFunctional3D<T, nDim> *BoxVorticityOrderFourFunctional3D<T, nDim>::clone()
+    const
+{
+    return new BoxVorticityOrderFourFunctional3D<T, nDim>(*this);
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderFourFunctional3D<T, nDim>::getTypeOfModification(
+    std::vector<modif::ModifT> &modified) const
+{
+    modified[0] = modif::nothing;
+    modified[1] = modif::staticVariables;
+}
+
+template <typename T, int nDim>
+BlockDomain::DomainT BoxVorticityOrderFourFunctional3D<T, nDim>::appliesTo() const
+{
+    // Don't apply to envelope, because nearest neighbors need to be accessed.
+    return BlockDomain::bulk;
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderSixFunctional3D<T, nDim>::processBulk(
+    Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::bulkVorticityXOrderSix(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::bulkVorticityYOrderSix(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::bulkVorticityZOrderSix(velocity, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderSixFunctional3D<T, nDim>::processPlane(
+    int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::planeVorticityX(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::planeVorticityY(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::planeVorticityZ(velocity, direction, orientation, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderSixFunctional3D<T, nDim>::processEdge(
+    int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::edgeVorticityX(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::edgeVorticityY(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::edgeVorticityZ(velocity, plane, normal1, normal2, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderSixFunctional3D<T, nDim>::processCorner(
+    int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::cornerVorticityX(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::cornerVorticityY(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::cornerVorticityZ(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+BoxVorticityOrderSixFunctional3D<T, nDim> *BoxVorticityOrderSixFunctional3D<T, nDim>::clone() const
+{
+    return new BoxVorticityOrderSixFunctional3D<T, nDim>(*this);
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderSixFunctional3D<T, nDim>::getTypeOfModification(
+    std::vector<modif::ModifT> &modified) const
+{
+    modified[0] = modif::nothing;
+    modified[1] = modif::staticVariables;
+}
+
+template <typename T, int nDim>
+BlockDomain::DomainT BoxVorticityOrderSixFunctional3D<T, nDim>::appliesTo() const
+{
+    // Don't apply to envelope, because nearest neighbors need to be accessed.
+    return BlockDomain::bulk;
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderEightFunctional3D<T, nDim>::processBulk(
+    Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::bulkVorticityXOrderEight(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::bulkVorticityYOrderEight(velocity, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::bulkVorticityZOrderEight(velocity, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderEightFunctional3D<T, nDim>::processPlane(
+    int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::planeVorticityX(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::planeVorticityY(velocity, direction, orientation, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::planeVorticityZ(velocity, direction, orientation, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderEightFunctional3D<T, nDim>::processEdge(
+    int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::edgeVorticityX(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::edgeVorticityY(velocity, plane, normal1, normal2, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::edgeVorticityZ(velocity, plane, normal1, normal2, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderEightFunctional3D<T, nDim>::processCorner(
+    int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+    TensorField3D<T, nDim> &vorticity)
+{
+    Dot3D offset = computeRelativeDisplacement(velocity, vorticity);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                plint iX2 = iX + offset.x;
+                plint iY2 = iY + offset.y;
+                plint iZ2 = iZ + offset.z;
+                vorticity.get(iX2, iY2, iZ2)[0] =
+                    fdDataField::cornerVorticityX(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[1] =
+                    fdDataField::cornerVorticityY(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+                vorticity.get(iX2, iY2, iZ2)[2] =
+                    fdDataField::cornerVorticityZ(velocity, normalX, normalY, normalZ, iX, iY, iZ);
+            }
+        }
+    }
+}
+
+template <typename T, int nDim>
+BoxVorticityOrderEightFunctional3D<T, nDim> *BoxVorticityOrderEightFunctional3D<T, nDim>::clone()
+    const
+{
+    return new BoxVorticityOrderEightFunctional3D<T, nDim>(*this);
+}
+
+template <typename T, int nDim>
+void BoxVorticityOrderEightFunctional3D<T, nDim>::getTypeOfModification(
+    std::vector<modif::ModifT> &modified) const
+{
+    modified[0] = modif::nothing;
+    modified[1] = modif::staticVariables;
+}
+
+template <typename T, int nDim>
+BlockDomain::DomainT BoxVorticityOrderEightFunctional3D<T, nDim>::appliesTo() const
+{
+    // Don't apply to envelope, because nearest neighbors need to be accessed.
+    return BlockDomain::bulk;
+}
+
+template <typename T, int nDim>
 void BoxBulkHelicityFunctional3D<T, nDim>::process(
     Box3D domain, ScalarField3D<T> &helicity, TensorField3D<T, nDim> &velocity)
 {

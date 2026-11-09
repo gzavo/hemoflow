@@ -166,6 +166,10 @@ public:
     plint toLocalY(plint iY) const;
     /// Convert to local z-coordinate of a given block.
     plint toLocalZ(plint iZ) const;
+    plint getEnvelopeWidth() const
+    {
+        return envelopeWidth;
+    }
 
 private:
     SparseBlockStructure3D const &sparseBlock;

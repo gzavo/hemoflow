@@ -143,6 +143,24 @@ void defineDynamics(
 }
 
 template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<int> &floatMask, Box3D domain,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound)
+{
+    applyProcessingFunctional(
+        new DynamicsFromFloatMaskFunctional3D<T, Descriptor>(dynamics, lowerBound), domain, lattice,
+        floatMask);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<int> &floatMask,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound)
+{
+    defineDynamics(lattice, floatMask, lattice.getBoundingBox(), dynamics, lowerBound);
+}
+
+template <typename T, template <typename U> class Descriptor>
 void recomposeFromFlowVariables(
     BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<T> &density,
     TensorField3D<T, 3> &velocity, TensorField3D<T, 6> &strainRate, Box3D domain)
@@ -401,6 +419,24 @@ void defineDynamics(
     Dynamics<T, Descriptor> *dynamics, int whichFlag)
 {
     defineDynamics(lattice, intMask, lattice.getBoundingBox(), dynamics, whichFlag);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    MultiBlockLattice3D<T, Descriptor> &lattice, MultiScalarField3D<float> &floatMask, Box3D domain,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound)
+{
+    applyProcessingFunctional(
+        new DynamicsFromFloatMaskFunctional3D<T, Descriptor>(dynamics, lowerBound), domain, lattice,
+        floatMask);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void defineDynamics(
+    MultiBlockLattice3D<T, Descriptor> &lattice, MultiScalarField3D<float> &floatMask,
+    Dynamics<T, Descriptor> *dynamics, float lowerBound)
+{
+    defineDynamics(lattice, floatMask, lattice.getBoundingBox(), dynamics, lowerBound);
 }
 
 template <typename T, template <typename U> class Descriptor>

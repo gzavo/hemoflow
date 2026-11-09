@@ -558,7 +558,9 @@ private:
 template <typename T>
 class WENO3 : public BoxProcessingFunctional3D {
 public:
-    WENO3(T d_, T eps_, bool neumann_, plint nx_, plint ny_, plint nz_);
+    WENO3(
+        T d_, T eps_, bool neumann_, plint nx_, plint ny_, plint nz_, T alpha_x_, T alpha_y_,
+        T alpha_z_);
     virtual void processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> fields);
     virtual WENO3<T> *clone() const;
     virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
@@ -567,6 +569,7 @@ private:
     T d, eps;
     bool neumann;
     plint nx, ny, nz;
+    T alpha_x, alpha_y, alpha_z;
 };
 
 /* ******** RK3Step1Functional3D ****************************************** */

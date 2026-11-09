@@ -879,6 +879,16 @@ std::unique_ptr<MultiBlockLattice3D<T, Descriptor> > defaultGenerateMultiBlockLa
 }
 
 template <typename T, template <typename U> class Descriptor>
+std::unique_ptr<AcceleratedLattice3D<T, Descriptor> > defaultGenerateAcceleratedLattice3D(
+    MultiBlockManagement3D const &management, plint unnamedDummyArg)
+{
+    return std::unique_ptr<AcceleratedLattice3D<T, Descriptor> >(
+        new AcceleratedLattice3D<T, Descriptor>(
+            management, defaultMultiBlockPolicy3D().getBlockCommunicator(),
+            defaultMultiBlockPolicy3D().getCombinedStatistics(), new NoDynamics<T, Descriptor>));
+}
+
+template <typename T, template <typename U> class Descriptor>
 std::unique_ptr<MultiBlockLattice3D<T, Descriptor> > generateMultiBlockLattice(
     MultiBlockManagement3D const &management, Dynamics<T, Descriptor> *backgroundDynamics)
 {

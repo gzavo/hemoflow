@@ -1851,6 +1851,72 @@ public:
     virtual BlockDomain::DomainT appliesTo() const;
 };
 
+/// Use of a 4 points stencil for computation of FD gradients for the vorticity.
+/// Bulk only!
+template <typename T, int nDim>
+class BoxVorticityOrderFourFunctional3D :
+    public BoundedBoxProcessingFunctional3D_TT<T, nDim, T, nDim> {
+public:
+    virtual void processBulk(
+        Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity);
+    virtual void processPlane(
+        int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processEdge(
+        int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processCorner(
+        int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual BoxVorticityOrderFourFunctional3D<T, nDim> *clone() const;
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
+    virtual BlockDomain::DomainT appliesTo() const;
+};
+
+/// Use of a 6 points stencil for computation of FD gradients for the vorticity.
+/// Bulk only!
+template <typename T, int nDim>
+class BoxVorticityOrderSixFunctional3D :
+    public BoundedBoxProcessingFunctional3D_TT<T, nDim, T, nDim> {
+public:
+    virtual void processBulk(
+        Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity);
+    virtual void processPlane(
+        int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processEdge(
+        int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processCorner(
+        int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual BoxVorticityOrderSixFunctional3D<T, nDim> *clone() const;
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
+    virtual BlockDomain::DomainT appliesTo() const;
+};
+
+/// Use of a 8 points stencil for computation of FD gradients for the vorticity.
+/// Bulk only!
+template <typename T, int nDim>
+class BoxVorticityOrderEightFunctional3D :
+    public BoundedBoxProcessingFunctional3D_TT<T, nDim, T, nDim> {
+public:
+    virtual void processBulk(
+        Box3D domain, TensorField3D<T, nDim> &velocity, TensorField3D<T, nDim> &vorticity);
+    virtual void processPlane(
+        int direction, int orientation, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processEdge(
+        int plane, int normal1, int normal2, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual void processCorner(
+        int normalX, int normalY, int normalZ, Box3D domain, TensorField3D<T, nDim> &velocity,
+        TensorField3D<T, nDim> &vorticity);
+    virtual BoxVorticityOrderEightFunctional3D<T, nDim> *clone() const;
+    virtual void getTypeOfModification(std::vector<modif::ModifT> &modified) const;
+    virtual BlockDomain::DomainT appliesTo() const;
+};
+
 template <typename T, int nDim>
 class BoxBulkHelicityFunctional3D : public BoxProcessingFunctional3D_ST<T, T, nDim> {
 public:

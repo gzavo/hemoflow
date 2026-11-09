@@ -44,6 +44,7 @@
 #include "core/globalDefs.h"
 #include "dataProcessors/metaStuffFunctional3D.h"
 #include "multiBlock/multiBlockLattice3D.h"
+#include "multiBlock/acceleratedLattice3D.h"
 #include "multiBlock/multiDataField3D.h"
 
 namespace plb {
@@ -80,6 +81,10 @@ void uniqueDynamicsChains(
 template <typename T, template <typename U> class Descriptor>
 void uniqueDynamicsIds(
     MultiBlockLattice3D<T, Descriptor> &lattice, Box3D domain, std::vector<int> &ids);
+
+template <typename T, template <typename U> class Descriptor>
+void uniqueDynamicsIds(
+    AcceleratedLattice3D<T, Descriptor> &lattice, Box3D domain, std::vector<int> &ids);
 
 template <typename T, template <typename U> class Descriptor>
 void extractDynamicsChain(

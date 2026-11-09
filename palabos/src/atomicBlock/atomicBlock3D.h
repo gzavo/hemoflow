@@ -38,6 +38,7 @@
 #include <map>
 #include <string>
 
+#include "acceleratedLattice/acceleratedDefinitions.h"
 #include "atomicBlock/dataProcessorWrapper3D.h"
 #include "atomicBlock/reductiveDataProcessorWrapper3D.h"
 #include "core/block3D.h"
@@ -69,6 +70,7 @@ private:
 };
 
 struct BlockDataTransfer3D {
+    virtual void setExecutionMode(ExecutionMode) { }
     virtual ~BlockDataTransfer3D() { }
     virtual void setBlock(AtomicBlock3D &block_) = 0;
     virtual void setConstBlock(AtomicBlock3D const &block_) = 0;
@@ -82,14 +84,29 @@ struct BlockDataTransfer3D {
      *  to avoid reallocation and improve performance.
      **/
     virtual void send(Box3D domain, std::vector<char> &buffer, modif::ModifT kind) const = 0;
+    virtual void send_raw(
+        Box3D, Box3D, plint, plint, plint, char **, plint &, char **, modif::ModifT) const
+    {
+        PLB_ASSERT(false);
+    }
     /// Receive data from a byte-stream into the block.
     virtual void receive(Box3D domain, std::vector<char> const &buffer, modif::ModifT kind) = 0;
+    virtual void receive_raw(Box3D, char const *, plint, char **, modif::ModifT)
+    {
+        PLB_ASSERT(false);
+    }
     /// Receive data from a byte-stream into the block, and adjust coordinates if the block contains
     /// abolute coordinate data.
     /** By default, offset information is ignored. **/
     virtual void receive(Box3D domain, std::vector<char> const &buffer, modif::ModifT kind, Dot3D)
     {
         receive(domain, buffer, kind);
+    }
+    virtual void receive_raw(
+        Box3D domain, char const *buffer, plint bufferSize, char **indices, modif::ModifT kind,
+        Dot3D)
+    {
+        receive_raw(domain, buffer, bufferSize, indices, kind);
     }
     /// Receive data from a byte-stream into the block, and re-map IDs for dynamics if exist.
     virtual void receive(

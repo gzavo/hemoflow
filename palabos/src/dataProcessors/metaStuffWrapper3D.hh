@@ -100,6 +100,75 @@ std::unique_ptr<MultiScalarField3D<int> > extractBottomMostDynamics(
 
 template <typename T, template <typename U> class Descriptor>
 void uniqueDynamicsChains(
+    AcceleratedLattice3D<T, Descriptor> &lattice, Box3D domain,
+    std::vector<std::vector<int> > &chains, pluint &maxChainLength)
+{
+    MultiContainerBlock3D container(lattice);
+    std::vector<MultiBlock3D *> latticeAndContainer;
+    latticeAndContainer.push_back(&lattice);
+    latticeAndContainer.push_back(&container);
+
+    AcceleratedStoreDynamicsFunctional3D<T, Descriptor> SDFunctional;
+    applyProcessingFunctional(SDFunctional, domain, latticeAndContainer);
+    maxChainLength = SDFunctional.getMaxChainLength();
+
+    MultiBlockManagement3D const &management = container.getMultiBlockManagement();
+    ThreadAttribution const &threadAttribution = management.getThreadAttribution();
+    SparseBlockStructure3D const &sparseBlock = management.getSparseBlockStructure();
+
+    std::vector<int> localSerializedChains;
+    std::vector<plint> localBlocks = sparseBlock.getLocalBlocks(threadAttribution);
+    for (pluint i = 0; i < localBlocks.size(); ++i) {
+        plint blockId = localBlocks[i];
+        AtomicContainerBlock3D &atomicContainer = container.getComponent(blockId);
+        StoreDynamicsID *storeId = dynamic_cast<StoreDynamicsID *>(atomicContainer.getData());
+        PLB_ASSERT(storeId);
+        storeId->startIterations();
+        while (!storeId->empty()) {
+            localSerializedChains.insert(
+                localSerializedChains.end(), storeId->getCurrent().begin(),
+                storeId->getCurrent().end());
+            storeId->iterate();
+            localSerializedChains.push_back(-1);
+        }
+    }
+
+#ifdef PLB_MPI_PARALLEL
+    std::vector<plint> idsPerProc(global::mpi().getSize(), 0);
+    idsPerProc[global::mpi().getRank()] = (plint)localSerializedChains.size();
+    global::mpi().allReduceVect(idsPerProc, MPI_SUM);
+
+    std::vector<plint> sumIdsPerProc(idsPerProc.size() + 1);
+    sumIdsPerProc[0] = 0;
+    std::partial_sum(idsPerProc.begin(), idsPerProc.end(), sumIdsPerProc.begin() + 1);
+    plint totalNumIds = sumIdsPerProc.back();
+
+    std::vector<int> allIds(totalNumIds, 0);
+    plint start = sumIdsPerProc[global::mpi().getRank()];
+    for (pluint i = 0; i < localSerializedChains.size(); ++i) {
+        allIds[start + i] = localSerializedChains[i];
+    }
+    global::mpi().allReduceVect(allIds, MPI_SUM);
+#else
+    std::vector<int> allIds(localSerializedChains);
+#endif
+
+    std::set<std::vector<int>, VectorIsLess> allChains;
+    std::vector<int> nextChain;
+    for (pluint i = 0; i < allIds.size(); ++i) {
+        if (allIds[i] == -1) {
+            allChains.insert(nextChain);
+            nextChain.clear();
+        } else {
+            nextChain.push_back(allIds[i]);
+        }
+    }
+
+    chains.assign(allChains.begin(), allChains.end());
+}
+
+template <typename T, template <typename U> class Descriptor>
+void uniqueDynamicsChains(
     MultiBlockLattice3D<T, Descriptor> &lattice, Box3D domain,
     std::vector<std::vector<int> > &chains, pluint &maxChainLength)
 {
@@ -128,9 +197,9 @@ void uniqueDynamicsChains(
             localSerializedChains.insert(
                 localSerializedChains.end(), storeId->getCurrent().begin(),
                 storeId->getCurrent().end());
+            localSerializedChains.push_back(-1);
             storeId->iterate();
         }
-        localSerializedChains.push_back(-1);
     }
 
 #ifdef PLB_MPI_PARALLEL
@@ -170,6 +239,21 @@ void uniqueDynamicsChains(
 template <typename T, template <typename U> class Descriptor>
 void uniqueDynamicsIds(
     MultiBlockLattice3D<T, Descriptor> &lattice, Box3D domain, std::vector<int> &ids)
+{
+    std::vector<std::vector<int> > chains;
+    pluint maxChainLength;
+    uniqueDynamicsChains(lattice, domain, chains, maxChainLength);
+    std::set<int> idSet;
+    for (pluint iChain = 0; iChain < chains.size(); ++iChain) {
+        idSet.insert(chains[iChain].begin(), chains[iChain].end());
+    }
+    idSet.erase(-1);
+    std::vector<int>(idSet.begin(), idSet.end()).swap(ids);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void uniqueDynamicsIds(
+    AcceleratedLattice3D<T, Descriptor> &lattice, Box3D domain, std::vector<int> &ids)
 {
     std::vector<std::vector<int> > chains;
     pluint maxChainLength;

@@ -31,6 +31,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <acceleratedLattice/headers3D.hh>
 #include <algorithm/headers3D.hh>
 #include <atomicBlock/headers3D.hh>
 #include <basicDynamics/headers3D.hh>

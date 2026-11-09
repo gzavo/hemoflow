@@ -678,8 +678,6 @@ void GuoExternalForceConsistentSmagorinskyCompleteRegularizedBGKdynamics<T, Desc
         cell[iPop] += Descriptor<T>::t[iPop] * preFactor * H_S;
     }
 
-    externalForceTemplates<T, Descriptor>::addGuoForce(cell, u, this->getOmega(), (T)1);
-
     if (cell.takesStatistics()) {
         gatherStatistics(statistics, rhoBar, uSqr);
     }

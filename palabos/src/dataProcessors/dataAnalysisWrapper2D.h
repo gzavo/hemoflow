@@ -489,7 +489,7 @@ void computeVorticity(TensorField2D<T, 2> &velocity, ScalarField2D<T> &vorticity
 template <typename T>
 std::unique_ptr<ScalarField2D<T> > computeVorticity(TensorField2D<T, 2> &velocity);
 
-/* *************** Vorticity, witout boundary treatment, from Velocity field  */
+/* *************** Vorticity, without boundary treatment, from Velocity field  */
 
 template <typename T>
 void computeBulkVorticity(TensorField2D<T, 2> &velocity, ScalarField2D<T> &vorticity);
@@ -505,7 +505,7 @@ void computeStrainRate(TensorField2D<T, 2> &velocity, TensorField2D<T, 3> &S);
 template <typename T>
 std::unique_ptr<TensorField2D<T, 3> > computeStrainRate(TensorField2D<T, 2> &velocity);
 
-/* *************** Str. rate, witout boundary treatment, from Velocity field  */
+/* *************** Str. rate, without boundary treatment, from Velocity field  */
 
 template <typename T>
 void computeBulkStrainRate(TensorField2D<T, 2> &velocity, TensorField2D<T, 3> &S);
@@ -1485,7 +1485,7 @@ std::unique_ptr<MultiScalarField2D<T> > computeVorticity(
 template <typename T>
 std::unique_ptr<MultiScalarField2D<T> > computeVorticity(MultiTensorField2D<T, 2> &velocity);
 
-/* *************** Vorticity, witout boundary treatment, from Velocity field  */
+/* *************** Vorticity, without boundary treatment, from Velocity field  */
 
 template <typename T>
 void computeBulkVorticity(
@@ -1511,7 +1511,7 @@ std::unique_ptr<MultiTensorField2D<T, 3> > computeStrainRate(
 template <typename T>
 std::unique_ptr<MultiTensorField2D<T, 3> > computeStrainRate(MultiTensorField2D<T, 2> &velocity);
 
-/* *************** Str. rate, witout boundary treatment, from Velocity field  */
+/* *************** Str. rate, without boundary treatment, from Velocity field  */
 
 template <typename T>
 void computeBulkStrainRate(

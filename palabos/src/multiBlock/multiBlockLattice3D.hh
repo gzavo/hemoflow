@@ -366,36 +366,13 @@ void MultiBlockLattice3D<T, Descriptor>::externalCollideAndStream()
 template <typename T, template <typename U> class Descriptor>
 void MultiBlockLattice3D<T, Descriptor>::collideAndStreamImplementation()
 {
-    ThreadAttribution const &threadAttribution =
-        this->getMultiBlockManagement().getThreadAttribution();
-    if (threadAttribution.hasCoProcessors()) {
-        for (typename BlockMap::iterator it = blockLattices.begin(); it != blockLattices.end();
-             ++it) {
-            plint blockId = it->first;
-            int handle = threadAttribution.getCoProcessorHandle(blockId);
-            if (handle >= 0) {
-                global::defaultCoProcessor3D<T>().collideAndStream(handle);
-            } else {
-                SmartBulk3D bulk(this->getMultiBlockManagement(), blockId);
-                // CollideAndStream must be applied to full domain,
-                //   including currently active envelopes.
-                Box3D domain = extendPeriodic(
-                    bulk.computeNonPeriodicEnvelope(),
-                    this->getMultiBlockManagement().getEnvelopeWidth());
-                it->second->collideAndStream(bulk.toLocal(domain));
-            }
-        }
-    } else {
-        for (typename BlockMap::iterator it = blockLattices.begin(); it != blockLattices.end();
-             ++it) {
-            SmartBulk3D bulk(this->getMultiBlockManagement(), it->first);
-            // CollideAndStream must be applied to full domain,
-            //   including currently active envelopes.
-            Box3D domain = extendPeriodic(
-                bulk.computeNonPeriodicEnvelope(),
-                this->getMultiBlockManagement().getEnvelopeWidth());
-            it->second->collideAndStream(bulk.toLocal(domain));
-        }
+    for (typename BlockMap::iterator it = blockLattices.begin(); it != blockLattices.end(); ++it) {
+        SmartBulk3D bulk(this->getMultiBlockManagement(), it->first);
+        // CollideAndStream must be applied to full domain,
+        //   including currently active envelopes.
+        Box3D domain = extendPeriodic(
+            bulk.computeNonPeriodicEnvelope(), this->getMultiBlockManagement().getEnvelopeWidth());
+        it->second->collideAndStream(bulk.toLocal(domain));
     }
 }
 

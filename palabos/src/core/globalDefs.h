@@ -43,11 +43,14 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <string>
 
 #include "core/plbDebug.h"
+
+#ifdef USE_NVIDIA_PROFILER
+#include <nvtx3/nvToolsExt.h>
+#endif
 
 namespace plb {
 
@@ -301,6 +304,40 @@ inline IOpolicyClass &IOpolicy()
 }
 
 }  // namespace global
+
+struct nvtx {
+    const char *p;
+    inline nvtx(const char *p_) : p(p_)
+    {
+#ifdef USE_NVIDIA_PROFILER
+        nvtxRangePushA(p);
+#endif
+    }
+    inline ~nvtx()
+    {
+#ifdef USE_NVIDIA_PROFILER
+        nvtxRangePop();
+#endif
+    }
+};
+
+inline void allocateBytes(char **buffer, plint numBytes)
+{
+#ifdef USE_CUDA_MALLOC
+    cudaMalloc(buffer, numBytes);
+#else
+    *buffer = (char *)malloc((size_t)numBytes);
+#endif
+}
+
+inline void releaseBytes(char *buffer)
+{
+#ifdef USE_CUDA_MALLOC
+    cudaFree(buffer);
+#else
+    free(buffer);
+#endif
+}
 
 }  // namespace plb
 

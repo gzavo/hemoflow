@@ -799,6 +799,114 @@ BulkCompositeDynamics<T, Descriptor>::BulkCompositeDynamics(
     PreparePopulationsDynamics<T, Descriptor>(baseDynamics_, automaticPrepareCollision_)
 { }
 
+/* *************** Class HalfwayBounceBack ********************************** */
+
+template <typename T, template <typename U> class Descriptor>
+int HalfwayBounceBack<T, Descriptor>::id =
+    meta::registerGeneralDynamics<T, Descriptor, HalfwayBounceBack<T, Descriptor> >(
+        "HalfwayBounceBack");
+
+template <typename T, template <typename U> class Descriptor>
+HalfwayBounceBack<T, Descriptor>::HalfwayBounceBack(Dynamics<T, Descriptor> *baseDynamics_) :
+    CompositeDynamics<T, Descriptor>(baseDynamics_, false)
+{
+    std::fill(&data[0], &data[0] + Descriptor<T>::q, std::numeric_limits<T>::signaling_NaN());
+}
+
+template <typename T, template <typename U> class Descriptor>
+HalfwayBounceBack<T, Descriptor>::HalfwayBounceBack(HierarchicUnserializer &unserializer) :
+    CompositeDynamics<T, Descriptor>(0, false)
+{
+    this->unserialize(unserializer);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::resetData()
+{
+    std::fill(&data[0], &data[0] + Descriptor<T>::q, std::numeric_limits<T>::signaling_NaN());
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::setVelocity(int iPop, Array<T, Descriptor<T>::d> u)
+{
+    PLB_ASSERT(iPop < Descriptor<T>::q);
+    T dotProduct = T();
+    for (int iD = 0; iD < Descriptor<T>::d; ++iD) {
+        dotProduct += (T)Descriptor<T>::c_gpu(iPop, iD) * u[iD];
+    }
+    data[iPop] = -(T)2 * Descriptor<T>::invCs2_gpu * Descriptor<T>::t_gpu(iPop) * dotProduct;
+}
+
+template <typename T, template <typename U> class Descriptor>
+T const &HalfwayBounceBack<T, Descriptor>::getData(int iPop) const
+{
+    PLB_ASSERT(iPop < Descriptor<T>::q);
+    return data[iPop];
+}
+
+template <typename T, template <typename U> class Descriptor>
+T &HalfwayBounceBack<T, Descriptor>::getData(int iPop)
+{
+    PLB_ASSERT(iPop < Descriptor<T>::q);
+    return data[iPop];
+}
+
+template <typename T, template <typename U> class Descriptor>
+HalfwayBounceBack<T, Descriptor> *HalfwayBounceBack<T, Descriptor>::clone() const
+{
+    return new HalfwayBounceBack<T, Descriptor>(*this);
+}
+
+template <typename T, template <typename U> class Descriptor>
+int HalfwayBounceBack<T, Descriptor>::getId() const
+{
+    return id;
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::serialize(HierarchicSerializer &serializer) const
+{
+    CompositeDynamics<T, Descriptor>::serialize(serializer);
+    for (int iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
+        serializer.addValue(data[iPop]);
+    }
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::unserialize(HierarchicUnserializer &unserializer)
+{
+    PLB_PRECONDITION(unserializer.getId() == this->getId());
+    CompositeDynamics<T, Descriptor>::unserialize(unserializer);
+    for (int iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
+        data[iPop] = unserializer.readValue<T>();
+    }
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::collide(
+    Cell<T, Descriptor> &cell, BlockStatistics &statistics)
+{
+    this->getBaseDynamics().collide(cell, statistics);
+    for (int iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
+        if (!std::isnan(data[iPop])) {
+            cell[iPop] += data[iPop];
+        }
+    }
+}
+
+template <typename T, template <typename U> class Descriptor>
+void HalfwayBounceBack<T, Descriptor>::collideExternal(
+    Cell<T, Descriptor> &cell, T rhoBar, Array<T, Descriptor<T>::d> const &j, T thetaBar,
+    BlockStatistics &stat)
+{
+    this->getBaseDynamics().collideExternal(cell, rhoBar, j, thetaBar, stat);
+    for (int iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
+        if (!std::isnan(data[iPop])) {
+            cell[iPop] += data[iPop];
+        }
+    }
+}
+
 /* *************** Class BounceBack ********************************** */
 
 template <typename T, template <typename U> class Descriptor>

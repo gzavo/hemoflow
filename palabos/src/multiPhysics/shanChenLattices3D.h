@@ -50,32 +50,32 @@ namespace descriptors {
 
 /// Density and Momentum as external scalars
 struct DensityMomentumNoForceExternals3D {
-    static const int numScalars = 4;
-    static const int numSpecies = 2;
+    static constexpr int numScalars = 4;
+    static constexpr int numSpecies = 2;
 
-    static const int densityBeginsAt = 0;
-    static const int sizeOfDensity = 1;
+    static constexpr int densityBeginsAt = 0;
+    static constexpr int sizeOfDensity = 1;
 
-    static const int momentumBeginsAt = 1;
-    static const int sizeOfMomentum = 3;
+    static constexpr int momentumBeginsAt = 1;
+    static constexpr int sizeOfMomentum = 3;
 
-    static const int forceBeginsAt = 0;
-    static const int sizeOfForce = 0;
+    static constexpr int forceBeginsAt = 0;
+    static constexpr int sizeOfForce = 0;
 };
 
 /// Density, Momentum and Force as external scalars
 struct DensityMomentumForceExternals3D {
-    static const int numScalars = 7;
-    static const int numSpecies = 3;
+    static constexpr int numScalars = 7;
+    static constexpr int numSpecies = 3;
 
-    static const int densityBeginsAt = 0;
-    static const int sizeOfDensity = 1;
+    static constexpr int densityBeginsAt = 0;
+    static constexpr int sizeOfDensity = 1;
 
-    static const int momentumBeginsAt = 1;
-    static const int sizeOfMomentum = 3;
+    static constexpr int momentumBeginsAt = 1;
+    static constexpr int sizeOfMomentum = 3;
 
-    static const int forceBeginsAt = 4;
-    static const int sizeOfForce = 3;
+    static constexpr int forceBeginsAt = 4;
+    static constexpr int sizeOfForce = 3;
 };
 
 struct ShanChenExternalBase3D {

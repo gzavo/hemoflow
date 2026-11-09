@@ -77,7 +77,13 @@ namespace descriptors {
     const T D2Q9Constants<T>::cs2 = (T)1 / (T)3;
 
     template<typename T>
+    const T D2Q9Constants<T>::cs2_gpu = (T)1 / (T)3;
+
+    template<typename T>
     const T D2Q9Constants<T>::invCs2 = (T)3;
+
+    template<typename T>
+    const T D2Q9Constants<T>::invCs2_gpu = (T)3;
 
     template<typename T>
     const char D2Q9Descriptor<T>::name[] = "D2Q9";

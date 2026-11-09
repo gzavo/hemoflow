@@ -118,7 +118,8 @@ void computeVelocityComponent(
     BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<T> &velocityComponent, plint iComponent);
 
 template <typename T, template <typename U> class Descriptor>
-std::unique_ptr<ScalarField3D<T> > computeVelocityComponent(BlockLattice3D<T, Descriptor> &lattice);
+std::unique_ptr<ScalarField3D<T> > computeVelocityComponent(
+    BlockLattice3D<T, Descriptor> &lattice, plint iComponent);
 
 /* *************** Velocity ****************************************** */
 
@@ -2001,6 +2002,48 @@ std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticity(
 template <typename T>
 std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticity(MultiTensorField3D<T, 3> &velocity);
 
+/* *************** 4th order Vorticity from Velocity field ************** */
+
+template <typename T>
+void computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderFour(
+    MultiTensorField3D<T, 3> &velocity);
+
+/* *************** 6th order Vorticity from Velocity field ************** */
+
+template <typename T>
+void computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderSix(
+    MultiTensorField3D<T, 3> &velocity);
+
+/* *************** 8th order Vorticity from Velocity field ************** */
+
+template <typename T>
+void computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity, MultiTensorField3D<T, 3> &vorticity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity, Box3D domain);
+
+template <typename T>
+std::unique_ptr<MultiTensorField3D<T, 3> > computeVorticityOrderEight(
+    MultiTensorField3D<T, 3> &velocity);
+
 /* *************** Vorticity, witout boundary treatment, from Velocity field ************** */
 
 template <typename T>
@@ -2042,6 +2085,17 @@ std::unique_ptr<MultiTensorField3D<T, nDim> > computeBulkVorticityOrderSix(
 
 template <typename T, template <typename U> class Descriptor>
 std::unique_ptr<MultiTensorField3D<T, Descriptor<T>::d> > computeBulkVorticityOrderSix(
+    MultiBlockLattice3D<T, Descriptor> &lattice);
+
+/* *************** 8th order Vorticity, witout boundary treatment, from Velocity field
+ * ************** */
+
+template <typename T, int nDim>
+std::unique_ptr<MultiTensorField3D<T, nDim> > computeBulkVorticityOrderEight(
+    MultiTensorField3D<T, nDim> &vel);
+
+template <typename T, template <typename U> class Descriptor>
+std::unique_ptr<MultiTensorField3D<T, Descriptor<T>::d> > computeBulkVorticityOrderEight(
     MultiBlockLattice3D<T, Descriptor> &lattice);
 
 /* *************** Helicity from Velocity field *********************** */

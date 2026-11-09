@@ -172,44 +172,44 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
 
     static T bgk_ma2_equilibrium(plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop] * (rhoBar + 3. * c_j + invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop) * (rhoBar + 3. * c_j + invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
     }
 
     static T complete_bgk_ma2_equilibrium(
         plint iPop, T rhoBar, T invRho, Array<T, D::d> const &j, T jSqr)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        T cs = std::sqrt(D::cs2);
-        T cs_mcx = ((T)cs - (T)D::c[iPop][0]);
-        T cs_pcx = ((T)cs + (T)D::c[iPop][0]);
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        T cs = std::sqrt(D::cs2_gpu);
+        T cs_mcx = ((T)cs - (T)D::c_gpu(iPop, 0));
+        T cs_pcx = ((T)cs + (T)D::c_gpu(iPop, 0));
 
-        T cs_mcy = ((T)cs - (T)D::c[iPop][1]);
-        T cs_pcy = ((T)cs + (T)D::c[iPop][1]);
+        T cs_mcy = ((T)cs - (T)D::c_gpu(iPop, 1));
+        T cs_pcy = ((T)cs + (T)D::c_gpu(iPop, 1));
 
-        T cs_mcz = ((T)cs - (T)D::c[iPop][2]);
-        T cs_pcz = ((T)cs + (T)D::c[iPop][2]);
+        T cs_mcz = ((T)cs - (T)D::c_gpu(iPop, 2));
+        T cs_pcz = ((T)cs + (T)D::c_gpu(iPop, 2));
 
         T invCs6 = D::invCs2 * D::invCs2 * D::invCs2;
-        T H10 = -(T)D::c[iPop][1] * cs_mcx * cs_pcx;
+        T H10 = -(T)D::c_gpu(iPop, 1) * cs_mcx * cs_pcx;
         H10 *= (T)0.5 * invCs6;
 
-        T H11 = -(T)D::c[iPop][2] * cs_mcx * cs_pcx;
+        T H11 = -(T)D::c_gpu(iPop, 2) * cs_mcx * cs_pcx;
         H11 *= (T)0.5 * invCs6;
 
-        T H12 = -(T)D::c[iPop][0] * cs_mcy * cs_pcy;
+        T H12 = -(T)D::c_gpu(iPop, 0) * cs_mcy * cs_pcy;
         H12 *= (T)0.5 * invCs6;
 
-        T H13 = -(T)D::c[iPop][0] * cs_mcz * cs_pcz;
+        T H13 = -(T)D::c_gpu(iPop, 0) * cs_mcz * cs_pcz;
         H13 *= (T)0.5 * invCs6;
 
-        T H14 = -(T)D::c[iPop][1] * cs_mcz * cs_pcz;
+        T H14 = -(T)D::c_gpu(iPop, 1) * cs_mcz * cs_pcz;
         H14 *= (T)0.5 * invCs6;
 
-        T H15 = -(T)D::c[iPop][2] * cs_mcy * cs_pcy;
+        T H15 = -(T)D::c_gpu(iPop, 2) * cs_mcy * cs_pcy;
         H15 *= (T)0.5 * invCs6;
 
-        T H16 = (T)D::c[iPop][0] * (T)D::c[iPop][1] * (T)D::c[iPop][2];
+        T H16 = (T)D::c_gpu(iPop, 0) * (T)D::c_gpu(iPop, 1) * (T)D::c_gpu(iPop, 2);
         H16 *= invCs6;
 
         T invCs8 = D::invCs2 * invCs6;
@@ -219,19 +219,19 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         H18 *= (T)0.25 * invCs8;
         T H19 = cs_mcz * cs_pcz * cs_mcy * cs_pcy;
         H19 *= (T)0.25 * invCs8;
-        T H20 = -(T)D::c[iPop][0] * (T)D::c[iPop][1] * cs_mcz * cs_pcz;
+        T H20 = -(T)D::c_gpu(iPop, 0) * (T)D::c_gpu(iPop, 1) * cs_mcz * cs_pcz;
         H20 *= (T)0.5 * invCs8;
-        T H21 = -(T)D::c[iPop][0] * (T)D::c[iPop][2] * cs_mcy * cs_pcy;
+        T H21 = -(T)D::c_gpu(iPop, 0) * (T)D::c_gpu(iPop, 2) * cs_mcy * cs_pcy;
         H21 *= (T)0.5 * invCs8;
-        T H22 = -(T)D::c[iPop][1] * (T)D::c[iPop][2] * cs_mcx * cs_pcx;
+        T H22 = -(T)D::c_gpu(iPop, 1) * (T)D::c_gpu(iPop, 2) * cs_mcx * cs_pcx;
         H22 *= (T)0.5 * invCs8;
 
         T invCs10 = D::invCs2 * invCs8;
-        T H23 = (T)D::c[iPop][1] * cs_mcz * cs_pcz * cs_mcx * cs_pcx;
+        T H23 = (T)D::c_gpu(iPop, 1) * cs_mcz * cs_pcz * cs_mcx * cs_pcx;
         H23 *= (T)0.25 * invCs10;
-        T H24 = (T)D::c[iPop][2] * cs_mcy * cs_pcy * cs_mcx * cs_pcx;
+        T H24 = (T)D::c_gpu(iPop, 2) * cs_mcy * cs_pcy * cs_mcx * cs_pcx;
         H24 *= (T)0.25 * invCs10;
-        T H25 = (T)D::c[iPop][0] * cs_mcz * cs_pcz * cs_mcy * cs_pcy;
+        T H25 = (T)D::c_gpu(iPop, 0) * cs_mcz * cs_pcz * cs_mcy * cs_pcy;
         H25 *= (T)0.25 * invCs10;
 
         T invCs12 = D::invCs2 * invCs10;
@@ -264,7 +264,7 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T aEq25 = j[0] * uy2 * uz2;
         T aEq26 = j[0] * ux * uy2 * uz2;
 
-        return D::t[iPop]
+        return D::t_gpu(iPop)
                * (rhoBar + 3. * c_j + invRho * (4.5 * c_j * c_j - 1.5 * jSqr) + H10 * aEq10
                   + H11 * aEq11 + H12 * aEq12 + H13 * aEq13 + H14 * aEq14 + H15 * aEq15
                   + H16 * aEq16 + H17 * aEq17 + H18 * aEq18 + H19 * aEq19 + H20 * aEq20
@@ -275,10 +275,10 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     static void bgk_ma2_equilibria(
         T rhoBar, T invRho, Array<T, D::d> const &j, T jSqr, Array<T, D::q> &eqPop)
     {
-        T t0 = D::t[0];
-        T t1 = D::t[1];
-        T t4 = D::t[4];
-        T t10 = D::t[10];
+        T t0 = D::t_gpu(0);
+        T t1 = D::t_gpu(1);
+        T t4 = D::t_gpu(4);
+        T t10 = D::t_gpu(10);
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
         T kz = (T)3 * j[2];
@@ -367,7 +367,7 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T k2y = k1y + 6 * uy;
         T k1z = (T)3 * (uz2 - uz) + (T)1;
         T k2z = k1z + 6 * uz;
-        T t0 = -(T)2 * rho * D::t[4];
+        T t0 = -(T)2 * rho * D::t_gpu(4);
         eqPop[0] = t0 * Cz * Cy * Cx;
         t0 *= -(T)0.5;
         eqPop[3] = t0 * Cx;
@@ -452,25 +452,25 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
                       ax2, ax0, ax0, ax2, ax2, ax2, ax2, ax0, ax0, ax2, ax2, ax2, ax2};
 
         for (plint iPop = 0; iPop < 24; iPop += 4) {
-            // T ax = (T)2+((T)9*cx2[iPop]*u[0]+(T)6*D::c[iPop][0])*u[0];
-            // T ay = (T)2+((T)9*cy2[iPop]*u[1]+(T)6*D::c[iPop][1])*u[1];
-            // T az = (T)2+((T)9*cz2[iPop]*u[2]+(T)6*D::c[iPop][2])*u[2];
+            // T ax = (T)2+((T)9*cx2[iPop]*u[0]+(T)6*D::c_gpu(iPop,0))*u[0];
+            // T ay = (T)2+((T)9*cy2[iPop]*u[1]+(T)6*D::c_gpu(iPop,1))*u[1];
+            // T az = (T)2+((T)9*cz2[iPop]*u[2]+(T)6*D::c_gpu(iPop,2))*u[2];
 
-            // eqPop[iPop] = D::t[iPop]*az[iPop]*ax[iPop]*ay[iPop];
-            eqPop[iPop] = D::t[iPop] * (az[iPop] * ax[iPop] * ay[iPop] - 1);
-            eqPop[iPop + 1] = D::t[iPop + 1] * (az[iPop + 1] * ax[iPop + 1] * ay[iPop + 1] - 1);
-            eqPop[iPop + 2] = D::t[iPop + 2] * (az[iPop + 2] * ax[iPop + 2] * ay[iPop + 2] - 1);
-            eqPop[iPop + 3] = D::t[iPop + 3] * (az[iPop + 3] * ax[iPop + 3] * ay[iPop + 3] - 1);
+            // eqPop[iPop] = D::t_gpu(iPop)*az[iPop]*ax[iPop]*ay[iPop];
+            eqPop[iPop] = D::t_gpu(iPop) * (az[iPop] * ax[iPop] * ay[iPop] - 1);
+            eqPop[iPop + 1] = D::t_gpu(iPop + 1) * (az[iPop + 1] * ax[iPop + 1] * ay[iPop + 1] - 1);
+            eqPop[iPop + 2] = D::t_gpu(iPop + 2) * (az[iPop + 2] * ax[iPop + 2] * ay[iPop + 2] - 1);
+            eqPop[iPop + 3] = D::t_gpu(iPop + 3) * (az[iPop + 3] * ax[iPop + 3] * ay[iPop + 3] - 1);
         }
 
         for (plint iPop = 24; iPop < D::q; iPop += 3) {
-            eqPop[iPop] = D::t[iPop] * (az[iPop] * ax[iPop] * ay[iPop] - 1);
-            eqPop[iPop + 1] = D::t[iPop + 1] * (az[iPop + 1] * ax[iPop + 1] * ay[iPop + 1] - 1);
-            eqPop[iPop + 2] = D::t[iPop + 2] * (az[iPop + 2] * ax[iPop + 2] * ay[iPop + 2] - 1);
+            eqPop[iPop] = D::t_gpu(iPop) * (az[iPop] * ax[iPop] * ay[iPop] - 1);
+            eqPop[iPop + 1] = D::t_gpu(iPop + 1) * (az[iPop + 1] * ax[iPop + 1] * ay[iPop + 1] - 1);
+            eqPop[iPop + 2] = D::t_gpu(iPop + 2) * (az[iPop + 2] * ax[iPop + 2] * ay[iPop + 2] - 1);
         }
 
         // for (plint iPop = 0; iPop < D::q; ++iPop) {
-        //     eqPop[iPop] -= D::t[iPop];
+        //     eqPop[iPop] -= D::t_gpu(iPop);
         // }
     }
 
@@ -500,22 +500,22 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T v2z = v1z + 2;  // global::timer(;neq;).start();
 
         fNeq[0] =
-            -((T)0.5 * D::t[1]
+            -((T)0.5 * D::t_gpu(1)
               * ((T)3 * (Cz * Cy * piNeq[0] + Cz * Cx * piNeq[3] + Cy * Cx * piNeq[5])
                  + (T)36
                        * (ux * uy * Cz * piNeq[1] + ux * uz * Cy * piNeq[2]
                           + (T)uy * uz * Cx * piNeq[4])));
-        T t0 = -D::cs2 * (uy * Cz * piNeq[1] + uz * Cy * piNeq[2]);
+        T t0 = -D::cs2_gpu * (uy * Cz * piNeq[1] + uz * Cy * piNeq[2]);
         T t1 = -1. / 18 * (Cz * piNeq[3] + Cy * piNeq[5]) - 2. / 3 * uy * uz * piNeq[4];
         T t2 = -1. / 18 * Cz * Cy * piNeq[0];
         fNeq[1] = -(t2 + v1x * t0 + k1x * t1);
         fNeq[14] = -(t2 + v2x * t0 + k2x * t1);
-        t0 = -D::cs2 * (ux * Cz * piNeq[1] + uz * Cx * piNeq[4]);
+        t0 = -D::cs2_gpu * (ux * Cz * piNeq[1] + uz * Cx * piNeq[4]);
         t1 = -1. / 18 * (Cz * piNeq[0] + Cx * piNeq[5]) - 2. / 3 * ux * uz * piNeq[2];
         t2 = -1. / 18 * Cz * Cx * piNeq[3];
         fNeq[2] = -(t2 + v1y * t0 + k1y * t1);
         fNeq[15] = -(t2 + v2y * t0 + k2y * t1);
-        t0 = -D::cs2 * (ux * Cy * piNeq[2] + uy * Cx * piNeq[4]);
+        t0 = -D::cs2_gpu * (ux * Cy * piNeq[2] + uy * Cx * piNeq[4]);
         t1 = -1. / 18 * (Cy * piNeq[0] + Cx * piNeq[3]) - 2. / 3 * ux * uy * piNeq[1];
         fNeq[3] = -(-1. / 18 * Cy * Cx * piNeq[5] + k1z * t1 + v1z * t0);
         fNeq[16] = -(-1. / 18 * Cy * Cx * piNeq[5] + k2z * t1 + v2z * t0);
@@ -619,32 +619,32 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
 
         // for (plint iPop = 0; iPop < 24; iPop += 4) {
         //     fNeq[iPop] =
-        //     D::t[iPop]*(0.375*ay[iPop]*h2xx[iPop]*az[iPop]*piNeq[0]+4.5*cx[iPop]*cy[iPop]*az[iPop]*piNeq[1]+4.5*cx[iPop]*ay[iPop]*cz[iPop]*piNeq[2]+0.375*ax[iPop]*az[iPop]*h2yy[iPop]*piNeq[3]+4.5*cy[iPop]*cz[iPop]*ax[iPop]*piNeq[4]+0.375*ax[iPop]*ay[iPop]*h2zz[iPop]*piNeq[5]);
+        //     D::t_gpu(iPop)*(0.375*ay[iPop]*h2xx[iPop]*az[iPop]*piNeq[0]+4.5*cx[iPop]*cy[iPop]*az[iPop]*piNeq[1]+4.5*cx[iPop]*ay[iPop]*cz[iPop]*piNeq[2]+0.375*ax[iPop]*az[iPop]*h2yy[iPop]*piNeq[3]+4.5*cy[iPop]*cz[iPop]*ax[iPop]*piNeq[4]+0.375*ax[iPop]*ay[iPop]*h2zz[iPop]*piNeq[5]);
         //     fNeq[iPop+1] =
-        //     D::t[iPop+1]*(0.375*ay[iPop+1]*h2xx[iPop+1]*az[iPop+1]*piNeq[0]+4.5*cx[iPop+1]*cy[iPop+1]*az[iPop+1]*piNeq[1]+4.5*cx[iPop+1]*ay[iPop+1]*cz[iPop+1]*piNeq[2]+0.375*ax[iPop+1]*az[iPop+1]*h2yy[iPop+1]*piNeq[3]+4.5*cy[iPop+1]*cz[iPop+1]*ax[iPop+1]*piNeq[4]+0.375*ax[iPop+1]*ay[iPop+1]*h2zz[iPop+1]*piNeq[5]);
+        //     D::t_gpu(iPop+1)*(0.375*ay[iPop+1]*h2xx[iPop+1]*az[iPop+1]*piNeq[0]+4.5*cx[iPop+1]*cy[iPop+1]*az[iPop+1]*piNeq[1]+4.5*cx[iPop+1]*ay[iPop+1]*cz[iPop+1]*piNeq[2]+0.375*ax[iPop+1]*az[iPop+1]*h2yy[iPop+1]*piNeq[3]+4.5*cy[iPop+1]*cz[iPop+1]*ax[iPop+1]*piNeq[4]+0.375*ax[iPop+1]*ay[iPop+1]*h2zz[iPop+1]*piNeq[5]);
         //     fNeq[iPop+2] =
-        //     D::t[iPop+2]*(0.375*ay[iPop+2]*h2xx[iPop+2]*az[iPop+2]*piNeq[0]+4.5*cx[iPop+2]*cy[iPop+2]*az[iPop+2]*piNeq[1]+4.5*cx[iPop+2]*ay[iPop+2]*cz[iPop+2]*piNeq[2]+0.375*ax[iPop+2]*az[iPop+2]*h2yy[iPop+2]*piNeq[3]+4.5*cy[iPop+2]*cz[iPop+2]*ax[iPop+2]*piNeq[4]+0.375*ax[iPop+2]*ay[iPop+2]*h2zz[iPop+2]*piNeq[5]);
+        //     D::t_gpu(iPop+2)*(0.375*ay[iPop+2]*h2xx[iPop+2]*az[iPop+2]*piNeq[0]+4.5*cx[iPop+2]*cy[iPop+2]*az[iPop+2]*piNeq[1]+4.5*cx[iPop+2]*ay[iPop+2]*cz[iPop+2]*piNeq[2]+0.375*ax[iPop+2]*az[iPop+2]*h2yy[iPop+2]*piNeq[3]+4.5*cy[iPop+2]*cz[iPop+2]*ax[iPop+2]*piNeq[4]+0.375*ax[iPop+2]*ay[iPop+2]*h2zz[iPop+2]*piNeq[5]);
         //     fNeq[iPop+3] =
-        //     D::t[iPop+3]*(0.375*ay[iPop+3]*h2xx[iPop+3]*az[iPop+3]*piNeq[0]+4.5*cx[iPop+3]*cy[iPop+3]*az[iPop+3]*piNeq[1]+4.5*cx[iPop+3]*ay[iPop+3]*cz[iPop+3]*piNeq[2]+0.375*ax[iPop+3]*az[iPop+3]*h2yy[iPop+3]*piNeq[3]+4.5*cy[iPop+3]*cz[iPop+3]*ax[iPop+3]*piNeq[4]+0.375*ax[iPop+3]*ay[iPop+3]*h2zz[iPop+3]*piNeq[5]);
+        //     D::t_gpu(iPop+3)*(0.375*ay[iPop+3]*h2xx[iPop+3]*az[iPop+3]*piNeq[0]+4.5*cx[iPop+3]*cy[iPop+3]*az[iPop+3]*piNeq[1]+4.5*cx[iPop+3]*ay[iPop+3]*cz[iPop+3]*piNeq[2]+0.375*ax[iPop+3]*az[iPop+3]*h2yy[iPop+3]*piNeq[3]+4.5*cy[iPop+3]*cz[iPop+3]*ax[iPop+3]*piNeq[4]+0.375*ax[iPop+3]*ay[iPop+3]*h2zz[iPop+3]*piNeq[5]);
         // }
 
         // for (plint iPop = 24; iPop < D::q; iPop += 3) {
         //     fNeq[iPop] =
-        //     D::t[iPop]*(0.375*ay[iPop]*h2xx[iPop]*az[iPop]*piNeq[0]+4.5*cx[iPop]*cy[iPop]*az[iPop]*piNeq[1]+4.5*cx[iPop]*ay[iPop]*cz[iPop]*piNeq[2]+0.375*ax[iPop]*az[iPop]*h2yy[iPop]*piNeq[3]+4.5*cy[iPop]*cz[iPop]*ax[iPop]*piNeq[4]+0.375*ax[iPop]*ay[iPop]*h2zz[iPop]*piNeq[5]);
+        //     D::t_gpu(iPop)*(0.375*ay[iPop]*h2xx[iPop]*az[iPop]*piNeq[0]+4.5*cx[iPop]*cy[iPop]*az[iPop]*piNeq[1]+4.5*cx[iPop]*ay[iPop]*cz[iPop]*piNeq[2]+0.375*ax[iPop]*az[iPop]*h2yy[iPop]*piNeq[3]+4.5*cy[iPop]*cz[iPop]*ax[iPop]*piNeq[4]+0.375*ax[iPop]*ay[iPop]*h2zz[iPop]*piNeq[5]);
         //     fNeq[iPop+1] =
-        //     D::t[iPop+1]*(0.375*ay[iPop+1]*h2xx[iPop+1]*az[iPop+1]*piNeq[0]+4.5*cx[iPop+1]*cy[iPop+1]*az[iPop+1]*piNeq[1]+4.5*cx[iPop+1]*ay[iPop+1]*cz[iPop+1]*piNeq[2]+0.375*ax[iPop+1]*az[iPop+1]*h2yy[iPop+1]*piNeq[3]+4.5*cy[iPop+1]*cz[iPop+1]*ax[iPop+1]*piNeq[4]+0.375*ax[iPop+1]*ay[iPop+1]*h2zz[iPop+1]*piNeq[5]);
+        //     D::t_gpu(iPop+1)*(0.375*ay[iPop+1]*h2xx[iPop+1]*az[iPop+1]*piNeq[0]+4.5*cx[iPop+1]*cy[iPop+1]*az[iPop+1]*piNeq[1]+4.5*cx[iPop+1]*ay[iPop+1]*cz[iPop+1]*piNeq[2]+0.375*ax[iPop+1]*az[iPop+1]*h2yy[iPop+1]*piNeq[3]+4.5*cy[iPop+1]*cz[iPop+1]*ax[iPop+1]*piNeq[4]+0.375*ax[iPop+1]*ay[iPop+1]*h2zz[iPop+1]*piNeq[5]);
         // }
 
         for (plint iPop = 0; iPop < D::q; ++iPop) {
-            fNeq[iPop] = D::t[iPop]
+            fNeq[iPop] = D::t_gpu(iPop)
                          * (0.375 * ay[iPop] * h2xx[iPop] * az[iPop] * piNeq[0]
                             + 4.5 * cx[iPop] * ay[iPop] * cz[iPop] * piNeq[2]);
 
-            fNeq[iPop] += D::t[iPop]
+            fNeq[iPop] += D::t_gpu(iPop)
                           * (0.375 * ax[iPop] * ay[iPop] * h2zz[iPop] * piNeq[5]
                              + 4.5 * cx[iPop] * cy[iPop] * az[iPop] * piNeq[1]);
 
-            fNeq[iPop] += D::t[iPop]
+            fNeq[iPop] += D::t_gpu(iPop)
                           * (4.5 * cy[iPop] * cz[iPop] * ax[iPop] * piNeq[4]
                              + 0.375 * ax[iPop] * az[iPop] * h2yy[iPop] * piNeq[3]);
         }
@@ -653,105 +653,137 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     static T bgk_ma2_collision_base(
         Array<T, D::q> &f, T rhoBar, Array<T, 3> const &j, T omega, T invRho)
     {
-        T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
-        T t10_omega = D::t[10] * omega;
-        T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
-        T kx = (T)3 * j[0];
-        T ky = (T)3 * j[1];
-        T kz = (T)3 * j[2];
-        T kxSqr_ = invRho / (T)2 * kx * kx;
-        T kySqr_ = invRho / (T)2 * ky * ky;
-        T kzSqr_ = invRho / (T)2 * kz * kz;
-        T kxky_ = invRho * kx * ky;
-        T kxkz_ = invRho * kx * kz;
-        T kykz_ = invRho * ky * kz;
-        T C1 = rhoBar + invRho * (T)3 * jSqr;
-        T C2, C3;  // i=0
-        C3 = -kxSqr_ - kySqr_ - kzSqr_;
-        f[0] *= one_m_omega;
-        f[0] += t0_omega * (C1 + C3);  // i=1 and i=14
-        C2 = -kx;
-        C3 = -kySqr_ - kzSqr_;
-        f[1] *= one_m_omega;
-        f[1] += t1_omega * (C1 + C2 + C3);
-        f[14] *= one_m_omega;
-        f[14] += t1_omega * (C1 - C2 + C3);  // i=2 and i=15
-        C2 = -ky;
-        C3 = -kxSqr_ - kzSqr_;
-        f[2] *= one_m_omega;
-        f[2] += t1_omega * (C1 + C2 + C3);
-        f[15] *= one_m_omega;
-        f[15] += t1_omega * (C1 - C2 + C3);  // i=3 and i=16
-        C2 = -kz;
-        C3 = -kxSqr_ - kySqr_;
-        f[3] *= one_m_omega;
-        f[3] += t1_omega * (C1 + C2 + C3);
-        f[16] *= one_m_omega;
-        f[16] += t1_omega * (C1 - C2 + C3);  // i=4 and i=17
-        C2 = -kx - ky;
-        C3 = kxky_ - kzSqr_;
-        f[4] *= one_m_omega;
-        f[4] += t4_omega * (C1 + C2 + C3);
-        f[17] *= one_m_omega;
-        f[17] += t4_omega * (C1 - C2 + C3);  // i=5 and i=18
-        C2 = -kx + ky;
-        C3 = -kxky_ - kzSqr_;
-        f[5] *= one_m_omega;
-        f[5] += t4_omega * (C1 + C2 + C3);
-        f[18] *= one_m_omega;
-        f[18] += t4_omega * (C1 - C2 + C3);  // i=6 and i=19
-        C2 = -kx - kz;
-        C3 = kxkz_ - kySqr_;
-        f[6] *= one_m_omega;
-        f[6] += t4_omega * (C1 + C2 + C3);
-        f[19] *= one_m_omega;
-        f[19] += t4_omega * (C1 - C2 + C3);  // i=7 and i=20
-        C2 = -kx + kz;
-        C3 = -kxkz_ - kySqr_;
-        f[7] *= one_m_omega;
-        f[7] += t4_omega * (C1 + C2 + C3);
-        f[20] *= one_m_omega;
-        f[20] += t4_omega * (C1 - C2 + C3);  // i=8 and i=21
-        C2 = -ky - kz;
-        C3 = kykz_ - kxSqr_;
-        f[8] *= one_m_omega;
-        f[8] += t4_omega * (C1 + C2 + C3);
-        f[21] *= one_m_omega;
-        f[21] += t4_omega * (C1 - C2 + C3);  // i=9 and i=22
-        C2 = -ky + kz;
-        C3 = -kykz_ - kxSqr_;
-        f[9] *= one_m_omega;
-        f[9] += t4_omega * (C1 + C2 + C3);
-        f[22] *= one_m_omega;
-        f[22] += t4_omega * (C1 - C2 + C3);  // i=10 and i=23
-        C2 = -kx - ky - kz;
-        C3 = kxky_ + kxkz_ + kykz_;
-        f[10] *= one_m_omega;
-        f[10] += t10_omega * (C1 + C2 + C3);
-        f[23] *= one_m_omega;
-        f[23] += t10_omega * (C1 - C2 + C3);  // i=11 and i=24
-        C2 = -kx - ky + kz;
-        C3 = kxky_ - kxkz_ - kykz_;
-        f[11] *= one_m_omega;
-        f[11] += t10_omega * (C1 + C2 + C3);
-        f[24] *= one_m_omega;
-        f[24] += t10_omega * (C1 - C2 + C3);  // i=12 and i=25
-        C2 = -kx + ky - kz;
-        C3 = -kxky_ + kxkz_ - kykz_;
-        f[12] *= one_m_omega;
-        f[12] += t10_omega * (C1 + C2 + C3);
-        f[25] *= one_m_omega;
-        f[25] += t10_omega * (C1 - C2 + C3);  // i=13 and i=26
-        C2 = -kx + ky + kz;
-        C3 = -kxky_ - kxkz_ + kykz_;
-        f[13] *= one_m_omega;
-        f[13] += t10_omega * (C1 + C2 + C3);
-        f[26] *= one_m_omega;
-        f[26] += t10_omega * (C1 - C2 + C3);
-        return invRho * invRho * jSqr;
+        enum {
+            F000 = 0,  // {0, 0, 0}
+
+            FM00 = 1,  // {-1, 0, 0}
+            F0M0 = 2,  // {0, -1, 0}
+            F00M = 3,  // {0, 0, -1}
+            FMM0 = 4,  // {-1, -1, 0}
+            FMP0 = 5,  // {-1, 1, 0}
+
+            FM0M = 6,   // {-1, 0, -1}
+            FM0P = 7,   // {-1, 0, 1}
+            F0MM = 8,   // {0, -1, -1}
+            F0MP = 9,   // {0, -1, 1}
+            FMMM = 10,  // {-1, -1, -1}
+            FMMP = 11,  // {-1, -1, 1}
+            FMPM = 12,  // {-1, 1, -1}
+            FMPP = 13,  // {-1, 1, 1}
+
+            FP00 = 14,  // {1, 0, 0}
+            F0P0 = 15,  // {0, 1, 0}
+            F00P = 16,  // {0, 0, 1}
+            FPP0 = 17,  // {1, 1, 0}
+            FPM0 = 18,  // {1, -1, 0}
+            FP0P = 19,  // {1, 0, 1}
+            FP0M = 20,  // {1, 0, -1}
+            F0PP = 21,  // {0, 1, 1}
+            F0PM = 22,  // {0, 1, -1}
+            FPPP = 23,  // {1, 1, 1}
+            FPPM = 24,  // {1, 1, -1}
+            FPMP = 25,  // {1, -1, 1}
+            FPMM = 26   // {1, -1, -1}
+        };
+
+        const T ckj1 = j[0] + j[1];
+        const T ckj2 = -j[0] + j[1];
+        const T ckj3 = j[0] + j[2];
+        const T ckj4 = -j[0] + j[2];
+        const T ckj5 = j[1] + j[2];
+        const T ckj6 = -j[1] + j[2];
+        const T ckj7 = j[0] + j[1] + j[2];
+        const T ckj8 = -j[0] + j[1] + j[2];
+        const T ckj9 = j[0] - j[1] + j[2];
+        const T ckj0 = j[0] + j[1] - j[2];
+
+        const T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
+        const T rho_usqr = invRho * jSqr;
+        const T rho_usqr_1_5 = (T)1.5 * rho_usqr;
+
+        const T t0 = (T)8 / (T)27;
+        const T t1 = (T)2 / (T)27;
+        const T t2 = (T)1 / (T)54;
+        const T t3 = (T)1 / (T)216;
+
+        std::array<T, 27> feqRM;
+
+        feqRM[F000] = t0 * (rhoBar - rho_usqr_1_5);  // t0
+
+        feqRM[FM00] =
+            t1 * (rhoBar - (T)3. * j[0] + (T)4.5 * invRho * j[0] * j[0] - rho_usqr_1_5);  // t1
+        feqRM[FP00] = t1 * ((T)6. * j[0]) + feqRM[FM00];                                  // t1
+
+        feqRM[F0M0] =
+            t1 * (rhoBar - (T)3. * j[1] + (T)4.5 * invRho * j[1] * j[1] - rho_usqr_1_5);  // t1
+        feqRM[F0P0] = t1 * ((T)6. * j[1]) + feqRM[F0M0];                                  // t1
+
+        feqRM[F00M] =
+            t1 * (rhoBar - (T)3. * j[2] + (T)4.5 * invRho * j[2] * j[2] - rho_usqr_1_5);  // t1
+        feqRM[F00P] = t1 * ((T)6. * j[2]) + feqRM[F00M];                                  // t1
+
+        feqRM[FMM0] =
+            t2 * (rhoBar - (T)3. * ckj1 + (T)4.5 * invRho * ckj1 * ckj1 - rho_usqr_1_5);  // t6
+        feqRM[FPP0] = t2 * ((T)6. * ckj1) + feqRM[FMM0];
+        feqRM[FPM0] = t2 * (rhoBar - (T)3. * ckj2 + (T)4.5 * invRho * ckj2 * ckj2 - rho_usqr_1_5);
+        feqRM[FMP0] = t2 * ((T)6. * ckj2) + feqRM[FPM0];
+
+        feqRM[FM0M] = t2 * (rhoBar - (T)3. * ckj3 + (T)4.5 * invRho * ckj3 * ckj3 - rho_usqr_1_5);
+        feqRM[FP0P] = t2 * ((T)6. * ckj3) + feqRM[FM0M];
+        feqRM[FP0M] = t2 * (rhoBar - (T)3. * ckj4 + (T)4.5 * invRho * ckj4 * ckj4 - rho_usqr_1_5);
+        feqRM[FM0P] = t2 * ((T)6. * ckj4) + feqRM[FP0M];
+
+        feqRM[F0MM] = t2 * (rhoBar - (T)3. * ckj5 + (T)4.5 * invRho * ckj5 * ckj5 - rho_usqr_1_5);
+        feqRM[F0PP] = t2 * ((T)6. * ckj5) + feqRM[F0MM];
+        feqRM[F0PM] = t2 * (rhoBar - (T)3. * ckj6 + (T)4.5 * invRho * ckj6 * ckj6 - rho_usqr_1_5);
+        feqRM[F0MP] = t2 * ((T)6. * ckj6) + feqRM[F0PM];
+
+        feqRM[FMMM] = t3 * (rhoBar - (T)3. * ckj7 + (T)4.5 * invRho * ckj7 * ckj7 - rho_usqr_1_5);
+        feqRM[FPPP] = t3 * ((T)6. * ckj7) + feqRM[FMMM];
+        feqRM[FPMM] = t3 * (rhoBar - (T)3. * ckj8 + (T)4.5 * invRho * ckj8 * ckj8 - rho_usqr_1_5);
+        feqRM[FMPP] = t3 * ((T)6. * ckj8) + feqRM[FPMM];
+        feqRM[FMPM] = t3 * (rhoBar - (T)3. * ckj9 + (T)4.5 * invRho * ckj9 * ckj9 - rho_usqr_1_5);
+        feqRM[FPMP] = t3 * ((T)6. * ckj9) + feqRM[FMPM];
+        feqRM[FMMP] = t3 * (rhoBar - (T)3. * ckj0 + (T)4.5 * invRho * ckj0 * ckj0 - rho_usqr_1_5);
+        feqRM[FPPM] = t3 * ((T)6. * ckj0) + feqRM[FMMP];
+
+        // BGK Collision based on the second-order equilibrium
+        f[F000] = ((T)1. - omega) * f[F000] + omega * feqRM[F000];
+
+        f[FP00] = ((T)1. - omega) * f[FP00] + omega * feqRM[FP00];
+        f[FM00] = ((T)1. - omega) * f[FM00] + omega * feqRM[FM00];
+
+        f[F0P0] = ((T)1. - omega) * f[F0P0] + omega * feqRM[F0P0];
+        f[F0M0] = ((T)1. - omega) * f[F0M0] + omega * feqRM[F0M0];
+
+        f[F00P] = ((T)1. - omega) * f[F00P] + omega * feqRM[F00P];
+        f[F00M] = ((T)1. - omega) * f[F00M] + omega * feqRM[F00M];
+
+        f[FPP0] = ((T)1. - omega) * f[FPP0] + omega * feqRM[FPP0];
+        f[FMP0] = ((T)1. - omega) * f[FMP0] + omega * feqRM[FMP0];
+        f[FPM0] = ((T)1. - omega) * f[FPM0] + omega * feqRM[FPM0];
+        f[FMM0] = ((T)1. - omega) * f[FMM0] + omega * feqRM[FMM0];
+
+        f[FP0P] = ((T)1. - omega) * f[FP0P] + omega * feqRM[FP0P];
+        f[FM0P] = ((T)1. - omega) * f[FM0P] + omega * feqRM[FM0P];
+        f[FP0M] = ((T)1. - omega) * f[FP0M] + omega * feqRM[FP0M];
+        f[FM0M] = ((T)1. - omega) * f[FM0M] + omega * feqRM[FM0M];
+
+        f[F0PP] = ((T)1. - omega) * f[F0PP] + omega * feqRM[F0PP];
+        f[F0MP] = ((T)1. - omega) * f[F0MP] + omega * feqRM[F0MP];
+        f[F0PM] = ((T)1. - omega) * f[F0PM] + omega * feqRM[F0PM];
+        f[F0MM] = ((T)1. - omega) * f[F0MM] + omega * feqRM[F0MM];
+
+        f[FPPP] = ((T)1. - omega) * f[FPPP] + omega * feqRM[FPPP];
+        f[FMPP] = ((T)1. - omega) * f[FMPP] + omega * feqRM[FMPP];
+        f[FPMP] = ((T)1. - omega) * f[FPMP] + omega * feqRM[FPMP];
+        f[FPPM] = ((T)1. - omega) * f[FPPM] + omega * feqRM[FPPM];
+        f[FMMP] = ((T)1. - omega) * f[FMMP] + omega * feqRM[FMMP];
+        f[FMPM] = ((T)1. - omega) * f[FMPM] + omega * feqRM[FMPM];
+        f[FPMM] = ((T)1. - omega) * f[FPMM] + omega * feqRM[FPMM];
+        f[FMMM] = ((T)1. - omega) * f[FMMM] + omega * feqRM[FMMM];
+
+        return invRho * rho_usqr;
     }
 
     static T complete_regularized_bgk_ma2_collision_base(
@@ -781,23 +813,23 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T v2y = v1y + 2;
         T v2z = v1z + 2;  // global::timer(;neq;).start();
         Array<T, 6> pi = (omega - (T)1) * piNeq;
-        f[0] = (T)0.5 * D::t[1]
+        f[0] = (T)0.5 * D::t_gpu(1)
                * ((T)3 * (Cz * Cy * pi[0] + Cz * Cx * pi[3] + Cy * Cx * pi[5])
                   + (T)36 * (ux * uy * Cz * pi[1] + ux * uz * Cy * pi[2] + (T)uy * uz * Cx * pi[4])
                   - rho * Cz * Cy * Cx);
-        T t0 = -D::cs2 * (uy * Cz * pi[1] + uz * Cy * pi[2]);
+        T t0 = -D::cs2_gpu * (uy * Cz * pi[1] + uz * Cy * pi[2]);
         T t1 = -1. / 18 * (Cz * pi[3] + Cy * pi[5]) - 2. / 3 * uy * uz * pi[4]
                + 1. / 54 * rho * Cz * Cy;
         T t2 = -1. / 18 * Cz * Cy * pi[0];
         f[1] = t2 + v1x * t0 + k1x * t1;
         f[14] = t2 + v2x * t0 + k2x * t1;
-        t0 = -D::cs2 * (ux * Cz * pi[1] + uz * Cx * pi[4]);
+        t0 = -D::cs2_gpu * (ux * Cz * pi[1] + uz * Cx * pi[4]);
         t1 = -1. / 18 * (Cz * pi[0] + Cx * pi[5]) - 2. / 3 * ux * uz * pi[2]
              + 1. / 54 * rho * Cz * Cx;
         t2 = -1. / 18 * Cz * Cx * pi[3];
         f[2] = t2 + v1y * t0 + k1y * t1;
         f[15] = t2 + v2y * t0 + k2y * t1;
-        t0 = -D::cs2 * (ux * Cy * pi[2] + uy * Cx * pi[4]);
+        t0 = -D::cs2_gpu * (ux * Cy * pi[2] + uy * Cx * pi[4]);
         t1 = -1. / 18 * (Cy * pi[0] + Cx * pi[3]) - 2. / 3 * ux * uy * pi[1]
              + 1. / 54 * rho * Cy * Cx;
         f[3] = -1. / 18 * Cy * Cx * pi[5] + k1z * t1 + v1z * t0;
@@ -1006,9 +1038,9 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         mom[1] = -jxNeq + jxPos;
         mom[2] = -jyNeq + jyPos;
         mom[3] = -jzNeq + jzPos;
-        mom[4] = D::cs2 * (-3 * jx0 + 2 * mom[0]);
-        mom[7] = D::cs2 * (-3 * jy0 + 2 * mom[0]);
-        mom[9] = D::cs2 * (-3 * jz0 + 2 * mom[0]);
+        mom[4] = D::cs2_gpu * (-3 * jx0 + 2 * mom[0]);
+        mom[7] = D::cs2_gpu * (-3 * jy0 + 2 * mom[0]);
+        mom[9] = D::cs2_gpu * (-3 * jz0 + 2 * mom[0]);
 
         mom[5] = jxNeq_1 + jxPos_1 - jxNeq_2 - jxPos_2;
         mom[6] = jzNeq_1 + jzPos_1 - jzPos_2 - jzNeq_2;
@@ -1017,35 +1049,35 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T f_15_21_22 = f[15] + f[21] + f[22];
         T sym = -jxNeq_1 + jxPos_1;
         T asym = jxNeq_2 - jxPos_2;
-        mom[10] = D::cs2 * (f_2_8_9 - f_15_21_22 + 2 * (sym + asym));
-        mom[12] = D::cs2 * (jxNeq_0 - jxPos_0 + 2 * (sym - asym));
-        mom[23] = D::cs2 * (-3 * (f[2] - f[15]) + 2 * (jyNeq_0 - jyPos_0 + mom[10]));
+        mom[10] = D::cs2_gpu * (f_2_8_9 - f_15_21_22 + 2 * (sym + asym));
+        mom[12] = D::cs2_gpu * (jxNeq_0 - jxPos_0 + 2 * (sym - asym));
+        mom[23] = D::cs2_gpu * (-3 * (f[2] - f[15]) + 2 * (jyNeq_0 - jyPos_0 + mom[10]));
         T f_1_4_5 = f[1] + f[4] + f[5];
         T f_14_17_18 = f[14] + f[17] + f[18];
         sym = -jzNeq_1 + jzPos_1;
         asym = jzPos_2 - jzNeq_2;
-        mom[11] = D::cs2 * (jzNeq_0 - jzPos_0 + 2 * (sym + asym));
-        mom[13] = D::cs2 * (f_1_4_5 - f_14_17_18 + 2 * (sym - asym));
-        mom[25] = D::cs2 * (-3 * (f[1] - f[14]) + 2 * (f_1_4_5 - f_14_17_18 + mom[12]));
+        mom[11] = D::cs2_gpu * (jzNeq_0 - jzPos_0 + 2 * (sym + asym));
+        mom[13] = D::cs2_gpu * (f_1_4_5 - f_14_17_18 + 2 * (sym - asym));
+        mom[25] = D::cs2_gpu * (-3 * (f[1] - f[14]) + 2 * (f_1_4_5 - f_14_17_18 + mom[12]));
 
         T f_3_6_20 = f[3] + f[6] + f[20];
         T f_7_16_19 = f[7] + f[16] + f[19];
-        mom[24] = D::cs2 * (-3 * (f[3] - f[16]) + 2 * (f_3_6_20 - f_7_16_19 + mom[11]));
+        mom[24] = D::cs2_gpu * (-3 * (f[3] - f[16]) + 2 * (f_3_6_20 - f_7_16_19 + mom[11]));
         sym = -jyNeq_1 + jyPos_1;
         asym = -jyNeq_2 + jyPos_2;
-        mom[14] = D::cs2 * (jyNeq_0 - jyPos_0 + 2 * (sym + asym));
-        mom[15] = D::cs2 * (f_3_6_20 - f_7_16_19 + 2 * (sym - asym));
+        mom[14] = D::cs2_gpu * (jyNeq_0 - jyPos_0 + 2 * (sym + asym));
+        mom[15] = D::cs2_gpu * (f_3_6_20 - f_7_16_19 + 2 * (sym - asym));
         mom[16] = f[11] + f[12] + f[23] + f[26] - f[10] - f[13] - f[24] - f[25];
-        mom[17] = D::cs2 * D::cs2
+        mom[17] = D::cs2_gpu * D::cs2_gpu
                   * (7 * jxPrime - 2 * (f_2_8_9 + f_15_21_22) + 4 * (mom[0] - jx0) - 6 * jy0);
-        mom[18] = D::cs2 * D::cs2
+        mom[18] = D::cs2_gpu * D::cs2_gpu
                   * (7 * jzPrime - 2 * (f_1_4_5 + f_14_17_18) + 4 * (mom[0] - jz0) - 6 * jx0);
-        mom[19] = D::cs2 * D::cs2
+        mom[19] = D::cs2_gpu * D::cs2_gpu
                   * (7 * jyPrime - 2 * (f_3_6_20 + f_7_16_19) + 4 * (mom[0] - jy0) - 6 * jz0);
-        mom[20] = D::cs2 * (-3 * (f[4] + f[17] - f[5] - f[18]) + 2 * mom[5]);
-        mom[21] = D::cs2 * (-3 * (f[6] + f[19] - f[7] - f[20]) + 2 * mom[6]);
-        mom[22] = D::cs2 * (-3 * (f[8] + f[21] - f[9] - f[22]) + 2 * mom[8]);
-        mom[26] = D::cs2 * D::cs2 * D::cs2
+        mom[20] = D::cs2_gpu * (-3 * (f[4] + f[17] - f[5] - f[18]) + 2 * mom[5]);
+        mom[21] = D::cs2_gpu * (-3 * (f[6] + f[19] - f[7] - f[20]) + 2 * mom[6]);
+        mom[22] = D::cs2_gpu * (-3 * (f[8] + f[21] - f[9] - f[22]) + 2 * mom[8]);
+        mom[26] = D::cs2_gpu * D::cs2_gpu * D::cs2_gpu
                   * (-(T)27 * f[0] + 14 * (jxPrime + jyPrime + jzPrime)
                      + 4 * (jyPrime - f_1_4_5 - f_2_8_9 - f_14_17_18 - jy0 - f_15_21_22)
                      + 8 * (mom[0] - jx0 - jy0 - jz0));
@@ -1153,7 +1185,7 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         f[26] = sym - asym;
 
         for (plint iPop = 0; iPop < D::q; ++iPop)
-            f[iPop] *= D::t[iPop];
+            f[iPop] *= D::t_gpu(iPop);
     }
 
     static void complete_bgk_ma2_regularize(
@@ -1208,33 +1240,33 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         for (plint iPop = iPhys + 1; iPop < D::q; ++iPop)
             aOne[iPop] *= omegaRatio;
 
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
         T cs4over2 = (T)0.5 * cs4;
         T cs4over4 = (T)0.25 * cs4;
         T cs4over8 = (T)0.125 * cs4;
 
-        T cs2over2 = (T)0.5 * D::cs2;
-        T cs2over4 = (T)0.25 * D::cs2;
-        T cs2over8 = (T)0.125 * D::cs2;
+        T cs2over2 = (T)0.5 * D::cs2_gpu;
+        T cs2over4 = (T)0.25 * D::cs2_gpu;
+        T cs2over8 = (T)0.125 * D::cs2_gpu;
 
         f[0] += -(T)4 * cs4 * (piNeq[0] + piNeq[3] + piNeq[5])
-                + (T)2 * D::cs2 * (aOne[17] + aOne[18] + aOne[19]) - aOne[26];
+                + (T)2 * D::cs2_gpu * (aOne[17] + aOne[18] + aOne[19]) - aOne[26];
 
-        T C1 = cs4 * ((T)2 * piNeq[0] - piNeq[3] - piNeq[5]) - D::cs2 * (aOne[17] + aOne[18])
+        T C1 = cs4 * ((T)2 * piNeq[0] - piNeq[3] - piNeq[5]) - D::cs2_gpu * (aOne[17] + aOne[18])
                + cs2over2 * aOne[19] + (T)0.5 * aOne[26];
-        T C2 = D::cs2 * (aOne[12] + aOne[13]) - (T)0.5 * aOne[25];
+        T C2 = D::cs2_gpu * (aOne[12] + aOne[13]) - (T)0.5 * aOne[25];
         f[1] += C1 + C2;
         f[14] += C1 - C2;
 
-        C1 = cs4 * (-piNeq[0] + (T)2 * piNeq[3] - piNeq[5]) - D::cs2 * (aOne[17] + aOne[19])
+        C1 = cs4 * (-piNeq[0] + (T)2 * piNeq[3] - piNeq[5]) - D::cs2_gpu * (aOne[17] + aOne[19])
              + cs2over2 * aOne[18] + (T)0.5 * aOne[26];
-        C2 = D::cs2 * (aOne[10] + aOne[14]) - (T)0.5 * aOne[23];
+        C2 = D::cs2_gpu * (aOne[10] + aOne[14]) - (T)0.5 * aOne[23];
         f[2] += C1 + C2;
         f[15] += C1 - C2;
 
         C1 = -cs4 * (piNeq[0] + piNeq[3] - (T)2 * piNeq[5]) + cs2over2 * aOne[17]
-             - D::cs2 * (aOne[18] + aOne[19]) + (T)0.5 * aOne[26];
-        C2 = D::cs2 * (aOne[11] + aOne[15]) - (T)0.5 * aOne[24];
+             - D::cs2_gpu * (aOne[18] + aOne[19]) + (T)0.5 * aOne[26];
+        C2 = D::cs2_gpu * (aOne[11] + aOne[15]) - (T)0.5 * aOne[24];
         f[3] += C1 + C2;
         f[16] += C1 - C2;
 
@@ -1351,23 +1383,23 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     {
         T m_17_18_19 = mNeq[17] + mNeq[18] + mNeq[19];
         T m_4_7_9 = mNeq[4] + mNeq[7] + mNeq[9];
-        f[0] -= D::t[0] * (-mNeq[0] + (T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
+        f[0] -= D::t_gpu(0) * (-mNeq[0] + (T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
         T c1 = -mNeq[0] - 6.75 * mNeq[26];
         T sym = c1 + (T)1.5 * (mNeq[7] + mNeq[9]) - 3 * mNeq[4] + 4.5 * (mNeq[17] + mNeq[18])
                 - 2.25 * mNeq[19];
         T asym = 3 * mNeq[1] - 4.5 * (mNeq[12] + mNeq[13]) + 6.75 * mNeq[25];
-        f[1] -= D::t[1] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[9]) - 3 * mNeq[7] - 2.25 * mNeq[18]
               + 4.5 * (mNeq[17] + mNeq[19]);
         asym = 3 * mNeq[2] - 4.5 * (mNeq[10] + mNeq[14]) + 6.75 * mNeq[23];
-        f[2] -= D::t[2] * (sym + asym);
-        f[15] -= D::t[15] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[15] -= D::t_gpu(15) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[7]) - 3 * mNeq[9] - 2.25 * mNeq[17]
               + 4.5 * (mNeq[18] + mNeq[19]);
         asym = 3 * mNeq[3] - 4.5 * (mNeq[11] + mNeq[15]) + 6.75 * mNeq[24];
-        f[3] -= D::t[3] * (sym + asym);
-        f[16] -= D::t[16] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[16] -= D::t_gpu(16) * (sym - asym);
 
         c1 = -mNeq[0] + (T)1.5 * mNeq[9] - 3 * (mNeq[4] + mNeq[7]) + 4.5 * (mNeq[18] + mNeq[19])
              - 9 * mNeq[17] + 13.5 * mNeq[26];
@@ -1376,12 +1408,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c4 = 3 * mNeq[2] - 4.5 * mNeq[14] + 9 * mNeq[10] - 13.5 * mNeq[23];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[4] -= D::t[4] * (sym + asym);
-        f[17] -= D::t[17] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[17] -= D::t_gpu(17) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[5] -= D::t[5] * (sym + asym);
-        f[18] -= D::t[18] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[18] -= D::t_gpu(18) * (sym - asym);
         c1 = -mNeq[0] + (T)1.5 * mNeq[7] - 3 * (mNeq[4] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[19])
              - 9 * mNeq[18] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[6] + 13.5 * mNeq[21];
@@ -1389,12 +1421,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = 3 * mNeq[3] - 4.5 * mNeq[15] + 9 * mNeq[11] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[6] -= D::t[6] * (sym + asym);
-        f[19] -= D::t[19] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[19] -= D::t_gpu(19) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[7] -= D::t[7] * (sym + asym);
-        f[20] -= D::t[20] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[20] -= D::t_gpu(20) * (sym - asym);
         c1 = -mNeq[0] + (T)1.5 * mNeq[4] - 3 * (mNeq[7] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[18])
              - 9 * mNeq[19] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[8] + 13.5 * mNeq[22];
@@ -1402,12 +1434,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = 3 * mNeq[3] - 4.5 * mNeq[11] + 9 * mNeq[15] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[8] -= D::t[8] * (sym + asym);
-        f[21] -= D::t[21] * (sym - asym);
+        f[8] -= D::t_gpu(8) * (sym + asym);
+        f[21] -= D::t_gpu(21) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[9] -= D::t[9] * (sym + asym);
-        f[22] -= D::t[22] * (sym - asym);
+        f[9] -= D::t_gpu(9) * (sym + asym);
+        f[22] -= D::t_gpu(22) * (sym - asym);
         c1 = -mNeq[0] - 3 * m_4_7_9;
         c2 = -9 * (mNeq[5] + m_17_18_19) - (T)27 * (mNeq[20] + mNeq[26]);
         c3 = -9 * (mNeq[6] + mNeq[8]) - (T)27 * (mNeq[21] + mNeq[22]);
@@ -1416,12 +1448,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c5 = 3 * mNeq[3] + 9 * (mNeq[11] + mNeq[15]) + (T)27 * (mNeq[16] + mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[10] -= D::t[10] * (sym + asym);
-        f[23] -= D::t[23] * (sym - asym);
+        f[10] -= D::t_gpu(10) * (sym + asym);
+        f[23] -= D::t_gpu(23) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[11] -= D::t[11] * (sym + asym);
-        f[24] -= D::t[24] * (sym - asym);
+        f[11] -= D::t_gpu(11) * (sym + asym);
+        f[24] -= D::t_gpu(24) * (sym - asym);
         c2 = 9 * (mNeq[5] - m_17_18_19) + (T)27 * (mNeq[20] - mNeq[26]);
         c3 = 9 * (-mNeq[6] + mNeq[8]) + (T)27 * (-mNeq[21] + mNeq[22]);
         c4 = 3 * (mNeq[1] - mNeq[2]) - 9 * (mNeq[10] - mNeq[12] - mNeq[13] + mNeq[14])
@@ -1429,35 +1461,35 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c5 = 3 * (mNeq[3]) - 9 * (-mNeq[11] - mNeq[15]) - (T)27 * (mNeq[16] - mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[12] -= D::t[12] * (sym + asym);
-        f[25] -= D::t[25] * (sym - asym);
+        f[12] -= D::t_gpu(12) * (sym + asym);
+        f[25] -= D::t_gpu(25) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[13] -= D::t[13] * (sym + asym);
-        f[26] -= D::t[26] * (sym - asym);
+        f[13] -= D::t_gpu(13) * (sym + asym);
+        f[26] -= D::t_gpu(26) * (sym - asym);
     }
 
     static void computeInvMmNeqToPopNoRhoJ(const Array<T, D::q> &mNeq, Array<T, D::q> &f)
     {
         T m_17_18_19 = mNeq[17] + mNeq[18] + mNeq[19];
         T m_4_7_9 = mNeq[4] + mNeq[7] + mNeq[9];
-        f[0] -= D::t[0] * (+(T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
+        f[0] -= D::t_gpu(0) * (+(T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
         T c1 = -6.75 * mNeq[26];
         T sym = c1 + (T)1.5 * (mNeq[7] + mNeq[9]) - 3 * mNeq[4] + 4.5 * (mNeq[17] + mNeq[18])
                 - 2.25 * mNeq[19];
         T asym = -4.5 * (mNeq[12] + mNeq[13]) + 6.75 * mNeq[25];
-        f[1] -= D::t[1] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[9]) - 3 * mNeq[7] - 2.25 * mNeq[18]
               + 4.5 * (mNeq[17] + mNeq[19]);
         asym = -4.5 * (mNeq[10] + mNeq[14]) + 6.75 * mNeq[23];
-        f[2] -= D::t[2] * (sym + asym);
-        f[15] -= D::t[15] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[15] -= D::t_gpu(15) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[7]) - 3 * mNeq[9] - 2.25 * mNeq[17]
               + 4.5 * (mNeq[18] + mNeq[19]);
         asym = -4.5 * (mNeq[11] + mNeq[15]) + 6.75 * mNeq[24];
-        f[3] -= D::t[3] * (sym + asym);
-        f[16] -= D::t[16] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[16] -= D::t_gpu(16) * (sym - asym);
 
         c1 = +(T)1.5 * mNeq[9] - 3 * (mNeq[4] + mNeq[7]) + 4.5 * (mNeq[18] + mNeq[19])
              - 9 * mNeq[17] + 13.5 * mNeq[26];
@@ -1466,12 +1498,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c4 = -4.5 * mNeq[14] + 9 * mNeq[10] - 13.5 * mNeq[23];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[4] -= D::t[4] * (sym + asym);
-        f[17] -= D::t[17] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[17] -= D::t_gpu(17) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[5] -= D::t[5] * (sym + asym);
-        f[18] -= D::t[18] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[18] -= D::t_gpu(18) * (sym - asym);
         c1 = +(T)1.5 * mNeq[7] - 3 * (mNeq[4] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[19])
              - 9 * mNeq[18] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[6] + 13.5 * mNeq[21];
@@ -1479,12 +1511,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = -4.5 * mNeq[15] + 9 * mNeq[11] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[6] -= D::t[6] * (sym + asym);
-        f[19] -= D::t[19] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[19] -= D::t_gpu(19) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[7] -= D::t[7] * (sym + asym);
-        f[20] -= D::t[20] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[20] -= D::t_gpu(20) * (sym - asym);
         c1 = +(T)1.5 * mNeq[4] - 3 * (mNeq[7] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[18])
              - 9 * mNeq[19] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[8] + 13.5 * mNeq[22];
@@ -1492,12 +1524,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = -4.5 * mNeq[11] + 9 * mNeq[15] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[8] -= D::t[8] * (sym + asym);
-        f[21] -= D::t[21] * (sym - asym);
+        f[8] -= D::t_gpu(8) * (sym + asym);
+        f[21] -= D::t_gpu(21) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[9] -= D::t[9] * (sym + asym);
-        f[22] -= D::t[22] * (sym - asym);
+        f[9] -= D::t_gpu(9) * (sym + asym);
+        f[22] -= D::t_gpu(22) * (sym - asym);
         c1 = -3 * m_4_7_9;
         c2 = -9 * (mNeq[5] + m_17_18_19) - (T)27 * (mNeq[20] + mNeq[26]);
         c3 = -9 * (mNeq[6] + mNeq[8]) - (T)27 * (mNeq[21] + mNeq[22]);
@@ -1505,24 +1537,24 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c5 = 9 * (mNeq[11] + mNeq[15]) + (T)27 * (mNeq[16] + mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[10] -= D::t[10] * (sym + asym);
-        f[23] -= D::t[23] * (sym - asym);
+        f[10] -= D::t_gpu(10) * (sym + asym);
+        f[23] -= D::t_gpu(23) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[11] -= D::t[11] * (sym + asym);
-        f[24] -= D::t[24] * (sym - asym);
+        f[11] -= D::t_gpu(11) * (sym + asym);
+        f[24] -= D::t_gpu(24) * (sym - asym);
         c2 = 9 * (mNeq[5] - m_17_18_19) + (T)27 * (mNeq[20] - mNeq[26]);
         c3 = 9 * (-mNeq[6] + mNeq[8]) + (T)27 * (-mNeq[21] + mNeq[22]);
         c4 = -9 * (mNeq[10] - mNeq[12] - mNeq[13] + mNeq[14]) - (T)27 * (mNeq[23] - mNeq[25]);
         c5 = -9 * (-mNeq[11] - mNeq[15]) - (T)27 * (mNeq[16] - mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[12] -= D::t[12] * (sym + asym);
-        f[25] -= D::t[25] * (sym - asym);
+        f[12] -= D::t_gpu(12) * (sym + asym);
+        f[25] -= D::t_gpu(25) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[13] -= D::t[13] * (sym + asym);
-        f[26] -= D::t[26] * (sym - asym);
+        f[13] -= D::t_gpu(13) * (sym + asym);
+        f[26] -= D::t_gpu(26) * (sym - asym);
     }
     static T complete_mrt_ma2_collision_base(
         Array<T, D::q> &f, plint order, T omega, T omegaNonPhys, plint iPhys)
@@ -1607,23 +1639,23 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     {
         T m_17_18_19 = mNeq[17] + mNeq[18] + mNeq[19];
         T m_4_7_9 = mNeq[4] + mNeq[7] + mNeq[9];
-        f[0] = -D::t[0] * (-mNeq[0] + (T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
+        f[0] = -D::t_gpu(0) * (-mNeq[0] + (T)1.5 * m_4_7_9 - 2.25 * m_17_18_19 + 3.375 * mNeq[26]);
         T c1 = -mNeq[0] - 6.75 * mNeq[26];
         T sym = c1 + (T)1.5 * (mNeq[7] + mNeq[9]) - 3 * mNeq[4] + 4.5 * (mNeq[17] + mNeq[18])
                 - 2.25 * mNeq[19];
         T asym = 3 * mNeq[1] - 4.5 * (mNeq[12] + mNeq[13]) + 6.75 * mNeq[25];
-        f[1] = -D::t[1] * (sym + asym);
-        f[14] = -D::t[14] * (sym - asym);
+        f[1] = -D::t_gpu(1) * (sym + asym);
+        f[14] = -D::t_gpu(14) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[9]) - 3 * mNeq[7] - 2.25 * mNeq[18]
               + 4.5 * (mNeq[17] + mNeq[19]);
         asym = 3 * mNeq[2] - 4.5 * (mNeq[10] + mNeq[14]) + 6.75 * mNeq[23];
-        f[2] = -D::t[2] * (sym + asym);
-        f[15] = -D::t[15] * (sym - asym);
+        f[2] = -D::t_gpu(2) * (sym + asym);
+        f[15] = -D::t_gpu(15) * (sym - asym);
         sym = c1 + (T)1.5 * (mNeq[4] + mNeq[7]) - 3 * mNeq[9] - 2.25 * mNeq[17]
               + 4.5 * (mNeq[18] + mNeq[19]);
         asym = 3 * mNeq[3] - 4.5 * (mNeq[11] + mNeq[15]) + 6.75 * mNeq[24];
-        f[3] = -D::t[3] * (sym + asym);
-        f[16] = -D::t[16] * (sym - asym);
+        f[3] = -D::t_gpu(3) * (sym + asym);
+        f[16] = -D::t_gpu(16) * (sym - asym);
 
         c1 = -mNeq[0] + (T)1.5 * mNeq[9] - 3 * (mNeq[4] + mNeq[7]) + 4.5 * (mNeq[18] + mNeq[19])
              - 9 * mNeq[17] + 13.5 * mNeq[26];
@@ -1632,12 +1664,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c4 = 3 * mNeq[2] - 4.5 * mNeq[14] + 9 * mNeq[10] - 13.5 * mNeq[23];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[4] = -D::t[4] * (sym + asym);
-        f[17] = -D::t[17] * (sym - asym);
+        f[4] = -D::t_gpu(4) * (sym + asym);
+        f[17] = -D::t_gpu(17) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[5] = -D::t[5] * (sym + asym);
-        f[18] = -D::t[18] * (sym - asym);
+        f[5] = -D::t_gpu(5) * (sym + asym);
+        f[18] = -D::t_gpu(18) * (sym - asym);
         c1 = -mNeq[0] + (T)1.5 * mNeq[7] - 3 * (mNeq[4] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[19])
              - 9 * mNeq[18] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[6] + 13.5 * mNeq[21];
@@ -1645,12 +1677,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = 3 * mNeq[3] - 4.5 * mNeq[15] + 9 * mNeq[11] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[6] = -D::t[6] * (sym + asym);
-        f[19] = -D::t[19] * (sym - asym);
+        f[6] = -D::t_gpu(6) * (sym + asym);
+        f[19] = -D::t_gpu(19) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[7] = -D::t[7] * (sym + asym);
-        f[20] = -D::t[20] * (sym - asym);
+        f[7] = -D::t_gpu(7) * (sym + asym);
+        f[20] = -D::t_gpu(20) * (sym - asym);
         c1 = -mNeq[0] + (T)1.5 * mNeq[4] - 3 * (mNeq[7] + mNeq[9]) + 4.5 * (mNeq[17] + mNeq[18])
              - 9 * mNeq[19] + 13.5 * mNeq[26];
         c2 = -9 * mNeq[8] + 13.5 * mNeq[22];
@@ -1658,12 +1690,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c4 = 3 * mNeq[3] - 4.5 * mNeq[11] + 9 * mNeq[15] - 13.5 * mNeq[24];
         sym = c1 + c2;
         asym = c3 + c4;
-        f[8] = -D::t[8] * (sym + asym);
-        f[21] = -D::t[21] * (sym - asym);
+        f[8] = -D::t_gpu(8) * (sym + asym);
+        f[21] = -D::t_gpu(21) * (sym - asym);
         sym = c1 - c2;
         asym = c3 - c4;
-        f[9] = -D::t[9] * (sym + asym);
-        f[22] = -D::t[22] * (sym - asym);
+        f[9] = -D::t_gpu(9) * (sym + asym);
+        f[22] = -D::t_gpu(22) * (sym - asym);
         c1 = -mNeq[0] - 3 * m_4_7_9;
         c2 = -9 * (mNeq[5] + m_17_18_19) - (T)27 * (mNeq[20] + mNeq[26]);
         c3 = -9 * (mNeq[6] + mNeq[8]) - (T)27 * (mNeq[21] + mNeq[22]);
@@ -1672,12 +1704,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T c5 = 3 * mNeq[3] + 9 * (mNeq[11] + mNeq[15]) + (T)27 * (mNeq[16] + mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[10] = -D::t[10] * (sym + asym);
-        f[23] = -D::t[23] * (sym - asym);
+        f[10] = -D::t_gpu(10) * (sym + asym);
+        f[23] = -D::t_gpu(23) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[11] = -D::t[11] * (sym + asym);
-        f[24] = -D::t[24] * (sym - asym);
+        f[11] = -D::t_gpu(11) * (sym + asym);
+        f[24] = -D::t_gpu(24) * (sym - asym);
         c2 = 9 * (mNeq[5] - m_17_18_19) + (T)27 * (mNeq[20] - mNeq[26]);
         c3 = 9 * (-mNeq[6] + mNeq[8]) + (T)27 * (-mNeq[21] + mNeq[22]);
         c4 = 3 * (mNeq[1] - mNeq[2]) - 9 * (mNeq[10] - mNeq[12] - mNeq[13] + mNeq[14])
@@ -1685,12 +1717,12 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         c5 = 3 * (mNeq[3]) - 9 * (-mNeq[11] - mNeq[15]) - (T)27 * (mNeq[16] - mNeq[24]);
         sym = c1 + c2 + c3;
         asym = c4 + c5;
-        f[12] = -D::t[12] * (sym + asym);
-        f[25] = -D::t[25] * (sym - asym);
+        f[12] = -D::t_gpu(12) * (sym + asym);
+        f[25] = -D::t_gpu(25) * (sym - asym);
         sym = c1 + c2 - c3;
         asym = c4 - c5;
-        f[13] = -D::t[13] * (sym + asym);
-        f[26] = -D::t[26] * (sym - asym);
+        f[13] = -D::t_gpu(13) * (sym + asym);
+        f[26] = -D::t_gpu(26) * (sym - asym);
     }
 
     static T complete_regularized_mrt_ma2_collision_base(
@@ -1805,11 +1837,11 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         T rho = D::fullRho(rhoBar);
 
         T normPiNeq = std::sqrt((T)2 * SymmetricTensorImpl<T, D::d>::tensorNormSqr(piNeq));
-        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2 * cSmago * cSmago);
+        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2_gpu * cSmago * cSmago);
 
         if (normPiNeq != T()) {  // test to avoid division per 0
             piNeq =
-                -(T)(-rho * tau * D::cs2 + std::sqrt(util::sqr<T>(rho * tau * D::cs2) + normPiNeq))
+                -(T)(-rho * tau * D::cs2_gpu + std::sqrt(util::sqr<T>(rho * tau * D::cs2_gpu) + normPiNeq))
                 / normPiNeq * piNeq;
         }
         return piNeq;
@@ -2004,16 +2036,7 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
 
     static T bgk_ma2_collision(Array<T, D::q> &f, T rhoBar, Array<T, 3> const &j, T omega)
     {
-        T invRho = D::invRho(rhoBar);
-        const T jSqr = VectorTemplateImpl<T, D::d>::normSqr(j);
-        for (plint iPop = 0; iPop < D::q; ++iPop) {
-            f[iPop] *= (T)1 - omega;
-            f[iPop] +=
-                omega
-                * dynamicsTemplatesImpl<T, D>::bgk_ma2_equilibrium(iPop, rhoBar, invRho, j, jSqr);
-        }
-        return jSqr * invRho * invRho;
-        // return bgk_ma2_collision_base(f, rhoBar, j, omega, D::invRho(rhoBar));
+        return bgk_ma2_collision_base(f, rhoBar, j, omega, D::invRho(rhoBar));
     }
 
     static T complete_bgk_ma2_collision(
@@ -2163,8 +2186,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         const T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         for (plint iPop = 0; iPop < D::q; ++iPop) {
             T feq = bgk_ma2_equilibrium(iPop, rhoBar, invRho, j, jSqr);
-            f[iPop] =
-                ratioRho * feq + D::t[iPop] * (ratioRho - (T)1) + ((T)1 - omega) * (f[iPop] - feq);
+            f[iPop] = ratioRho * feq + D::t_gpu(iPop) * (ratioRho - (T)1)
+                      + ((T)1 - omega) * (f[iPop] - feq);
         }
         return jSqr * invRho * invRho;
     }
@@ -2172,8 +2195,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     static T precond_bgk_ma2_equilibrium(
         plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr, T invGamma)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop]
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop)
                * (rhoBar + (T)3 * c_j + invGamma * invRho * ((T)4.5 * c_j * c_j - (T)1.5 * jSqr));
     }
 
@@ -2182,10 +2205,10 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
     {
         T invRho = incompressible ? (T)1 : D::invRho(rhoBar);
         T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
-        T t10_omega = D::t[10] * omega;
+        T t0_omega = D::t_gpu(0) * omega;
+        T t1_omega = D::t_gpu(1) * omega;
+        T t4_omega = D::t_gpu(4) * omega;
+        T t10_omega = D::t_gpu(10) * omega;
         T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
@@ -2296,6 +2319,36 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T> > {
         return jSqr * invRho * invRho;
         // return bgk_ma2_collision_base(f, rhoBar, j, omega, false);
     }
+    static T trt_ma2_collision(
+        Array<T, D::q> &f, T rhoBar, Array<T, D::d> const &j, T omegaPlus, T omegaMinus)
+    {
+        Array<T, D::q> eq;
+        // In the following, we number the plus/minus variables from 1 to (Q-1)/2.
+        // So we allocate the index-zero memory location, and waste some memory
+        // for convenience.
+        Array<T, D::q / 2 + 1> eq_plus, eq_minus, f_plus, f_minus;
+
+        T jSqr = normSqr(j);
+        T invRho = D::invRho(rhoBar);
+        dynamicsTemplatesImpl<T, D>::bgk_ma2_equilibria(rhoBar, invRho, j, jSqr, eq);
+
+        for (plint i = 1; i <= D::q / 2; ++i) {
+            eq_plus[i] = 0.5 * (eq[i] + eq[i + D::q / 2]);
+            eq_minus[i] = 0.5 * (eq[i] - eq[i + D::q / 2]);
+            f_plus[i] = 0.5 * (f[i] + f[i + D::q / 2]);
+            f_minus[i] = 0.5 * (f[i] - f[i + D::q / 2]);
+        }
+
+        f[0] += -omegaPlus * f[0] + omegaPlus * eq[0];
+
+        for (plint i = 1; i <= D::q / 2; ++i) {
+            f[i] += -omegaPlus * (f_plus[i] - eq_plus[i]) - omegaMinus * (f_minus[i] - eq_minus[i]);
+            f[i + D::q / 2] +=
+                -omegaPlus * (f_plus[i] - eq_plus[i]) + omegaMinus * (f_minus[i] - eq_minus[i]);
+        }
+
+        return jSqr * invRho * invRho;
+    }
 
 };  // struct dynamicsTemplatesImpl<D3Q27DescriptorBase>
 
@@ -2386,16 +2439,17 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
 
     static T bgk_ma2_equilibrium(plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop] * (rhoBar + (T)3. * c_j + invRho * ((T)4.5 * c_j * c_j - (T)1.5 * jSqr));
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop)
+               * (rhoBar + (T)3. * c_j + invRho * ((T)4.5 * c_j * c_j - (T)1.5 * jSqr));
     }
 
     static void bgk_ma2_equilibria(
         T rhoBar, T invRho, Array<T, D::d> const &j, T jSqr, Array<T, D::q> &eqPop)
     {
-        T t0 = D::t[0];
-        T t1 = D::t[1];
-        T t4 = D::t[4];
+        T t0 = D::t_gpu(0);
+        T t1 = D::t_gpu(1);
+        T t4 = D::t_gpu(4);
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
         T kz = (T)3 * j[2];
@@ -2457,68 +2511,68 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         T ux2 = ux * ux;
         T uy2 = uy * uy;
         T uz2 = uz * uz;
-        eqPop[1] += D::t[1] * (9 * j[0] * (uy2 + uz2));
-        eqPop[10] += D::t[10] * (-9 * j[0] * (uy2 + uz2));
-        eqPop[2] += D::t[2] * (9 * j[1] * (ux2 + uz2));
-        eqPop[11] += D::t[11] * (-9 * j[1] * (ux2 + uz2));
+        eqPop[1] += D::t_gpu(1) * (9 * j[0] * (uy2 + uz2));
+        eqPop[10] += D::t_gpu(10) * (-9 * j[0] * (uy2 + uz2));
+        eqPop[2] += D::t_gpu(2) * (9 * j[1] * (ux2 + uz2));
+        eqPop[11] += D::t_gpu(11) * (-9 * j[1] * (ux2 + uz2));
 
-        eqPop[5] += D::t[5] * (9 * ux * uy * (j[0] - j[1]));
-        eqPop[14] += D::t[14] * (-9 * ux * uy * (j[0] - j[1]));
-        eqPop[6] += D::t[6] * (-9 * ux * uz * (j[0] + j[2]));
-        eqPop[15] += D::t[15] * (9 * ux * uz * (j[0] + j[2]));
-        eqPop[8] += D::t[8] * (-9 * uy * uz * (j[1] + j[2]));
-        eqPop[17] += D::t[17] * (9 * uy * uz * (j[1] + j[2]));
-        eqPop[3] += D::t[3] * (9 * j[2] * (ux2 + uy2));
-        eqPop[12] += D::t[12] * (-9 * j[2] * (ux2 + uy2));
-        eqPop[4] += D::t[4] * (-9 * ux * uy * (j[0] + j[1]));
-        eqPop[13] += D::t[13] * (9 * ux * uy * (j[0] + j[1]));
-        eqPop[7] += D::t[7] * (9 * ux * uz * (j[0] - j[2]));
-        eqPop[16] += D::t[16] * (-9 * ux * uz * (j[0] - j[2]));
-        eqPop[9] += D::t[9] * (9 * uy * uz * (j[1] - j[2]));
-        eqPop[18] += D::t[18] * (-9 * uy * uz * (j[1] - j[2]));
+        eqPop[5] += D::t_gpu(5) * (9 * ux * uy * (j[0] - j[1]));
+        eqPop[14] += D::t_gpu(14) * (-9 * ux * uy * (j[0] - j[1]));
+        eqPop[6] += D::t_gpu(6) * (-9 * ux * uz * (j[0] + j[2]));
+        eqPop[15] += D::t_gpu(15) * (9 * ux * uz * (j[0] + j[2]));
+        eqPop[8] += D::t_gpu(8) * (-9 * uy * uz * (j[1] + j[2]));
+        eqPop[17] += D::t_gpu(17) * (9 * uy * uz * (j[1] + j[2]));
+        eqPop[3] += D::t_gpu(3) * (9 * j[2] * (ux2 + uy2));
+        eqPop[12] += D::t_gpu(12) * (-9 * j[2] * (ux2 + uy2));
+        eqPop[4] += D::t_gpu(4) * (-9 * ux * uy * (j[0] + j[1]));
+        eqPop[13] += D::t_gpu(13) * (9 * ux * uy * (j[0] + j[1]));
+        eqPop[7] += D::t_gpu(7) * (9 * ux * uz * (j[0] - j[2]));
+        eqPop[16] += D::t_gpu(16) * (-9 * ux * uz * (j[0] - j[2]));
+        eqPop[9] += D::t_gpu(9) * (9 * uy * uz * (j[1] - j[2]));
+        eqPop[18] += D::t_gpu(18) * (-9 * uy * uz * (j[1] - j[2]));
         T delta = 1.0 / 6.0;
         T beta = 1.0;
         T rho = D::fullRho(rhoBar);
-        eqPop[0] += D::t[0] * rho
+        eqPop[0] += D::t_gpu(0) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[1] += D::t[1] * rho
+        eqPop[1] += D::t_gpu(1) * rho
                     * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
         eqPop[10] +=
-            D::t[10] * rho
+            D::t_gpu(10) * rho
             * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[2] += D::t[2] * rho
+        eqPop[2] += D::t_gpu(2) * rho
                     * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
         eqPop[11] +=
-            D::t[11] * rho
+            D::t_gpu(11) * rho
             * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[3] += D::t[3] * rho
+        eqPop[3] += D::t_gpu(3) * rho
                     * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
         eqPop[12] +=
-            D::t[12] * rho
+            D::t_gpu(12) * rho
             * (-6 * delta * (ux2 + uy2 + uz2) - 6 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[4] += D::t[4] * rho
+        eqPop[4] += D::t_gpu(4) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[13] += D::t[13] * rho
+        eqPop[13] += D::t_gpu(13) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[5] += D::t[5] * rho
+        eqPop[5] += D::t_gpu(5) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[14] += D::t[14] * rho
+        eqPop[14] += D::t_gpu(14) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[6] += D::t[6] * rho
+        eqPop[6] += D::t_gpu(6) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[15] += D::t[15] * rho
+        eqPop[15] += D::t_gpu(15) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[7] += D::t[7] * rho
+        eqPop[7] += D::t_gpu(7) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[16] += D::t[16] * rho
+        eqPop[16] += D::t_gpu(16) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[8] += D::t[8] * rho
+        eqPop[8] += D::t_gpu(8) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[17] += D::t[17] * rho
+        eqPop[17] += D::t_gpu(17) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[9] += D::t[9] * rho
+        eqPop[9] += D::t_gpu(9) * rho
                     * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
-        eqPop[18] += D::t[18] * rho
+        eqPop[18] += D::t_gpu(18) * rho
                      * (3 * delta * (ux2 + uy2 + uz2) + 3 * ((uy2 + uz2) * ux2 + uy2 * uz2) * beta);
     }
 
@@ -2537,55 +2591,55 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         T piNeq8 = neqPiD3Q19<T>::fromPiToFneq8(piNeq);
         T piNeq9 = neqPiD3Q19<T>::fromPiToFneq9(piNeq);
         fNeq[1] =
-            D::t[1]
+            D::t_gpu(1)
             * ((9 * piNeq[3] + 9 * piNeq[5]) * u[0] + 18 * u[1] * piNeq[1] + 18 * u[2] * piNeq[2]);
         fNeq[10] = -fNeq[1];
         fNeq[1] += piNeq1;
         fNeq[10] += piNeq1;
         fNeq[2] =
-            D::t[2]
+            D::t_gpu(2)
             * ((9 * piNeq[0] + 9 * piNeq[5]) * u[1] + 18 * u[0] * piNeq[1] + 18 * u[2] * piNeq[4]);
         fNeq[11] = -fNeq[2];
         fNeq[2] += piNeq2;
         fNeq[11] += piNeq2;
         fNeq[3] =
-            D::t[3]
+            D::t_gpu(3)
             * ((9 * piNeq[0] + 9 * piNeq[3]) * u[2] + 18 * u[0] * piNeq[2] + 18 * u[1] * piNeq[4]);
         fNeq[12] = -fNeq[3];
         fNeq[3] += piNeq3;
         fNeq[12] += piNeq3;
         fNeq[4] =
-            D::t[4]
+            D::t_gpu(4)
             * ((-18 * u[0] - 18 * u[1]) * piNeq[1] - 9 * u[0] * piNeq[3] - 9 * u[1] * piNeq[0]);
         fNeq[13] = -fNeq[4];
         fNeq[4] += piNeq4;
         fNeq[13] += piNeq4;
         fNeq[5] =
-            D::t[5]
+            D::t_gpu(5)
             * ((18 * u[0] - 18 * u[1]) * piNeq[1] - 9 * u[0] * piNeq[3] + 9 * u[1] * piNeq[0]);
         fNeq[14] = -fNeq[5];
         fNeq[5] += piNeq5;
         fNeq[14] += piNeq5;
         fNeq[6] =
-            D::t[6]
+            D::t_gpu(6)
             * ((-18 * u[0] - 18 * u[2]) * piNeq[2] - 9 * u[0] * piNeq[5] - 9 * u[2] * piNeq[0]);
         fNeq[15] = -fNeq[6];
         fNeq[6] += piNeq6;
         fNeq[15] += piNeq6;
         fNeq[7] =
-            D::t[7]
+            D::t_gpu(7)
             * ((18 * u[0] - 18 * u[2]) * piNeq[2] - 9 * u[0] * piNeq[5] + 9 * u[2] * piNeq[0]);
         fNeq[16] = -fNeq[7];
         fNeq[7] += piNeq7;
         fNeq[16] += piNeq7;
         fNeq[8] =
-            D::t[8]
+            D::t_gpu(8)
             * ((-18 * u[1] - 18 * u[2]) * piNeq[4] - 9 * u[1] * piNeq[5] - 9 * u[2] * piNeq[3]);
         fNeq[17] = -fNeq[8];
         fNeq[8] += piNeq8;
         fNeq[17] += piNeq8;
         fNeq[9] =
-            D::t[9]
+            D::t_gpu(9)
             * ((18 * u[1] - 18 * u[2]) * piNeq[4] - 9 * u[1] * piNeq[5] + 9 * u[2] * piNeq[3]);
         fNeq[18] = -fNeq[9];
         fNeq[9] += piNeq9;
@@ -2649,137 +2703,137 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         mom[1] = -f[1] + f[10] - f_4_5_6_7 + f_13_14_15_16;
         mom[2] = -f[2] + f[11] + f_m4_5_13_m14 + f_m8_m9_17_18;
         mom[3] = -f[3] + f[12] + f_m6_7_15_m16 + f_m8_9_17_m18;
-        mom[4] = D::cs2
+        mom[4] = D::cs2_gpu
                  * (-f[0] - f_1_2_3_10_11_12 + (T)3 * (f[1] + f[10]) - f_8_9_17_18
                     + (T)2 * (f_4_5_6_7 + f_13_14_15_16));
-        mom[7] = D::cs2
+        mom[7] = D::cs2_gpu
                  * (-f[0] - f_1_2_3_10_11_12 + (T)3 * (f[2] + f[11]) - f_6_7_15_16
                     + (T)2 * (f_4_5_13_14 + f_8_9_17_18));
-        mom[9] = D::cs2
+        mom[9] = D::cs2_gpu
                  * (-f[0] - f_1_2_3_10_11_12 + (T)3 * (f[3] + f[12]) - f_4_5_13_14
                     + (T)2 * (f_6_7_15_16 + f_8_9_17_18));
         mom[5] = f[4] - f[5] + f[13] - f[14];
         mom[6] = f[6] - f[7] + f[15] - f[16];
         mom[8] = f[8] - f[9] + f[17] - f[18];
-        mom[10] = D::cs2 * (f_m4_5_13_m14 + f_m8_m9_17_18 + (T)2 * (f[2] - f[11]));
-        mom[11] = D::cs2 * (-f_4_5_6_7 + f_13_14_15_16 + (T)2 * (f[1] - f[10]));
-        mom[12] = D::cs2 * (f_m6_7_15_m16 + f_m8_9_17_m18 + (T)2 * (f[3] - f[12]));
+        mom[10] = D::cs2_gpu * (f_m4_5_13_m14 + f_m8_m9_17_18 + (T)2 * (f[2] - f[11]));
+        mom[11] = D::cs2_gpu * (-f_4_5_6_7 + f_13_14_15_16 + (T)2 * (f[1] - f[10]));
+        mom[12] = D::cs2_gpu * (f_m6_7_15_m16 + f_m8_9_17_m18 + (T)2 * (f[3] - f[12]));
         mom[13] = f_m4_5_13_m14 - f_m8_m9_17_18;
         mom[14] = f[4] + f[5] - f[13] - f[14] - f[6] - f[7] + f[15] + f[16];
         mom[15] = -f_m6_7_15_m16 + f_m8_9_17_m18;
-        mom[16] = D::cs2 * D::cs2
+        mom[16] = D::cs2_gpu * D::cs2_gpu
                   * (-f_1_2_3_10_11_12 + (T)0.5 * (f[0] + f_4_5_6_7 + f_8_9_17_18 + f_13_14_15_16));
-        mom[17] = D::cs2 * D::cs2
+        mom[17] = D::cs2_gpu * D::cs2_gpu
                   * ((T)1.5 * (f[1] + f[10]) + f_8_9_17_18
                      + (T)0.5 * (-f_1_2_3_10_11_12 - f_4_5_6_7 - f_13_14_15_16));
-        mom[18] = (T)0.25 * D::cs2 * (f[2] + f[11] - f[3] - f[12] - f_4_5_13_14 + f_6_7_15_16);
+        mom[18] = (T)0.25 * D::cs2_gpu * (f[2] + f[11] - f[3] - f[12] - f_4_5_13_14 + f_6_7_15_16);
     }
 
     static void computeInvMmNeqToPop(const Array<T, D::q> &mNeq, Array<T, D::q> &f)
     {
-        f[0] -= D::t[0] * (-mNeq[0] + (T)1.5 * (mNeq[4] + mNeq[7] + mNeq[9]) - (T)3 * mNeq[16]);
+        f[0] -= D::t_gpu(0) * (-mNeq[0] + (T)1.5 * (mNeq[4] + mNeq[7] + mNeq[9]) - (T)3 * mNeq[16]);
         T sym = -mNeq[0] - (T)3 * mNeq[4] + (T)1.5 * (mNeq[7] + mNeq[9]) + (T)6 * mNeq[16]
                 - (T)27 * mNeq[17];
         T asym = (T)3 * mNeq[1] - (T)9 * mNeq[11];
-        f[1] -= D::t[1] * (sym + asym);
-        f[10] -= D::t[10] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[10] -= D::t_gpu(10) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] + (T)6 * mNeq[16]
               + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym = +(T)3 * mNeq[2] - (T)9 * mNeq[10];
-        f[2] -= D::t[2] * (sym + asym);
-        f[11] -= D::t[11] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[11] -= D::t_gpu(11) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] + (T)6 * mNeq[16]
               + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym = +(T)3 * mNeq[3] - (T)9 * mNeq[12];
-        f[3] -= D::t[3] * (sym + asym);
-        f[12] -= D::t[12] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[12] -= D::t_gpu(12) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] - (T)9 * mNeq[5] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9]
               - (T)3 * mNeq[16] + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym =
             +(T)3 * mNeq[1] + (T)3 * mNeq[2] + (T)4.5 * (mNeq[10] + mNeq[11] + mNeq[13] - mNeq[14]);
-        f[4] -= D::t[4] * (sym + asym);
-        f[13] -= D::t[13] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[13] -= D::t_gpu(13) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] + (T)9 * mNeq[5] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9]
               - (T)3 * mNeq[16] + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym =
             +(T)3 * mNeq[1] - (T)3 * mNeq[2] - (T)4.5 * (mNeq[10] - mNeq[11] + mNeq[13] + mNeq[14]);
-        f[5] -= D::t[5] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
 
         sym = -mNeq[0] - (T)3 * mNeq[4] - (T)9 * mNeq[6] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9]
               - (T)3 * mNeq[16] + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym =
             +(T)3 * mNeq[1] + (T)3 * mNeq[3] + (T)4.5 * (mNeq[11] + mNeq[12] + mNeq[14] - mNeq[15]);
-        f[6] -= D::t[6] * (sym + asym);
-        f[15] -= D::t[15] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[15] -= D::t_gpu(15) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] + (T)9 * mNeq[6] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9]
               - (T)3 * mNeq[16] + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym =
             +(T)3 * mNeq[1] - (T)3 * mNeq[3] + (T)4.5 * (mNeq[11] - mNeq[12] + mNeq[14] + mNeq[15]);
-        f[7] -= D::t[7] * (sym + asym);
-        f[16] -= D::t[16] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[16] -= D::t_gpu(16) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] - (T)3 * mNeq[7] - (T)9 * mNeq[8] - (T)3 * mNeq[9]
               - (T)3 * mNeq[16] - (T)27 * mNeq[17];
         asym =
             +(T)3 * mNeq[2] + (T)3 * mNeq[3] + (T)4.5 * (mNeq[10] + mNeq[12] - mNeq[13] + mNeq[15]);
-        f[8] -= D::t[8] * (sym + asym);
-        f[17] -= D::t[17] * (sym - asym);
+        f[8] -= D::t_gpu(8) * (sym + asym);
+        f[17] -= D::t_gpu(17) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)9 * mNeq[8] - (T)3 * mNeq[9]
               - (T)3 * mNeq[16] - (T)27 * mNeq[17];
         asym =
             +(T)3 * mNeq[2] - (T)3 * mNeq[3] + (T)4.5 * (mNeq[10] - mNeq[12] - mNeq[13] - mNeq[15]);
-        f[9] -= D::t[9] * (sym + asym);
-        f[18] -= D::t[18] * (sym - asym);
+        f[9] -= D::t_gpu(9) * (sym + asym);
+        f[18] -= D::t_gpu(18) * (sym - asym);
     }
 
     static void computeInvMmNeqToPopNoRhoJ(const Array<T, D::q> &mNeq, Array<T, D::q> &f)
     {
-        f[0] -= D::t[0] * (+(T)1.5 * (mNeq[4] + mNeq[7] + mNeq[9]) - (T)3 * mNeq[16]);
+        f[0] -= D::t_gpu(0) * (+(T)1.5 * (mNeq[4] + mNeq[7] + mNeq[9]) - (T)3 * mNeq[16]);
         T sym = -(T)3 * mNeq[4] + (T)1.5 * (mNeq[7] + mNeq[9]) + (T)6 * mNeq[16] - (T)27 * mNeq[17];
         T asym = -(T)9 * mNeq[11];
-        f[1] -= D::t[1] * (sym + asym);
-        f[10] -= D::t[10] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[10] -= D::t_gpu(10) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] + (T)6 * mNeq[16]
               + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym = -(T)9 * mNeq[10];
-        f[2] -= D::t[2] * (sym + asym);
-        f[11] -= D::t[11] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[11] -= D::t_gpu(11) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] + (T)6 * mNeq[16]
               + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym = -(T)9 * mNeq[12];
-        f[3] -= D::t[3] * (sym + asym);
-        f[12] -= D::t[12] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[12] -= D::t_gpu(12) * (sym - asym);
         sym = -(T)3 * mNeq[4] - (T)9 * mNeq[5] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] - (T)3 * mNeq[16]
               + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym = +(T)4.5 * (mNeq[10] + mNeq[11] + mNeq[13] - mNeq[14]);
-        f[4] -= D::t[4] * (sym + asym);
-        f[13] -= D::t[13] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[13] -= D::t_gpu(13) * (sym - asym);
         sym = -(T)3 * mNeq[4] + (T)9 * mNeq[5] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] - (T)3 * mNeq[16]
               + 13.5 * mNeq[17] + (T)27 * mNeq[18];
         asym = -(T)4.5 * (mNeq[10] - mNeq[11] + mNeq[13] + mNeq[14]);
-        f[5] -= D::t[5] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
 
         sym = -(T)3 * mNeq[4] - (T)9 * mNeq[6] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] - (T)3 * mNeq[16]
               + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym = +(T)4.5 * (mNeq[11] + mNeq[12] + mNeq[14] - mNeq[15]);
-        f[6] -= D::t[6] * (sym + asym);
-        f[15] -= D::t[15] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[15] -= D::t_gpu(15) * (sym - asym);
         sym = -(T)3 * mNeq[4] + (T)9 * mNeq[6] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] - (T)3 * mNeq[16]
               + 13.5 * mNeq[17] - (T)27 * mNeq[18];
         asym = +(T)4.5 * (mNeq[11] - mNeq[12] + mNeq[14] + mNeq[15]);
-        f[7] -= D::t[7] * (sym + asym);
-        f[16] -= D::t[16] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[16] -= D::t_gpu(16) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] - (T)3 * mNeq[7] - (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[16]
               - (T)27 * mNeq[17];
         asym = +(T)4.5 * (mNeq[10] + mNeq[12] - mNeq[13] + mNeq[15]);
-        f[8] -= D::t[8] * (sym + asym);
-        f[17] -= D::t[17] * (sym - asym);
+        f[8] -= D::t_gpu(8) * (sym + asym);
+        f[17] -= D::t_gpu(17) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[16]
               - (T)27 * mNeq[17];
         asym = +(T)4.5 * (mNeq[10] - mNeq[12] - mNeq[13] - mNeq[15]);
-        f[9] -= D::t[9] * (sym + asym);
-        f[18] -= D::t[18] * (sym - asym);
+        f[9] -= D::t_gpu(9) * (sym + asym);
+        f[18] -= D::t_gpu(18) * (sym - asym);
     }
 
     static Array<T, SymmetricTensorImpl<T, D::d>::n> computeStrainRate(
@@ -2797,10 +2851,11 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         T rho = D::fullRho(rhoBar);
 
         T normPiNeq = std::sqrt((T)2 * SymmetricTensorImpl<T, D::d>::tensorNormSqr(piNeq));
-        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2 * cSmago * cSmago);
+        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2_gpu * cSmago * cSmago);
 
         if (normPiNeq != T()) {  // test to avoid division per 0
-            piNeq = -(-rho * tau * D::cs2 + std::sqrt(util::sqr<T>(rho * tau * D::cs2) + normPiNeq))
+            piNeq = -(-rho * tau * D::cs2_gpu
+                      + std::sqrt(util::sqr<T>(rho * tau * D::cs2_gpu) + normPiNeq))
                     / normPiNeq * piNeq;
         }
         return piNeq;
@@ -2835,9 +2890,9 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         Array<T, D::q> &f, T rhoBar, Array<T, 3> const &j, T omega, T invRho)
     {
         T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
+        T t0_omega = D::t_gpu(0) * omega;
+        T t1_omega = D::t_gpu(1) * omega;
+        T t4_omega = D::t_gpu(4) * omega;
         T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
@@ -3146,8 +3201,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         const T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         for (plint iPop = 0; iPop < D::q; ++iPop) {
             T feq = bgk_ma2_equilibrium(iPop, rhoBar, invRho, j, jSqr);
-            f[iPop] =
-                ratioRho * feq + D::t[iPop] * (ratioRho - (T)1) + ((T)1 - omega) * (f[iPop] - feq);
+            f[iPop] = ratioRho * feq + D::t_gpu(iPop) * (ratioRho - (T)1)
+                      + ((T)1 - omega) * (f[iPop] - feq);
         }
         return jSqr * invRho * invRho;
     }
@@ -3155,8 +3210,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
     static T precond_bgk_ma2_equilibrium(
         plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr, T invGamma)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop]
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop)
                * (rhoBar + 3. * c_j + invGamma * invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
     }
 
@@ -3165,9 +3220,9 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
     {
         T invRho = incompressible ? (T)1 : D::invRho(rhoBar);
         T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
+        T t0_omega = D::t_gpu(0) * omega;
+        T t1_omega = D::t_gpu(1) * omega;
+        T t4_omega = D::t_gpu(4) * omega;
         T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
@@ -3246,6 +3301,37 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T> > {
         return precond_bgk_ma2_collision_base(f, rhoBar, j, omega, invGamma, false);
     }
 
+    static T trt_ma2_collision(
+        Array<T, D::q> &f, T rhoBar, Array<T, D::d> const &j, T omegaPlus, T omegaMinus)
+    {
+        Array<T, D::q> eq;
+        // In the following, we number the plus/minus variables from 1 to (Q-1)/2.
+        // So we allocate the index-zero memory location, and waste some memory
+        // for convenience.
+        Array<T, D::q / 2 + 1> eq_plus, eq_minus, f_plus, f_minus;
+
+        T jSqr = normSqr(j);
+        T invRho = D::invRho(rhoBar);
+        dynamicsTemplatesImpl<T, D>::bgk_ma2_equilibria(rhoBar, invRho, j, jSqr, eq);
+
+        for (plint i = 1; i <= D::q / 2; ++i) {
+            eq_plus[i] = 0.5 * (eq[i] + eq[i + D::q / 2]);
+            eq_minus[i] = 0.5 * (eq[i] - eq[i + D::q / 2]);
+            f_plus[i] = 0.5 * (f[i] + f[i + D::q / 2]);
+            f_minus[i] = 0.5 * (f[i] - f[i + D::q / 2]);
+        }
+
+        f[0] += -omegaPlus * f[0] + omegaPlus * eq[0];
+
+        for (plint i = 1; i <= D::q / 2; ++i) {
+            f[i] += -omegaPlus * (f_plus[i] - eq_plus[i]) - omegaMinus * (f_minus[i] - eq_minus[i]);
+            f[i + D::q / 2] +=
+                -omegaPlus * (f_plus[i] - eq_plus[i]) + omegaMinus * (f_minus[i] - eq_minus[i]);
+        }
+
+        return jSqr * invRho * invRho;
+    }
+
 };  // struct dynamicsTemplatesImpl<D3Q19DescriptorBase>
 
 /// Compute Pi tensor efficiently on D3Q15 lattice
@@ -3322,8 +3408,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
 
     static T bgk_ma2_equilibrium(plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop] * (rhoBar + 3. * c_j + invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop) * (rhoBar + 3. * c_j + invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
     }
 
     static void truncated_ma2_equilibrium_moments(
@@ -3366,108 +3452,108 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
         mom[6] = -f_m4_5_m6_7 + f_11_m12_13_m14;
         mom[8] = f_4_m5_m6_7 + f_11_m12_m13_14;
         mom[4] =
-            D::cs2
+            D::cs2_gpu
             * (-f[0] - f_1_2_3_8_9_10 + (T)3 * (f[1] + f[8]) + (T)2 * (f_4_5_6_7 + f_11_12_13_14));
         mom[7] =
-            D::cs2
+            D::cs2_gpu
             * (-f[0] - f_1_2_3_8_9_10 + (T)3 * (f[2] + f[9]) + (T)2 * (f_4_5_6_7 + f_11_12_13_14));
         mom[9] =
-            D::cs2
+            D::cs2_gpu
             * (-f[0] - f_1_2_3_8_9_10 + (T)3 * (f[3] + f[10]) + (T)2 * (f_4_5_6_7 + f_11_12_13_14));
-        mom[10] = (T)2 * D::cs2 * (f[2] - f[9] + (T)2 * (f_m4_m5_6_7 + f_11_12_m13_m14));
-        mom[11] = (T)2 * D::cs2 * (f[1] - f[8] + (T)2 * (-f_4_5_6_7 + f_11_12_13_14));
-        mom[12] = (T)2 * D::cs2 * (f[3] - f[10] + (T)2 * (f_m4_5_m6_7 + f_11_m12_13_m14));
-        mom[13] = D::cs2 * (-f_1_2_3_8_9_10 + (T)2 * (f[0] + f_4_5_6_7 + f_11_12_13_14));
+        mom[10] = (T)2 * D::cs2_gpu * (f[2] - f[9] + (T)2 * (f_m4_m5_6_7 + f_11_12_m13_m14));
+        mom[11] = (T)2 * D::cs2_gpu * (f[1] - f[8] + (T)2 * (-f_4_5_6_7 + f_11_12_13_14));
+        mom[12] = (T)2 * D::cs2_gpu * (f[3] - f[10] + (T)2 * (f_m4_5_m6_7 + f_11_m12_13_m14));
+        mom[13] = D::cs2_gpu * (-f_1_2_3_8_9_10 + (T)2 * (f[0] + f_4_5_6_7 + f_11_12_13_14));
         mom[14] = -f_4_m5_m6_7 + f_11_m12_m13_14;
     }
 
     static void computeInvMmNeqToPop(const Array<T, D::q> &mNeq, Array<T, D::q> &f)
     {
         f[0] -=
-            D::t[0]
+            D::t_gpu(0)
             * (-mNeq[0] + (T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] + (T)1.5 * mNeq[9] - (T)3 * mNeq[13]);
         T sym = -mNeq[0] - (T)3 * mNeq[4] + (T)1.5 * mNeq[7] + (T)1.5 * mNeq[9] + (T)1.5 * mNeq[13];
         T asym = (T)3 * mNeq[1] - 2.25 * mNeq[11];
-        f[1] -= D::t[1] * (sym + asym);
-        f[8] -= D::t[8] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[8] -= D::t_gpu(8) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] + (T)1.5 * mNeq[13];
         asym = (T)3 * mNeq[2] - 2.25 * mNeq[10];
-        f[2] -= D::t[2] * (sym + asym);
-        f[9] -= D::t[9] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[9] -= D::t_gpu(9) * (sym - asym);
         sym = -mNeq[0] + (T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] + (T)1.5 * mNeq[13];
         asym = (T)3 * mNeq[3] - 2.25 * mNeq[12];
-        f[3] -= D::t[3] * (sym + asym);
-        f[10] -= D::t[10] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[10] -= D::t_gpu(10) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] - (T)9 * mNeq[5] - (T)9 * mNeq[6] - (T)3 * mNeq[7]
               - (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = (T)3 * mNeq[1] + (T)3 * mNeq[2] + (T)3 * mNeq[3] + 4.5 * mNeq[10] + 4.5 * mNeq[11]
                + 4.5 * mNeq[12] + (T)9 * mNeq[14];
-        f[4] -= D::t[4] * (sym + asym);
-        f[11] -= D::t[11] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[11] -= D::t_gpu(11) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] - (T)9 * mNeq[5] + (T)9 * mNeq[6] - (T)3 * mNeq[7]
               + (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = (T)3 * mNeq[1] + (T)3 * mNeq[2] - (T)3 * mNeq[3] + 4.5 * mNeq[10] + 4.5 * mNeq[11]
                - 4.5 * mNeq[12] - (T)9 * mNeq[14];
-        f[5] -= D::t[5] * (sym + asym);
-        f[12] -= D::t[12] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[12] -= D::t_gpu(12) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] + (T)9 * mNeq[5] - (T)9 * mNeq[6] - (T)3 * mNeq[7]
               + (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = (T)3 * mNeq[1] - (T)3 * mNeq[2] + (T)3 * mNeq[3] - 4.5 * mNeq[10] + 4.5 * mNeq[11]
                + 4.5 * mNeq[12] - (T)9 * mNeq[14];
-        f[6] -= D::t[6] * (sym + asym);
-        f[13] -= D::t[13] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[13] -= D::t_gpu(13) * (sym - asym);
         sym = -mNeq[0] - (T)3 * mNeq[4] + (T)9 * mNeq[5] + (T)9 * mNeq[6] - (T)3 * mNeq[7]
               - (T)9 * mNeq[8] - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = (T)3 * mNeq[1] - (T)3 * mNeq[2] - (T)3 * mNeq[3] - 4.5 * mNeq[10] + 4.5 * mNeq[11]
                - 4.5 * mNeq[12] + (T)9 * mNeq[14];
-        f[7] -= D::t[7] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
     }
 
     static void computeInvMmNeqToPopNoRhoJ(const Array<T, D::q> &mNeq, Array<T, D::q> &f)
     {
-        f[0] -=
-            D::t[0] * ((T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] + (T)1.5 * mNeq[9] - (T)3 * mNeq[13]);
+        f[0] -= D::t_gpu(0)
+                * ((T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] + (T)1.5 * mNeq[9] - (T)3 * mNeq[13]);
         T sym = -(T)3 * mNeq[4] + (T)1.5 * mNeq[7] + (T)1.5 * mNeq[9] + (T)1.5 * mNeq[13];
         T asym = -2.25 * mNeq[11];
-        f[1] -= D::t[1] * (sym + asym);
-        f[8] -= D::t[8] * (sym - asym);
+        f[1] -= D::t_gpu(1) * (sym + asym);
+        f[8] -= D::t_gpu(8) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] - (T)3 * mNeq[7] + (T)1.5 * mNeq[9] + (T)1.5 * mNeq[13];
         asym = -2.25 * mNeq[10];
-        f[2] -= D::t[2] * (sym + asym);
-        f[9] -= D::t[9] * (sym - asym);
+        f[2] -= D::t_gpu(2) * (sym + asym);
+        f[9] -= D::t_gpu(9) * (sym - asym);
         sym = +(T)1.5 * mNeq[4] + (T)1.5 * mNeq[7] - (T)3 * mNeq[9] + (T)1.5 * mNeq[13];
         asym = -2.25 * mNeq[12];
-        f[3] -= D::t[3] * (sym + asym);
-        f[10] -= D::t[10] * (sym - asym);
+        f[3] -= D::t_gpu(3) * (sym + asym);
+        f[10] -= D::t_gpu(10) * (sym - asym);
         sym = -(T)3 * mNeq[4] - (T)9 * mNeq[5] - (T)9 * mNeq[6] - (T)3 * mNeq[7] - (T)9 * mNeq[8]
               - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = +4.5 * mNeq[10] + 4.5 * mNeq[11] + 4.5 * mNeq[12] + (T)9 * mNeq[14];
-        f[4] -= D::t[4] * (sym + asym);
-        f[11] -= D::t[11] * (sym - asym);
+        f[4] -= D::t_gpu(4) * (sym + asym);
+        f[11] -= D::t_gpu(11) * (sym - asym);
         sym = -(T)3 * mNeq[4] - (T)9 * mNeq[5] + (T)9 * mNeq[6] - (T)3 * mNeq[7] + (T)9 * mNeq[8]
               - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = +4.5 * mNeq[10] + 4.5 * mNeq[11] - 4.5 * mNeq[12] - (T)9 * mNeq[14];
-        f[5] -= D::t[5] * (sym + asym);
-        f[12] -= D::t[12] * (sym - asym);
+        f[5] -= D::t_gpu(5) * (sym + asym);
+        f[12] -= D::t_gpu(12) * (sym - asym);
         sym = -(T)3 * mNeq[4] + (T)9 * mNeq[5] - (T)9 * mNeq[6] - (T)3 * mNeq[7] + (T)9 * mNeq[8]
               - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = -4.5 * mNeq[10] + 4.5 * mNeq[11] + 4.5 * mNeq[12] - (T)9 * mNeq[14];
-        f[6] -= D::t[6] * (sym + asym);
-        f[13] -= D::t[13] * (sym - asym);
+        f[6] -= D::t_gpu(6) * (sym + asym);
+        f[13] -= D::t_gpu(13) * (sym - asym);
         sym = -(T)3 * mNeq[4] + (T)9 * mNeq[5] + (T)9 * mNeq[6] - (T)3 * mNeq[7] - (T)9 * mNeq[8]
               - (T)3 * mNeq[9] - (T)3 * mNeq[13];
         asym = -4.5 * mNeq[10] + 4.5 * mNeq[11] - 4.5 * mNeq[12] + (T)9 * mNeq[14];
-        f[7] -= D::t[7] * (sym + asym);
-        f[14] -= D::t[14] * (sym - asym);
+        f[7] -= D::t_gpu(7) * (sym + asym);
+        f[14] -= D::t_gpu(14) * (sym - asym);
     }
 
     static void bgk_ma2_equilibria(
         T rhoBar, T invRho, Array<T, D::d> const &j, T jSqr, Array<T, D::q> &eqPop)
     {
-        T t0 = D::t[0];
-        T t1 = D::t[1];
-        T t4 = D::t[4];
+        T t0 = D::t_gpu(0);
+        T t1 = D::t_gpu(1);
+        T t4 = D::t_gpu(4);
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
         T kz = (T)3 * j[2];
@@ -3551,10 +3637,11 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
         T rho = D::fullRho(rhoBar);
 
         T normPiNeq = std::sqrt((T)2 * SymmetricTensorImpl<T, D::d>::tensorNormSqr(piNeq));
-        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2 * cSmago * cSmago);
+        normPiNeq *= (T)2 * rho * util::sqr<T>(D::cs2_gpu * cSmago * cSmago);
 
         if (normPiNeq != T()) {  // test to avoid division per 0
-            piNeq = -(-rho * tau * D::cs2 + std::sqrt(util::sqr<T>(rho * tau * D::cs2) + normPiNeq))
+            piNeq = -(-rho * tau * D::cs2_gpu
+                      + std::sqrt(util::sqr<T>(rho * tau * D::cs2_gpu) + normPiNeq))
                     / normPiNeq * piNeq;
         }
         return piNeq;
@@ -3564,9 +3651,9 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
         Array<T, D::q> &f, T rhoBar, Array<T, 3> const &j, T omega, T invRho)
     {
         T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
+        T t0_omega = D::t_gpu(0) * omega;
+        T t1_omega = D::t_gpu(1) * omega;
+        T t4_omega = D::t_gpu(4) * omega;
         T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];
@@ -3820,8 +3907,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
         const T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         for (plint iPop = 0; iPop < D::q; ++iPop) {
             T feq = bgk_ma2_equilibrium(iPop, rhoBar, invRho, j, jSqr);
-            f[iPop] =
-                ratioRho * feq + D::t[iPop] * (ratioRho - (T)1) + ((T)1 - omega) * (f[iPop] - feq);
+            f[iPop] = ratioRho * feq + D::t_gpu(iPop) * (ratioRho - (T)1)
+                      + ((T)1 - omega) * (f[iPop] - feq);
         }
         return jSqr * invRho * invRho;
     }
@@ -3829,8 +3916,8 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
     static T precond_bgk_ma2_equilibrium(
         plint iPop, T rhoBar, T invRho, Array<T, 3> const &j, T jSqr, T invGamma)
     {
-        T c_j = D::c[iPop][0] * j[0] + D::c[iPop][1] * j[1] + D::c[iPop][2] * j[2];
-        return D::t[iPop]
+        T c_j = D::c_gpu(iPop, 0) * j[0] + D::c_gpu(iPop, 1) * j[1] + D::c_gpu(iPop, 2) * j[2];
+        return D::t_gpu(iPop)
                * (rhoBar + 3. * c_j + invGamma * invRho * (4.5 * c_j * c_j - 1.5 * jSqr));
     }
 
@@ -3839,9 +3926,9 @@ struct dynamicsTemplatesImpl<T, descriptors::D3Q15DescriptorBase<T> > {
     {
         T invRho = incompressible ? (T)1 : D::invRho(rhoBar);
         T one_m_omega = (T)1 - omega;
-        T t0_omega = D::t[0] * omega;
-        T t1_omega = D::t[1] * omega;
-        T t4_omega = D::t[4] * omega;
+        T t0_omega = D::t_gpu(0) * omega;
+        T t1_omega = D::t_gpu(1) * omega;
+        T t4_omega = D::t_gpu(4) * omega;
         T jSqr = j[0] * j[0] + j[1] * j[1] + j[2] * j[2];
         T kx = (T)3 * j[0];
         T ky = (T)3 * j[1];

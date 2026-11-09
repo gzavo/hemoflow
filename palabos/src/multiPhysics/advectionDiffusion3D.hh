@@ -2176,489 +2176,255 @@ void ArrheniusChemicalReactionCoupling3D<T>::getTypeOfModification(
  * Includes also the Runge-Kunta steps for the time discretization (to ensure the TVD properties)
  */
 template <typename T>
-WENO3<T>::WENO3(T d_, T eps_, bool neumann_, plint nx_, plint ny_, plint nz_) :
-    d(d_), eps(eps_), neumann(neumann_), nx(nx_), ny(ny_), nz(nz_)
+WENO3<T>::WENO3(
+    T d_, T eps_, bool neumann_, plint nx_, plint ny_, plint nz_, T alpha_x_, T alpha_y_,
+    T alpha_z_) :
+    d(d_),
+    eps(eps_),
+    neumann(neumann_),
+    nx(nx_),
+    ny(ny_),
+    nz(nz_),
+    alpha_x(alpha_x_),
+    alpha_y(alpha_y_),
+    alpha_z(alpha_z_)
 { }
 
 template <typename T>
 void WENO3<T>::processGenericBlocks(Box3D domain, std::vector<AtomicBlock3D *> fields)
 {
-    PLB_PRECONDITION(fields.size() == 6);
-    ScalarField3D<T> *phi_t = dynamic_cast<ScalarField3D<T> *>(fields[0]);
-    ScalarField3D<T> *phi_tp1 = dynamic_cast<ScalarField3D<T> *>(fields[1]);
+    PLB_PRECONDITION(fields.size() == 4);
+    ScalarField3D<T> *volfrac = dynamic_cast<ScalarField3D<T> *>(fields[0]);
+    TensorField3D<T, 3> *velocity = dynamic_cast<TensorField3D<T, 3> *>(fields[1]);
     ScalarField3D<T> *result = dynamic_cast<ScalarField3D<T> *>(fields[2]);
-    TensorField3D<T, 3> *uField = dynamic_cast<TensorField3D<T, 3> *>(fields[3]);
-    ScalarField3D<T> *Q = dynamic_cast<ScalarField3D<T> *>(fields[4]);
-    ScalarField3D<T> *v_sedimentation = dynamic_cast<ScalarField3D<T> *>(fields[5]);
+    ScalarField3D<T> *Q = dynamic_cast<ScalarField3D<T> *>(fields[3]);
 
-    Dot3D absoluteOffset = phi_tp1->getLocation();
+    Dot3D ofs1 = computeRelativeDisplacement(*volfrac, *velocity);
+    Dot3D ofs2 = computeRelativeDisplacement(*volfrac, *result);
+    Dot3D ofs3 = computeRelativeDisplacement(*volfrac, *Q);
 
-    Dot3D ofs1 = computeRelativeDisplacement(*phi_t, *phi_tp1);
-    Dot3D ofs2 = computeRelativeDisplacement(*phi_t, *result);
-    Dot3D ofs3 = computeRelativeDisplacement(*phi_t, *uField);
-    Dot3D ofs4 = computeRelativeDisplacement(*phi_t, *Q);
-    Dot3D ofs5 = computeRelativeDisplacement(*phi_t, *v_sedimentation);
+    T half = (T)0.5;
+    T three_half = (T)3. / (T)2.;
+    T one_third = (T)1. / (T)3.;
+    T two_third = (T)2. / (T)3.;
 
     for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
         for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
             for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
-                plint absoluteX = absoluteOffset.x + iX + ofs1.x;
-                plint absoluteY = absoluteOffset.y + iY + ofs1.y;
-                plint absoluteZ = absoluteOffset.z + iZ + ofs1.z;
+                T scalar_i, scalar_ip1, scalar_ip2, scalar_im1, scalar_im2;
+                T nbVelx_i, nbVelx_ip1, nbVelx_ip2, nbVelx_im1, nbVelx_im2;
+                T nbVely_i, nbVely_ip1, nbVely_ip2, nbVely_im1, nbVely_im2;
+                T nbVelz_i, nbVelz_ip1, nbVelz_ip2, nbVelz_im1, nbVelz_im2;
 
-                T phiC = phi_tp1->get(iX + ofs1.x, iY + ofs1.y, iZ + ofs1.z);
-                T phiE1 = phi_tp1->get(iX + 1 + ofs1.x, iY + ofs1.y, iZ + ofs1.z);
-                T phiW1 = phi_tp1->get(iX - 1 + ofs1.x, iY + ofs1.y, iZ + ofs1.z);
-                T phiN1 = phi_tp1->get(iX + ofs1.x, iY + 1 + ofs1.y, iZ + ofs1.z);
-                T phiS1 = phi_tp1->get(iX + ofs1.x, iY - 1 + ofs1.y, iZ + ofs1.z);
-                T phiT1 = phi_tp1->get(iX + ofs1.x, iY + ofs1.y, iZ + 1 + ofs1.z);
-                T phiB1 = phi_tp1->get(iX + ofs1.x, iY + ofs1.y, iZ - 1 + ofs1.z);
+                // x-axis /////////////////////////////////////////////////////////////////
+                // ith coordinate
+                scalar_i = volfrac->get(iX, iY, iZ);
+                nbVelx_i = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[0];
+                // (i+1)th coordinate
+                scalar_ip1 = volfrac->get(iX + 1, iY, iZ);
+                nbVelx_ip1 = velocity->get(iX + 1 + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[0];
 
-                T phiE2 = phi_tp1->get(iX + 2 + ofs1.x, iY + ofs1.y, iZ + ofs1.z);
-                T phiW2 = phi_tp1->get(iX - 2 + ofs1.x, iY + ofs1.y, iZ + ofs1.z);
-                T phiN2 = phi_tp1->get(iX + ofs1.x, iY + 2 + ofs1.y, iZ + ofs1.z);
-                T phiS2 = phi_tp1->get(iX + ofs1.x, iY - 2 + ofs1.y, iZ + ofs1.z);
-                T phiT2 = phi_tp1->get(iX + ofs1.x, iY + ofs1.y, iZ + 2 + ofs1.z);
-                T phiB2 = phi_tp1->get(iX + ofs1.x, iY + ofs1.y, iZ - 2 + ofs1.z);
+                // (i+2)th coordinate
+                scalar_ip2 = volfrac->get(iX + 2, iY, iZ);
+                nbVelx_ip2 = velocity->get(iX + 2 + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[0];
 
-                Array<T, 3> const &u = uField->get(iX + ofs3.x, iY + ofs3.y, iZ + ofs3.z);
-                T v_sedC = v_sedimentation->get(iX + ofs5.x, iY + ofs5.y, iZ + ofs5.z);
-                T v_sedT1 = v_sedimentation->get(iX + ofs5.x, iY + ofs5.y, iZ + 1 + ofs5.z);
-                T v_sedB1 = v_sedimentation->get(iX + ofs5.x, iY + ofs5.y, iZ - 1 + ofs5.z);
+                // (i-1)th coordinate
+                scalar_im1 = volfrac->get(iX - 1, iY, iZ);
+                nbVelx_im1 = velocity->get(iX - 1 + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[0];
 
-                Array<T, 3> adv((T)0, (T)0, (T)0);
+                // (i-2)th coordinate
+                scalar_im2 = volfrac->get(iX - 2, iY, iZ);
+                nbVelx_im2 = velocity->get(iX - 2 + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[0];
 
-                Array<T, 3> fp_p12((T)0, (T)0, (T)0);
-                Array<T, 3> fp_n12((T)0, (T)0, (T)0);
+                T fp_i = half * ((nbVelx_i)*scalar_i + alpha_x * scalar_i);
+                T fp_ip1 = half * ((nbVelx_ip1)*scalar_ip1 + alpha_x * scalar_ip1);
+                T fp_im1 = half * ((nbVelx_im1)*scalar_im1 + alpha_x * scalar_im1);
+                T fp_im2 = half * ((nbVelx_im2)*scalar_im2 + alpha_x * scalar_im2);
+                T fn_i = half * ((nbVelx_i)*scalar_i - alpha_x * scalar_i);
+                T fn_ip1 = half * ((nbVelx_ip1)*scalar_ip1 - alpha_x * scalar_ip1);
+                T fn_im1 = half * ((nbVelx_im1)*scalar_im1 - alpha_x * scalar_im1);
+                T fn_ip2 = half * ((nbVelx_ip2)*scalar_ip2 - alpha_x * scalar_ip2);
 
-                Array<T, 3> fp_p12_1((T)0, (T)0, (T)0);
-                Array<T, 3> fp_p12_2((T)0, (T)0, (T)0);
-                Array<T, 3> fp_n12_1((T)0, (T)0, (T)0);
-                Array<T, 3> fp_n12_2((T)0, (T)0, (T)0);
+                T beta1 = util::sqr(fp_ip1 - fp_i);
+                T beta2 = util::sqr(fp_i - fp_im1);
+                T beta3 = util::sqr(fn_ip1 - fn_i);
+                T beta4 = util::sqr(fn_ip1 - fn_ip2);
+                T beta5 = util::sqr(fp_i - fp_im1);
+                T beta6 = util::sqr(fp_im1 - fp_im2);
+                T beta7 = util::sqr(fn_i - fn_im1);
+                T beta8 = util::sqr(fn_i - fn_ip1);
 
-                Array<T, 3> bp_p12_1((T)0, (T)0, (T)0);
-                Array<T, 3> bp_p12_2((T)0, (T)0, (T)0);
-                Array<T, 3> bp_n12_1((T)0, (T)0, (T)0);
-                Array<T, 3> bp_n12_2((T)0, (T)0, (T)0);
+                T w1_t = two_third / (util::sqr(eps + beta1));
+                T w2_t = one_third / (util::sqr(eps + beta2));
+                T w3_t = two_third / (util::sqr(eps + beta3));
+                T w4_t = one_third / (util::sqr(eps + beta4));
+                T w5_t = two_third / (util::sqr(eps + beta5));
+                T w6_t = one_third / (util::sqr(eps + beta6));
+                T w7_t = two_third / (util::sqr(eps + beta7));
+                T w8_t = one_third / (util::sqr(eps + beta8));
 
-                Array<T, 3> alpha_p_p12_1((T)0, (T)0, (T)0);
-                Array<T, 3> alpha_p_p12_2((T)0, (T)0, (T)0);
-                Array<T, 3> alpha_p_n12_1((T)0, (T)0, (T)0);
-                Array<T, 3> alpha_p_n12_2((T)0, (T)0, (T)0);
+                T w1 = w1_t / (w1_t + w2_t);
+                T w2 = w2_t / (w1_t + w2_t);
+                T w3 = w3_t / (w3_t + w4_t);
+                T w4 = w4_t / (w3_t + w4_t);
+                T w5 = w5_t / (w5_t + w6_t);
+                T w6 = w6_t / (w5_t + w6_t);
+                T w7 = w7_t / (w7_t + w8_t);
+                T w8 = w8_t / (w7_t + w8_t);
 
-                Array<T, 3> w1p_p12((T)0, (T)0, (T)0);
-                Array<T, 3> w2p_p12((T)0, (T)0, (T)0);
-                Array<T, 3> w1p_n12((T)0, (T)0, (T)0);
-                Array<T, 3> w2p_n12((T)0, (T)0, (T)0);
+                T fp_p12 =
+                    w1 * ((half)*fp_i + (half)*fp_ip1) + w2 * ((three_half)*fp_i - (half)*fp_im1);
+                T fn_p12 =
+                    w3 * ((half)*fn_ip1 + (half)*fn_i) + w4 * ((three_half)*fn_ip1 - (half)*fn_ip2);
+                T fp_m12 =
+                    w5 * ((half)*fp_im1 + (half)*fp_i) + w6 * ((three_half)*fp_im1 - (half)*fp_im2);
+                T fn_m12 =
+                    w7 * ((half)*fn_i + (half)*fn_im1) + w8 * ((three_half)*fn_i - (half)*fn_ip1);
 
-                if (util::greaterThan(u[0], (T)0)) {
-                    /* fp_p12x */
-                    fp_p12_1[0] = (phiC + phiE1) / (T)2;
-                    fp_p12_2[0] = -(phiW1 - (T)3 * phiC) / (T)2;
+                T f_p12 = fp_p12 + fn_p12;
+                T f_m12 = fp_m12 + fn_m12;
 
-                    bp_p12_1[0] = (phiE1 - phiC) * (phiE1 - phiC);
-                    bp_p12_2[0] = (phiC - phiW1) * (phiC - phiW1);
+                // y-axis ////////////////////////////////////////////////////////////////////
+                // ith coordinate
+                nbVely_i = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[1];
 
-                    /*fp_n12x*/
-                    fp_n12_1[0] = (phiW1 + phiC) / (T)2;
-                    fp_n12_2[0] = -(phiW2 - (T)3 * phiW1) / (T)2;
+                // (i+1)th coordinate
+                scalar_ip1 = volfrac->get(iX, iY + 1, iZ);
+                nbVely_ip1 = velocity->get(iX + ofs1.x, iY + 1 + ofs1.y, iZ + ofs1.z)[1];
 
-                    bp_n12_1[0] = (phiC - phiW1) * (phiC - phiW1);
-                    bp_n12_2[0] = (phiW1 - phiW2) * (phiW1 - phiW2);
+                // (i+2)th coordinate
+                scalar_ip2 = volfrac->get(iX, iY + 2, iZ);
+                nbVely_ip2 = velocity->get(iX + ofs1.x, iY + 2 + ofs1.y, iZ + ofs1.z)[1];
 
-                } else {
-                    /*fp_p12x*/
-                    fp_p12_1[0] = -(phiE2 - (T)3 * phiE1) / (T)2;
-                    fp_p12_2[0] = (phiE1 + phiC) / (T)2;
+                // (i-1)th coordinate
+                scalar_im1 = volfrac->get(iX, iY - 1, iZ);
+                nbVely_im1 = velocity->get(iX + ofs1.x, iY - 1 + ofs1.y, iZ + ofs1.z)[1];
 
-                    bp_p12_1[0] = (phiE1 - phiE2) * (phiE1 - phiE2);
-                    bp_p12_2[0] = (phiC - phiE1) * (phiC - phiE1);
+                // (i-2)th coordinate
+                scalar_im2 = volfrac->get(iX, iY - 2, iZ);
+                nbVely_im2 = velocity->get(iX + ofs1.x, iY - 2 + ofs1.y, iZ + ofs1.z)[1];
 
-                    /*fp_n12x*/
-                    fp_n12_1[0] = -(phiE1 - (T)3 * phiC) / (T)2;
-                    fp_n12_2[0] = (phiC + phiW1) / (T)2;
+                // Flux computations
+                T gp_i = half * ((nbVely_i)*scalar_i + alpha_y * scalar_i);
+                T gp_ip1 = half * ((nbVely_ip1)*scalar_ip1 + alpha_y * scalar_ip1);
+                T gp_im1 = half * ((nbVely_im1)*scalar_im1 + alpha_y * scalar_im1);
+                T gp_im2 = half * ((nbVely_im2)*scalar_im2 + alpha_y * scalar_im2);
+                T gn_i = half * ((nbVely_i)*scalar_i - alpha_y * scalar_i);
+                T gn_ip1 = half * ((nbVely_ip1)*scalar_ip1 - alpha_y * scalar_ip1);
+                T gn_im1 = half * ((nbVely_im1)*scalar_im1 - alpha_y * scalar_im1);
+                T gn_ip2 = half * ((nbVely_ip2)*scalar_ip2 - alpha_y * scalar_ip2);
 
-                    bp_n12_1[0] = (phiC - phiE1) * (phiC - phiE1);
-                    bp_n12_2[0] = (phiW1 - phiC) * (phiW1 - phiC);
-                }
+                beta1 = util::sqr(gp_ip1 - gp_i);
+                beta2 = util::sqr(gp_i - gp_im1);
+                beta3 = util::sqr(gn_ip1 - gn_i);
+                beta4 = util::sqr(gn_ip1 - gn_ip2);
+                beta5 = util::sqr(gp_i - gp_im1);
+                beta6 = util::sqr(gp_im1 - gp_im2);
+                beta7 = util::sqr(gn_i - gn_im1);
+                beta8 = util::sqr(gn_i - gn_ip1);
 
-                if (util::greaterThan(u[1], (T)0)) {
-                    /*fp_p12y*/
-                    fp_p12_1[1] = (phiC + phiN1) / (T)2;
-                    fp_p12_2[1] = -(phiS1 - (T)3 * phiC) / (T)2;
+                w1_t = two_third / (util::sqr(eps + beta1));
+                w2_t = one_third / (util::sqr(eps + beta2));
+                w3_t = two_third / (util::sqr(eps + beta3));
+                w4_t = one_third / (util::sqr(eps + beta4));
+                w5_t = two_third / (util::sqr(eps + beta5));
+                w6_t = one_third / (util::sqr(eps + beta6));
+                w7_t = two_third / (util::sqr(eps + beta7));
+                w8_t = one_third / (util::sqr(eps + beta8));
 
-                    bp_p12_1[1] = (phiN1 - phiC) * (phiN1 - phiC);
-                    bp_p12_2[1] = (phiC - phiS1) * (phiC - phiS1);
+                w1 = w1_t / (w1_t + w2_t);
+                w2 = w2_t / (w1_t + w2_t);
+                w3 = w3_t / (w3_t + w4_t);
+                w4 = w4_t / (w3_t + w4_t);
+                w5 = w5_t / (w5_t + w6_t);
+                w6 = w6_t / (w5_t + w6_t);
+                w7 = w7_t / (w7_t + w8_t);
+                w8 = w8_t / (w7_t + w8_t);
 
-                    /*fp_n12y*/
-                    fp_n12_1[1] = (phiS1 + phiC) / (T)2;
-                    fp_n12_2[1] = -(phiS2 - (T)3 * phiS1) / (T)2;
+                T gp_p12 =
+                    w1 * ((half)*gp_i + (half)*gp_ip1) + w2 * ((three_half)*gp_i - (half)*gp_im1);
+                T gn_p12 =
+                    w3 * ((half)*gn_ip1 + (half)*gn_i) + w4 * ((three_half)*gn_ip1 - (half)*gn_ip2);
+                T gp_m12 =
+                    w5 * ((half)*gp_im1 + (half)*gp_i) + w6 * ((three_half)*gp_im1 - (half)*gp_im2);
+                T gn_m12 =
+                    w7 * ((half)*gn_i + (half)*gn_im1) + w8 * ((three_half)*gn_i - (half)*gn_ip1);
 
-                    bp_n12_1[1] = (phiC - phiS1) * (phiC - phiS1);
-                    bp_n12_2[1] = (phiS1 - phiS2) * (phiS1 - phiS2);
+                T g_p12 = gp_p12 + gn_p12;
+                T g_m12 = gp_m12 + gn_m12;
 
-                } else {
-                    /*fp_p12y*/
-                    fp_p12_1[1] = -(phiN2 - (T)3 * phiN1) / (T)2;
-                    fp_p12_2[1] = (phiN1 + phiC) / (T)2;
+                // z-axis ////////////////////////////////////////////////////////////////////
+                nbVelz_i = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ + ofs1.z)[2];
 
-                    bp_p12_1[1] = (phiN1 - phiN2) * (phiN1 - phiN2);
-                    bp_p12_2[1] = (phiC - phiN1) * (phiC - phiN1);
+                // (i+1)th coordinate
+                scalar_ip1 = volfrac->get(iX, iY, iZ + 1);
+                nbVelz_ip1 = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ + 1 + ofs1.z)[2];
 
-                    /*fp_n12y*/
+                // (i+2)th coordinate
+                scalar_ip2 = volfrac->get(iX, iY, iZ + 2);
+                nbVelz_ip2 = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ + 2 + ofs1.z)[2];
 
-                    fp_n12_1[1] = -(phiN1 - (T)3 * phiC) / (T)2;
-                    fp_n12_2[1] = (phiC + phiS1) / (T)2;
+                // (i-1)th coordinate
+                scalar_im1 = volfrac->get(iX, iY, iZ - 1);
+                nbVelz_im1 = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ - 1 + ofs1.z)[2];
 
-                    bp_n12_1[1] = (phiC - phiN1) * (phiC - phiN1);
-                    bp_n12_2[1] = (phiS1 - phiC) * (phiS1 - phiC);
-                }
+                // (i-2)th coordinate
+                scalar_im2 = volfrac->get(iX, iY, iZ - 2);
+                nbVelz_im2 = velocity->get(iX + ofs1.x, iY + ofs1.y, iZ - 2 + ofs1.z)[2];
 
-                if (util::greaterThan((u[2] + v_sedC), (T)0)) {
-                    /*fp_p12z*/
-                    fp_p12_1[2] = (phiC + phiT1) / (T)2;
-                    fp_p12_2[2] = -(phiB1 - (T)3 * phiC) / (T)2;
+                T hp_i = half * ((nbVelz_i)*scalar_i + alpha_z * scalar_i);
+                T hp_ip1 = half * ((nbVelz_ip1)*scalar_ip1 + alpha_z * scalar_ip1);
+                T hp_im1 = half * ((nbVelz_im1)*scalar_im1 + alpha_z * scalar_im1);
+                T hp_im2 = half * ((nbVelz_im2)*scalar_im2 + alpha_z * scalar_im2);
+                T hn_i = half * ((nbVelz_i)*scalar_i - alpha_z * scalar_i);
+                T hn_ip1 = half * ((nbVelz_ip1)*scalar_ip1 - alpha_z * scalar_ip1);
+                T hn_im1 = half * ((nbVelz_im1)*scalar_im1 - alpha_z * scalar_im1);
+                T hn_ip2 = half * ((nbVelz_ip2)*scalar_ip2 - alpha_z * scalar_ip2);
 
-                    bp_p12_1[2] = (phiT1 - phiC) * (phiT1 - phiC);
-                    bp_p12_2[2] = (phiC - phiB1) * (phiC - phiB1);
+                beta1 = util::sqr(hp_ip1 - hp_i);
+                beta2 = util::sqr(hp_i - hp_im1);
+                beta3 = util::sqr(hn_ip1 - hn_i);
+                beta4 = util::sqr(hn_ip1 - hn_ip2);
+                beta5 = util::sqr(hp_i - hp_im1);
+                beta6 = util::sqr(hp_im1 - hp_im2);
+                beta7 = util::sqr(hn_i - hn_im1);
+                beta8 = util::sqr(hn_i - hn_ip1);
 
-                    /*fp_n12z*/
-                    fp_n12_1[2] = (phiB1 + phiC) / (T)2;
-                    fp_n12_2[2] = -(phiB2 - (T)3 * phiB1) / (T)2;
+                w1_t = two_third / (util::sqr(eps + beta1));
+                w2_t = one_third / (util::sqr(eps + beta2));
+                w3_t = two_third / (util::sqr(eps + beta3));
+                w4_t = one_third / (util::sqr(eps + beta4));
+                w5_t = two_third / (util::sqr(eps + beta5));
+                w6_t = one_third / (util::sqr(eps + beta6));
+                w7_t = two_third / (util::sqr(eps + beta7));
+                w8_t = one_third / (util::sqr(eps + beta8));
 
-                    bp_n12_1[2] = (phiC - phiB1) * (phiC - phiB1);
-                    bp_n12_2[2] = (phiB1 - phiB2) * (phiB1 - phiB2);
+                w1 = w1_t / (w1_t + w2_t);
+                w2 = w2_t / (w1_t + w2_t);
+                w3 = w3_t / (w3_t + w4_t);
+                w4 = w4_t / (w3_t + w4_t);
+                w5 = w5_t / (w5_t + w6_t);
+                w6 = w6_t / (w5_t + w6_t);
+                w7 = w7_t / (w7_t + w8_t);
+                w8 = w8_t / (w7_t + w8_t);
 
-                } else {
-                    /*fp_p12z*/
-                    fp_p12_1[2] = -(phiT2 - (T)3 * phiT1) / (T)2;
-                    fp_p12_2[2] = (phiT1 + phiC) / (T)2;
+                T hp_p12 =
+                    w1 * ((half)*hp_i + (half)*hp_ip1) + w2 * ((three_half)*hp_i - (half)*hp_im1);
+                T hn_p12 =
+                    w3 * ((half)*hn_ip1 + (half)*hn_i) + w4 * ((three_half)*hn_ip1 - (half)*hn_ip2);
+                T hp_m12 =
+                    w5 * ((half)*hp_im1 + (half)*hp_i) + w6 * ((three_half)*hp_im1 - (half)*hp_im2);
+                T hn_m12 =
+                    w7 * ((half)*hn_i + (half)*hn_im1) + w8 * ((three_half)*hn_i - (half)*hn_ip1);
 
-                    bp_p12_1[2] = (phiT1 - phiT2) * (phiT1 - phiT2);
-                    bp_p12_2[2] = (phiC - phiT1) * (phiC - phiT1);
+                T h_p12 = hp_p12 + hn_p12;
+                T h_m12 = hp_m12 + hn_m12;
 
-                    /*fp_n12z*/
-                    fp_n12_1[2] = -(phiT1 - (T)3 * phiC) / (T)2;
-                    fp_n12_2[2] = (phiC + phiB1) / (T)2;
-
-                    bp_n12_2[2] = (phiB1 - phiC) * (phiB1 - phiC);
-                    bp_n12_1[2] = (phiC - phiT1) * (phiC - phiT1);
-                }
-
-                for (plint i = 0; i <= 2; i++) {
-                    alpha_p_p12_1[i] = (T)2 / ((T)3 * (eps + bp_p12_1[i]) * (eps + bp_p12_1[i]));
-                    alpha_p_p12_2[i] = (T)1 / ((T)3 * (eps + bp_p12_2[i]) * (eps + bp_p12_2[i]));
-                    alpha_p_n12_1[i] = (T)2 / ((T)3 * (eps + bp_n12_1[i]) * (eps + bp_n12_1[i]));
-                    alpha_p_n12_2[i] = (T)1 / ((T)3 * (eps + bp_n12_2[i]) * (eps + bp_n12_2[i]));
-
-                    w1p_p12[i] = alpha_p_p12_1[i] / (alpha_p_p12_1[i] + alpha_p_p12_2[i]);
-                    w2p_p12[i] = alpha_p_p12_2[i] / (alpha_p_p12_1[i] + alpha_p_p12_2[i]);
-                    w1p_n12[i] = alpha_p_n12_1[i] / (alpha_p_n12_1[i] + alpha_p_n12_2[i]);
-                    w2p_n12[i] = alpha_p_n12_2[i] / (alpha_p_n12_1[i] + alpha_p_n12_2[i]);
-
-                    fp_p12[i] = w1p_p12[i] * fp_p12_1[i] + w2p_p12[i] * fp_p12_2[i];
-                    fp_n12[i] = w1p_n12[i] * fp_n12_1[i] + w2p_n12[i] * fp_n12_2[i];
-                }
-
-                adv = fp_p12 - fp_n12;
-                T diffX;
-                T diffY;
-                T diffZ;
-
-                diffX = phiW1 + phiE1 - (T)2 * phiC;
-                diffY = phiS1 + phiN1 - (T)2 * phiC;
-                diffZ = phiT1 + phiB1 - (T)2 * phiC;
-
-                if (neumann) {
-                    if (absoluteX == 0) {
-                        (util::greaterThan(u[0], (T)0)
-                             ? (phiW1 = phiC)
-                             : (util::lessThan(u[0], (T)0) ? (phiC = phiE1) : (phiW1 = phiE1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffX = (T)2 * phiE1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteX == nx - 1) {
-                        (util::greaterThan(u[0], (T)0)
-                             ? (phiC = phiW1)
-                             : (util::lessThan(u[0], (T)0) ? (phiE1 = phiC) : (phiE1 = phiW1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffX = (T)2 * phiW1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteY == 0) {
-                        (util::greaterThan(u[1], (T)0)
-                             ? (phiS1 = phiC)
-                             : (util::lessThan(u[1], (T)0) ? (phiC = phiN1) : (phiS1 = phiN1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffY = (T)2 * phiN1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteY == ny - 1) {
-                        (util::greaterThan(u[1], (T)0)
-                             ? (phiC = phiS1)
-                             : (util::lessThan(u[1], (T)0) ? (phiN1 = phiC) : (phiN1 = phiS1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffY = (T)2 * phiS1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteZ == 0) {
-                        (util::greaterThan((u[2] + v_sedC), (T)0)
-                             ? (phiB1 = phiC)
-                             : (util::lessThan((u[2] + v_sedC), (T)0) ? (phiC = phiT1)
-                                                                      : (phiB1 = phiT1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffZ = (T)2 * phiT1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteZ == nz - 1) {
-                        (util::greaterThan((u[2] + v_sedC), (T)0)
-                             ? (phiC = phiB1)
-                             : (util::lessThan((u[2] + v_sedC), (T)0) ? (phiT1 = phiC)
-                                                                      : (phiT1 = phiB1)));
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                        diffZ = (T)2 * phiB1 - (T)2 * phiC;
-                    }
-
-                    if (absoluteX == 1) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteX == 1) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteX == 1) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-
-                    if (absoluteX == nx - 2) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteX == nx - 2) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteX == nx - 2) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-
-                    if (absoluteY == 1) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteY == 1) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteY == 1) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-
-                    if (absoluteY == ny - 2) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteY == ny - 2) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteY == ny - 2) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-
-                    if (absoluteZ == 1) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteZ == 1) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteZ == 1) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-
-                    if (absoluteZ == nz - 2) {
-                        adv[0] =
-                            (util::greaterThan(u[0], (T)0)
-                                 ? (phiC - phiW1)
-                                 : (util::lessThan(u[0], (T)0) ? (phiE1 - phiC)
-                                                               : (T)0.5 * (phiE1 - phiW1)));
-                    }
-                    if (absoluteZ == nz - 2) {
-                        adv[1] =
-                            (util::greaterThan(u[1], (T)0)
-                                 ? (phiC - phiS1)
-                                 : (util::lessThan(u[1], (T)0) ? (phiN1 - phiC)
-                                                               : (T)0.5 * (phiN1 - phiS1)));
-                    }
-                    if (absoluteZ == nz - 2) {
-                        adv[2] =
-                            (util::greaterThan((u[2] + v_sedC), (T)0)
-                                 ? (phiC - phiB1)
-                                 : (util::lessThan((u[2] + v_sedC), (T)0)
-                                        ? (phiT1 - phiC)
-                                        : (T)0.5 * (phiT1 - phiB1)));
-                    }
-                }
-
-                /*Diffusion term */
-                T diff = d * (diffX + diffY + diffZ);
-
-                /* Convective term*/
-                T advection = u[0] * adv[0] + u[1] * adv[1] + (u[2] + v_sedC) * adv[2];
-
-                T accu = phiC * (v_sedT1 - v_sedB1) / 2;
+                /*Convective term*/
+                T advection = (f_p12 - f_m12) + (g_p12 - g_m12) + (h_p12 - h_m12);
 
                 result->get(iX + ofs2.x, iY + ofs2.y, iZ + ofs2.z) =
-                    -advection + Q->get(iX + ofs4.x, iY + ofs4.y, iZ + ofs4.z) - accu + diff;
+                    -advection + Q->get(iX + ofs3.x, iY + ofs3.y, iZ + ofs3.z);
             }
         }
     }
@@ -2673,12 +2439,10 @@ WENO3<T> *WENO3<T>::clone() const
 template <typename T>
 void WENO3<T>::getTypeOfModification(std::vector<modif::ModifT> &modified) const
 {
-    modified[0] = modif::nothing;          // phi_t
-    modified[1] = modif::nothing;          // phi_tp1
+    modified[0] = modif::nothing;          // volfrac
+    modified[1] = modif::nothing;          // velocity
     modified[2] = modif::staticVariables;  // result
-    modified[3] = modif::nothing;          // u
-    modified[4] = modif::nothing;          // Q
-    modified[5] = modif::nothing;
+    modified[3] = modif::nothing;          // Q
 }
 
 /* ******** RK3Step1Functional3D ****************************************** */

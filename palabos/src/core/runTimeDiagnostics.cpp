@@ -289,56 +289,56 @@ void plbMainProcOutOfRangeError(bool issueError, std::string message)
     }
 }
 
-PlbGenericException::PlbGenericException(std::string message_) throw() :
+PlbGenericException::PlbGenericException(std::string message_) :
     message(std::string("Palabos generic exception: ") + message_)
 { }
 
-const char *PlbGenericException::what() const throw()
+const char *PlbGenericException::what() const noexcept
 {
     return message.c_str();
 }
 
-PlbMemoryException::PlbMemoryException(std::string message_) throw() :
+PlbMemoryException::PlbMemoryException(std::string message_) :
     message(std::string("Palabos memory exception: ") + message_)
 { }
 
-const char *PlbMemoryException::what() const throw()
+const char *PlbMemoryException::what() const noexcept
 {
     return message.c_str();
 }
 
-PlbIOException::PlbIOException(std::string message_) throw() :
+PlbIOException::PlbIOException(std::string message_) :
     message(std::string("Palabos IO exception: ") + message_)
 { }
 
-const char *PlbIOException::what() const throw()
+const char *PlbIOException::what() const noexcept
 {
     return message.c_str();
 }
 
-PlbNetworkException::PlbNetworkException(std::string message_) throw() :
+PlbNetworkException::PlbNetworkException(std::string message_) :
     message(std::string("Palabos network exception: ") + message_)
 { }
 
-const char *PlbNetworkException::what() const throw()
+const char *PlbNetworkException::what() const noexcept
 {
     return message.c_str();
 }
 
-PlbLogicException::PlbLogicException(std::string message_) throw() :
+PlbLogicException::PlbLogicException(std::string message_) :
     message(std::string("Palabos logic exception: ") + message_)
 { }
 
-const char *PlbLogicException::what() const throw()
+const char *PlbLogicException::what() const noexcept
 {
     return message.c_str();
 }
 
-PlbOutOfRangeException::PlbOutOfRangeException(std::string message_) throw() :
+PlbOutOfRangeException::PlbOutOfRangeException(std::string message_) :
     message(std::string("Palabos out-of-range exception: ") + message_)
 { }
 
-const char *PlbOutOfRangeException::what() const throw()
+const char *PlbOutOfRangeException::what() const noexcept
 {
     return message.c_str();
 }

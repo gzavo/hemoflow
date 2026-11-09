@@ -223,6 +223,14 @@ struct dynamicsTemplates {
                 Descriptor<T>::d + SymmetricTensor<T, Descriptor>::n);
     }
 
+    static T trt_ma2_collision(
+        Cell<T, Descriptor> &cell, T rhoBar, Array<T, Descriptor<T>::d> const &j, T omegaPlus,
+        T omegaMinus)
+    {
+        return dynamicsTemplatesImpl<T, typename Descriptor<T>::BaseDescriptor>::trt_ma2_collision(
+            cell.getRawPopulations(), rhoBar, j, omegaPlus, omegaMinus);
+    }
+
     static T computePsiComplete(T omega)
     {
         return dynamicsTemplatesImpl<T, typename Descriptor<T>::BaseDescriptor>::computePsiComplete(
@@ -438,7 +446,39 @@ struct dynamicsTemplatesImpl {
         return T();
     }
 
-    static T computePsiComplete(T)
+    static T trt_ma2_collision(
+        Array<T, Descriptor::q> &f, T rhoBar, Array<T, Descriptor::d> const &j, T omegaPlus,
+        T omegaMinus)
+    {
+        Array<T, Descriptor::q> eq;
+        // In the following, we number the plus/minus variables from 1 to (Q-1)/2.
+        // So we allocate the index-zero memory location, and waste some memory
+        // for convenience.
+        Array<T, Descriptor::q / 2 + 1> eq_plus, eq_minus, f_plus, f_minus;
+
+        T jSqr = normSqr(j);
+        T invRho = Descriptor::invRho(rhoBar);
+        dynamicsTemplatesImpl<T, Descriptor>::bgk_ma2_equilibria(rhoBar, invRho, j, jSqr, eq);
+
+        for (plint i = 1; i <= Descriptor::q / 2; ++i) {
+            eq_plus[i] = 0.5 * (eq[i] + eq[i + Descriptor::q / 2]);
+            eq_minus[i] = 0.5 * (eq[i] - eq[i + Descriptor::q / 2]);
+            f_plus[i] = 0.5 * (f[i] + f[i + Descriptor::q / 2]);
+            f_minus[i] = 0.5 * (f[i] - f[i + Descriptor::q / 2]);
+        }
+
+        f[0] += -omegaPlus * f[0] + omegaPlus * eq[0];
+
+        for (plint i = 1; i <= Descriptor::q / 2; ++i) {
+            f[i] += -omegaPlus * (f_plus[i] - eq_plus[i]) - omegaMinus * (f_minus[i] - eq_minus[i]);
+            f[i + Descriptor::q / 2] +=
+                -omegaPlus * (f_plus[i] - eq_plus[i]) + omegaMinus * (f_minus[i] - eq_minus[i]);
+        }
+
+        return jSqr * invRho * invRho;
+    }
+
+    static T computePsiComplete(T omega)
     {
         PLB_ASSERT(false);
         return T();

@@ -55,6 +55,8 @@ namespace plb {
 class MultiBlock3D;
 template <typename T, template <typename U> class Descriptor>
 class MultiBlockLattice3D;
+template <typename T, template <typename U> class Descriptor>
+class AcceleratedLattice3D;
 template <typename T>
 class MultiScalarField3D;
 template <typename T, int nDim>
@@ -96,6 +98,22 @@ template <typename T, template <typename U> class Descriptor>
 void integrateProcessingFunctional(
     LatticeBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
     std::vector<MultiBlockLattice3D<T, Descriptor> *> lattices, plint level = 0);
+
+/// Apply a functional on a sequence of accelerated lattices. If the number
+/// of lattices is 1 or 2, you should prefer the _L and _LL version
+/// of the functional.
+template <typename T, template <typename U> class Descriptor>
+void applyProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AcceleratedLattice3D<T, Descriptor> *> lattices);
+
+/// Integrate a functional into a sequence of block-lattices. If the
+/// number of lattices is 1 or 2, you should prefer the _L and _LL version
+/// of the functional.
+template <typename T, template <typename U> class Descriptor>
+void integrateProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AcceleratedLattice3D<T, Descriptor> *> lattices, plint level = 0);
 
 /// Apply a functional on a sequence of scalar-fields. If the number
 /// of lattices is 1 or 2, you should prefer the _S and _SS version
@@ -175,6 +193,16 @@ void integrateProcessingFunctional(
 
 template <typename T, template <typename U> class Descriptor>
 void applyProcessingFunctional(
+    BoxProcessingFunctional3D_A<T, Descriptor> *functional, Box3D domain,
+    AcceleratedLattice3D<T, Descriptor> &lattice);
+
+template <typename T, template <typename U> class Descriptor>
+void integrateProcessingFunctional(
+    BoxProcessingFunctional3D_A<T, Descriptor> *functional, Box3D domain,
+    AcceleratedLattice3D<T, Descriptor> &lattice, plint level = 0);
+
+template <typename T, template <typename U> class Descriptor>
+void applyProcessingFunctional(
     MaskedBoxProcessingFunctional3D_L<T, Descriptor> *functional, Box3D domain,
     MultiBlockLattice3D<T, Descriptor> &lattice, MultiNTensorField3D<int> &mask);
 
@@ -233,6 +261,38 @@ void integrateProcessingFunctional(
     BoxProcessingFunctional3D_LL<T1, Descriptor1, T2, Descriptor2> *functional, Box3D domain,
     MultiBlockLattice3D<T1, Descriptor1> &lattice1, MultiBlockLattice3D<T2, Descriptor2> &lattice2,
     plint level = 0);
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void applyProcessingFunctional(
+    BoxProcessingFunctional3D_LA<T1, Descriptor1, T2, Descriptor2> *functional, Box3D domain,
+    MultiBlockLattice3D<T1, Descriptor1> &lattice1,
+    AcceleratedLattice3D<T2, Descriptor2> &lattice2);
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void integrateProcessingFunctional(
+    BoxProcessingFunctional3D_LA<T1, Descriptor1, T2, Descriptor2> *functional, Box3D domain,
+    MultiBlockLattice3D<T1, Descriptor1> &lattice1, AcceleratedLattice3D<T2, Descriptor2> &lattice2,
+    plint level = 0);
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void applyProcessingFunctional(
+    BoxProcessingFunctional3D_AA<T1, Descriptor1, T2, Descriptor2> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor1> &lattice1,
+    AcceleratedLattice3D<T2, Descriptor2> &lattice2);
+
+template <
+    typename T1, template <typename U1> class Descriptor1, typename T2,
+    template <typename U2> class Descriptor2>
+void integrateProcessingFunctional(
+    BoxProcessingFunctional3D_AA<T1, Descriptor1, T2, Descriptor2> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor1> &lattice1,
+    AcceleratedLattice3D<T2, Descriptor2> &lattice2, plint level = 0);
 
 template <typename T1, typename T2>
 void applyProcessingFunctional(
@@ -306,6 +366,16 @@ void integrateProcessingFunctional(
     BoxProcessingFunctional3D_LS<T1, Descriptor, T2> *functional, Box3D domain,
     MultiBlockLattice3D<T1, Descriptor> &lattice, MultiScalarField3D<T2> &field, plint level = 0);
 
+template <typename T1, template <typename U> class Descriptor, typename T2>
+void applyProcessingFunctional(
+    BoxProcessingFunctional3D_AS<T1, Descriptor, T2> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiScalarField3D<T2> &field);
+
+template <typename T1, template <typename U> class Descriptor, typename T2>
+void integrateProcessingFunctional(
+    BoxProcessingFunctional3D_AS<T1, Descriptor, T2> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiScalarField3D<T2> &field, plint level = 0);
+
 template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
 void applyProcessingFunctional(
     BoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim> *functional, Box3D domain,
@@ -315,6 +385,17 @@ template <typename T1, template <typename U> class Descriptor, typename T2, int 
 void integrateProcessingFunctional(
     BoxProcessingFunctional3D_LT<T1, Descriptor, T2, nDim> *functional, Box3D domain,
     MultiBlockLattice3D<T1, Descriptor> &lattice, MultiTensorField3D<T2, nDim> &field,
+    plint level = 0);
+
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+void applyProcessingFunctional(
+    BoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiTensorField3D<T2, nDim> &field);
+
+template <typename T1, template <typename U> class Descriptor, typename T2, int nDim>
+void integrateProcessingFunctional(
+    BoxProcessingFunctional3D_AT<T1, Descriptor, T2, nDim> *functional, Box3D domain,
+    AcceleratedLattice3D<T1, Descriptor> &lattice, MultiTensorField3D<T2, nDim> &field,
     plint level = 0);
 
 template <typename T1, template <typename U> class Descriptor, typename T2>

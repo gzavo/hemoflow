@@ -739,6 +739,75 @@ DynamicsFromIntMaskFunctional3D<T, Descriptor>
     return new DynamicsFromIntMaskFunctional3D<T, Descriptor>(*this);
 }
 
+/* ************* Class DynamicsFromFloatMaskFunctional3D ************************ */
+
+template <typename T, template <typename U> class Descriptor>
+DynamicsFromFloatMaskFunctional3D<T, Descriptor>::DynamicsFromFloatMaskFunctional3D(
+    Dynamics<T, Descriptor> *dynamics_, float lowerBound_) :
+    dynamics(dynamics_), lowerBound(lowerBound_)
+{ }
+
+template <typename T, template <typename U> class Descriptor>
+DynamicsFromFloatMaskFunctional3D<T, Descriptor>::DynamicsFromFloatMaskFunctional3D(
+    DynamicsFromFloatMaskFunctional3D<T, Descriptor> const &rhs) :
+    dynamics(rhs.dynamics->clone()), lowerBound(rhs.lowerBound)
+{ }
+
+template <typename T, template <typename U> class Descriptor>
+DynamicsFromFloatMaskFunctional3D<T, Descriptor>
+    &DynamicsFromFloatMaskFunctional3D<T, Descriptor>::operator=(
+        DynamicsFromFloatMaskFunctional3D<T, Descriptor> const &rhs)
+{
+    delete dynamics;
+    dynamics = rhs.dynamics->clone();
+    lowerBound = rhs.lowerBound;
+    return *this;
+}
+
+template <typename T, template <typename U> class Descriptor>
+DynamicsFromFloatMaskFunctional3D<T, Descriptor>::~DynamicsFromFloatMaskFunctional3D()
+{
+    delete dynamics;
+}
+
+template <typename T, template <typename U> class Descriptor>
+void DynamicsFromFloatMaskFunctional3D<T, Descriptor>::process(
+    Box3D domain, BlockLattice3D<T, Descriptor> &lattice, ScalarField3D<float> &mask)
+{
+    Dot3D offset = computeRelativeDisplacement(lattice, mask);
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                double value = mask.get(iX + offset.x, iY + offset.y, iZ + offset.z);
+                if (value >= lowerBound) {
+                    lattice.attributeDynamics(iX, iY, iZ, dynamics->clone());
+                }
+            }
+        }
+    }
+}
+
+template <typename T, template <typename U> class Descriptor>
+BlockDomain::DomainT DynamicsFromFloatMaskFunctional3D<T, Descriptor>::appliesTo() const
+{
+    return BlockDomain::bulk;
+}
+
+template <typename T, template <typename U> class Descriptor>
+void DynamicsFromFloatMaskFunctional3D<T, Descriptor>::getTypeOfModification(
+    std::vector<modif::ModifT> &modified) const
+{
+    modified[0] = modif::dataStructure;
+    modified[1] = modif::nothing;
+}
+
+template <typename T, template <typename U> class Descriptor>
+DynamicsFromFloatMaskFunctional3D<T, Descriptor>
+    *DynamicsFromFloatMaskFunctional3D<T, Descriptor>::clone() const
+{
+    return new DynamicsFromFloatMaskFunctional3D<T, Descriptor>(*this);
+}
+
 /* ************* Class RecomposeFromOrderZeroVariablesFunctional3D ******************* */
 
 template <typename T, template <typename U> class Descriptor>

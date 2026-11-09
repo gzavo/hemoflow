@@ -142,6 +142,10 @@ public:
     virtual ~MultiBlock3D();
     id_t getId() const;
     virtual int getStaticId() const = 0;
+    virtual bool hasRawCommunication() const
+    {
+        return false;
+    }
     virtual MultiBlock3D *clone() const = 0;
     virtual MultiBlock3D *clone(MultiBlockManagement3D const &newManagement) const = 0;
     /// Initialize block content by executing internal processors once.

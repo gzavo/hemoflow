@@ -153,7 +153,7 @@ void RMdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::RMcomputeEquilibrium(rho, RMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -197,7 +197,7 @@ void RMdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::RMcomputeEquilibriumMoments(u, RMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::RMcomputeEquilibrium(rho, RMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -234,7 +234,7 @@ void RMdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::RMcomputeEquilibriumMoments(u, RMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::RMcomputeEquilibrium(rho, RMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -362,7 +362,7 @@ void HMdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::HMcomputeEquilibrium(rho, HMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -406,7 +406,7 @@ void HMdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::HMcomputeEquilibriumMoments(u, HMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::HMcomputeEquilibrium(rho, HMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -443,7 +443,7 @@ void HMdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::HMcomputeEquilibriumMoments(u, HMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::HMcomputeEquilibrium(rho, HMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -566,7 +566,7 @@ void CMdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::CMcomputeEquilibrium(rho, u, CMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -610,7 +610,7 @@ void CMdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::CMcomputeEquilibriumMoments(CMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::CMcomputeEquilibrium(rho, u, CMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -647,7 +647,7 @@ void CMdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::CMcomputeEquilibriumMoments(CMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::CMcomputeEquilibrium(rho, u, CMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -772,7 +772,7 @@ void CHMdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::CHMcomputeEquilibrium(rho, u, CHMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -816,7 +816,7 @@ void CHMdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::CHMcomputeEquilibriumMoments(CHMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::CHMcomputeEquilibrium(rho, u, CHMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -854,7 +854,7 @@ void CHMdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::CHMcomputeEquilibriumMoments(CHMeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::CHMcomputeEquilibrium(rho, u, CHMeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -978,7 +978,7 @@ void Kdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::KcomputeEquilibrium(rho, u, Keq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -1022,7 +1022,7 @@ void Kdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::KcomputeEquilibriumMoments(u, Keq);
     comprehensiveDynamicsTemplates<T, Descriptor>::KcomputeEquilibrium(rho, u, Keq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -1059,7 +1059,7 @@ void Kdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::KcomputeEquilibriumMoments(u, Keq);
     comprehensiveDynamicsTemplates<T, Descriptor>::KcomputeEquilibrium(rho, u, Keq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -1192,7 +1192,7 @@ void GHdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::GHcomputeEquilibrium(rho, GHeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -1236,7 +1236,7 @@ void GHdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::GHcomputeEquilibriumMoments(u, GHeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::GHcomputeEquilibrium(rho, GHeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -1273,7 +1273,7 @@ void GHdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::GHcomputeEquilibriumMoments(u, GHeq);
     comprehensiveDynamicsTemplates<T, Descriptor>::GHcomputeEquilibrium(rho, GHeq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -1406,7 +1406,7 @@ void RRdynamics<T, Descriptor>::computeEquilibria(
     Array<T, Descriptor<T>::q> eq;
     comprehensiveDynamicsTemplates<T, Descriptor>::RRcomputeEquilibrium(rho, RReq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 }
 
@@ -1450,7 +1450,7 @@ void RRdynamics<T, Descriptor>::decomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::RRcomputeEquilibriumMoments(u, RReq);
     comprehensiveDynamicsTemplates<T, Descriptor>::RRcomputeEquilibrium(rho, RReq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {
@@ -1487,7 +1487,7 @@ void RRdynamics<T, Descriptor>::recomposeOrder0(
     comprehensiveDynamicsTemplates<T, Descriptor>::RRcomputeEquilibriumMoments(u, RReq);
     comprehensiveDynamicsTemplates<T, Descriptor>::RRcomputeEquilibrium(rho, RReq, eq);
     for (int i = 0; i < Descriptor<T>::q; ++i) {
-        fEq[i] = eq[i] - Descriptor<T>::t[i];
+        fEq[i] = eq[i] - Descriptor<T>::SkordosFactor() * Descriptor<T>::t_gpu(i);
     }
 
     for (plint iPop = 0; iPop < Descriptor<T>::q; ++iPop) {

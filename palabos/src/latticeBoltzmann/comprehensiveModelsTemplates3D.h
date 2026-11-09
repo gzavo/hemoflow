@@ -100,7 +100,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         RM[i] = 0.;
      *     }
      *
@@ -108,38 +108,39 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *         // Order 0
      *         RM[M000] += f[i];
      *         // Order 1
-     *         RM[M100] += D::c[i][0] * f[i];
-     *         RM[M010] += D::c[i][1] * f[i];
-     *         RM[M001] += D::c[i][2] * f[i];
+     *         RM[M100] += D::c_gpu(i,0) * f[i];
+     *         RM[M010] += D::c_gpu(i,1) * f[i];
+     *         RM[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
-     *         RM[M200] += D::c[i][0] * D::c[i][0] * f[i];
-     *         RM[M020] += D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M002] += D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         RM[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         RM[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         RM[M200] += D::c_gpu(i,0) * D::c_gpu(i,0) * f[i];
+     *         RM[M020] += D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M002] += D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RM[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RM[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 3
-     *         RM[M210] += D::c[i][0] * D::c[i][0] * D::c[i][1] * f[i];
-     *         RM[M201] += D::c[i][0] * D::c[i][0] * D::c[i][2] * f[i];
-     *         RM[M021] += D::c[i][1] * D::c[i][1] * D::c[i][2] * f[i];
-     *         RM[M120] += D::c[i][0] * D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M102] += D::c[i][0] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M012] += D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M111] += D::c[i][0] * D::c[i][1] * D::c[i][2] * f[i];
+     *         RM[M210] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RM[M201] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RM[M021] += D::c_gpu(i,1) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         RM[M120] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M102] += D::c_gpu(i,0) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M012] += D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M111] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 4
-     *         RM[M220] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M202] += D::c[i][0] * D::c[i][0] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M022] += D::c[i][1] * D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M211] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][2] * f[i];
-     *         RM[M121] += D::c[i][0] * D::c[i][1] * D::c[i][1] * D::c[i][2] * f[i];
-     *         RM[M112] += D::c[i][0] * D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
+     *         RM[M220] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M202] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M022] += D::c_gpu(i,1) * D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M211] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         RM[M121] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         RM[M112] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
      *         // Order 5
-     *         RM[M221] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][1] * D::c[i][2] * f[i];
-     *         RM[M212] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M122] += D::c[i][0] * D::c[i][1] * D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
+     *         RM[M221] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) *
+     * D::c_gpu(i,2) * f[i]; RM[M212] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) *
+     * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i]; RM[M122] += D::c_gpu(i,0) * D::c_gpu(i,1) *
+     * D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
      *         // Order 6
-     *         RM[M222] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][1] * D::c[i][2] *
-     * D::c[i][2] * f[i];
+     *         RM[M222] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) *
+     * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
      *     }
      *
      *     rho = RM[M000];
@@ -154,7 +155,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *     }
      *
      *     // Order 0
@@ -210,7 +211,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
 
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -286,9 +287,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         RMeq[M010] = u[1];
         RMeq[M001] = u[2];
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -535,7 +536,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -549,48 +550,48 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         HM[i] = 0.;
      *     }
      *
      *     for (int i = 0; i<27; ++i) {
      *
-     *         Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         HM[M000] += f[i];
      *         // Order 1
-     *         HM[M100] += D::c[i][0] * f[i];
-     *         HM[M010] += D::c[i][1] * f[i];
-     *         HM[M001] += D::c[i][2] * f[i];
+     *         HM[M100] += D::c_gpu(i,0) * f[i];
+     *         HM[M010] += D::c_gpu(i,1) * f[i];
+     *         HM[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
      *         HM[M200] += Hxx * f[i];
      *         HM[M020] += Hyy * f[i];
      *         HM[M002] += Hzz * f[i];
-     *         HM[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         HM[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         HM[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         HM[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         HM[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         HM[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 3
-     *         HM[M210] += Hxx * D::c[i][1] * f[i];
-     *         HM[M201] += Hxx * D::c[i][2] * f[i];
-     *         HM[M021] += Hyy * D::c[i][2] * f[i];
-     *         HM[M120] += D::c[i][0] * Hyy * f[i];
-     *         HM[M102] += D::c[i][0] * Hzz * f[i];
-     *         HM[M012] += D::c[i][1] * Hzz * f[i];
-     *         HM[M111] += D::c[i][0] * D::c[i][1] * D::c[i][2] * f[i];
+     *         HM[M210] += Hxx * D::c_gpu(i,1) * f[i];
+     *         HM[M201] += Hxx * D::c_gpu(i,2) * f[i];
+     *         HM[M021] += Hyy * D::c_gpu(i,2) * f[i];
+     *         HM[M120] += D::c_gpu(i,0) * Hyy * f[i];
+     *         HM[M102] += D::c_gpu(i,0) * Hzz * f[i];
+     *         HM[M012] += D::c_gpu(i,1) * Hzz * f[i];
+     *         HM[M111] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 4
      *         HM[M220] += Hxx * Hyy * f[i];
      *         HM[M202] += Hxx * Hzz * f[i];
      *         HM[M022] += Hyy * Hzz * f[i];
-     *         HM[M211] += Hxx * D::c[i][1] * D::c[i][2] * f[i];
-     *         HM[M121] += D::c[i][0] * Hyy * D::c[i][2] * f[i];
-     *         HM[M112] += D::c[i][0] * D::c[i][1] * Hzz * f[i];
+     *         HM[M211] += Hxx * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         HM[M121] += D::c_gpu(i,0) * Hyy * D::c_gpu(i,2) * f[i];
+     *         HM[M112] += D::c_gpu(i,0) * D::c_gpu(i,1) * Hzz * f[i];
      *         // Order 5
-     *         HM[M221] += Hxx * Hyy * D::c[i][2] * f[i];
-     *         HM[M212] += Hxx * D::c[i][1] * Hzz * f[i];
-     *         HM[M122] += D::c[i][0] * Hyy * Hzz * f[i];
+     *         HM[M221] += Hxx * Hyy * D::c_gpu(i,2) * f[i];
+     *         HM[M212] += Hxx * D::c_gpu(i,1) * Hzz * f[i];
+     *         HM[M122] += D::c_gpu(i,0) * Hyy * Hzz * f[i];
      *         // Order 6
      *         HM[M222] += Hxx * Hyy * Hzz * f[i];
      *     }
@@ -606,20 +607,20 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *     }
      *
-     *     T a1 = 1./3. ;// D::cs2
-     *     T a2 = 2./3. ;// 1.-D::cs2
+     *     T a1 = 1./3. ;// D::cs2_gpu
+     *     T a2 = 2./3. ;// 1.-D::cs2_gpu
      *
-     *     T b1 = 1./9. ;// (D::cs2)*(D::cs2)
-     *     T b2 = 2./9. ;// (1.-D::cs2)*(D::cs2)
-     *     T b3 = 4./9. ;// (1.-D::cs2)*(1.-D::cs2)
+     *     T b1 = 1./9. ;// (D::cs2_gpu)*(D::cs2_gpu)
+     *     T b2 = 2./9. ;// (1.-D::cs2_gpu)*(D::cs2_gpu)
+     *     T b3 = 4./9. ;// (1.-D::cs2_gpu)*(1.-D::cs2_gpu)
      *
-     *     T c1 = 1./27.;// (D::cs2)*(D::cs2)*(D::cs2)
-     *     T c2 = 2./27.;// (1.-D::cs2)*(D::cs2)*(D::cs2)
-     *     T c3 = 4./27.;// (1.-D::cs2)*(1.-D::cs2)*(D::cs2)
-     *     T c4 = 8./27.;// (1.-D::cs2)*(1.-D::cs2)*(1.-D::cs2)
+     *     T c1 = 1./27.;// (D::cs2_gpu)*(D::cs2_gpu)*(D::cs2_gpu)
+     *     T c2 = 2./27.;// (1.-D::cs2_gpu)*(D::cs2_gpu)*(D::cs2_gpu)
+     *     T c3 = 4./27.;// (1.-D::cs2_gpu)*(1.-D::cs2_gpu)*(D::cs2_gpu)
+     *     T c4 = 8./27.;// (1.-D::cs2_gpu)*(1.-D::cs2_gpu)*(1.-D::cs2_gpu)
      *
      *     // Order 0
      *     rho =        f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7] + f[8] + f[9] + f[10]
@@ -704,7 +705,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
 
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -770,32 +771,32 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         HM[M000] = 1.;
 
         // We come back to Hermite moments
-        T cs4 = D::cs2 * D::cs2;
-        HM[M200] -= D::cs2;
-        HM[M020] -= D::cs2;
-        HM[M002] -= D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
+        HM[M200] -= D::cs2_gpu;
+        HM[M020] -= D::cs2_gpu;
+        HM[M002] -= D::cs2_gpu;
 
-        HM[M210] -= D::cs2 * HM[M010];
-        HM[M201] -= D::cs2 * HM[M001];
-        HM[M021] -= D::cs2 * HM[M001];
-        HM[M120] -= D::cs2 * HM[M100];
-        HM[M102] -= D::cs2 * HM[M100];
-        HM[M012] -= D::cs2 * HM[M010];
+        HM[M210] -= D::cs2_gpu * HM[M010];
+        HM[M201] -= D::cs2_gpu * HM[M001];
+        HM[M021] -= D::cs2_gpu * HM[M001];
+        HM[M120] -= D::cs2_gpu * HM[M100];
+        HM[M102] -= D::cs2_gpu * HM[M100];
+        HM[M012] -= D::cs2_gpu * HM[M010];
 
-        HM[M220] -= (D::cs2 * (HM[M200] + HM[M020]) + cs4);
-        HM[M202] -= (D::cs2 * (HM[M200] + HM[M002]) + cs4);
-        HM[M022] -= (D::cs2 * (HM[M020] + HM[M002]) + cs4);
-        HM[M211] -= (D::cs2 * HM[M011]);
-        HM[M121] -= (D::cs2 * HM[M101]);
-        HM[M112] -= (D::cs2 * HM[M110]);
+        HM[M220] -= (D::cs2_gpu * (HM[M200] + HM[M020]) + cs4);
+        HM[M202] -= (D::cs2_gpu * (HM[M200] + HM[M002]) + cs4);
+        HM[M022] -= (D::cs2_gpu * (HM[M020] + HM[M002]) + cs4);
+        HM[M211] -= (D::cs2_gpu * HM[M011]);
+        HM[M121] -= (D::cs2_gpu * HM[M101]);
+        HM[M112] -= (D::cs2_gpu * HM[M110]);
 
-        HM[M221] -= (D::cs2 * (HM[M201] + HM[M021]) + cs4 * HM[M001]);
-        HM[M212] -= (D::cs2 * (HM[M210] + HM[M012]) + cs4 * HM[M010]);
-        HM[M122] -= (D::cs2 * (HM[M120] + HM[M102]) + cs4 * HM[M100]);
+        HM[M221] -= (D::cs2_gpu * (HM[M201] + HM[M021]) + cs4 * HM[M001]);
+        HM[M212] -= (D::cs2_gpu * (HM[M210] + HM[M012]) + cs4 * HM[M010]);
+        HM[M122] -= (D::cs2_gpu * (HM[M120] + HM[M102]) + cs4 * HM[M100]);
 
         HM[M222] -=
-            (D::cs2 * (HM[M220] + HM[M202] + HM[M022]) + cs4 * (HM[M200] + HM[M020] + HM[M002])
-             + D::cs2 * cs4);
+            (D::cs2_gpu * (HM[M220] + HM[M202] + HM[M022]) + cs4 * (HM[M200] + HM[M020] + HM[M002])
+             + D::cs2_gpu * cs4);
     };
 
     static void HMcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &HMeq)
@@ -844,9 +845,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         Array<T, D::d> u(HMeq[1], HMeq[2], HMeq[3]);
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -944,7 +945,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         T omegaPlus = (omegaBulk + 2. * omega1) / 3.;  // Notation used by Fei
         T omegaMinus = (omegaBulk - omega1) / 3.;      // Notation used by Fei
 
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
         // Post-collision moments.
         Array<T, D::q> HMcoll;
@@ -985,37 +986,37 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         HMcoll[M222] = (1. - omega8) * HM[M222] + omega8 * HMeq[M222];
 
         // Come back to RMcoll using relationships between HMs and RMs
-        RMcoll[M200] = HMcoll[M200] + D::cs2;
-        RMcoll[M020] = HMcoll[M020] + D::cs2;
-        RMcoll[M002] = HMcoll[M002] + D::cs2;
+        RMcoll[M200] = HMcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = HMcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = HMcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = HMcoll[M110];
         RMcoll[M101] = HMcoll[M101];
         RMcoll[M011] = HMcoll[M011];
 
-        RMcoll[M210] = HMcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = HMcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = HMcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = HMcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = HMcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = HMcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = HMcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = HMcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = HMcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = HMcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = HMcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = HMcoll[M012] + D::cs2_gpu * u[1];
 
         RMcoll[M111] = HMcoll[M111];
 
-        RMcoll[M220] = HMcoll[M220] + D::cs2 * (HMcoll[M200] + HMcoll[M020]) + cs4;
-        RMcoll[M202] = HMcoll[M202] + D::cs2 * (HMcoll[M200] + HMcoll[M002]) + cs4;
-        RMcoll[M022] = HMcoll[M022] + D::cs2 * (HMcoll[M020] + HMcoll[M002]) + cs4;
+        RMcoll[M220] = HMcoll[M220] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M020]) + cs4;
+        RMcoll[M202] = HMcoll[M202] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M002]) + cs4;
+        RMcoll[M022] = HMcoll[M022] + D::cs2_gpu * (HMcoll[M020] + HMcoll[M002]) + cs4;
 
-        RMcoll[M211] = HMcoll[M211] + D::cs2 * HMcoll[M011];
-        RMcoll[M121] = HMcoll[M121] + D::cs2 * HMcoll[M101];
-        RMcoll[M112] = HMcoll[M112] + D::cs2 * HMcoll[M110];
+        RMcoll[M211] = HMcoll[M211] + D::cs2_gpu * HMcoll[M011];
+        RMcoll[M121] = HMcoll[M121] + D::cs2_gpu * HMcoll[M101];
+        RMcoll[M112] = HMcoll[M112] + D::cs2_gpu * HMcoll[M110];
 
-        RMcoll[M221] = HMcoll[M221] + D::cs2 * (HMcoll[M201] + HMcoll[M021]) + cs4 * u[2];
-        RMcoll[M212] = HMcoll[M212] + D::cs2 * (HMcoll[M210] + HMcoll[M012]) + cs4 * u[1];
-        RMcoll[M122] = HMcoll[M122] + D::cs2 * (HMcoll[M120] + HMcoll[M102]) + cs4 * u[0];
+        RMcoll[M221] = HMcoll[M221] + D::cs2_gpu * (HMcoll[M201] + HMcoll[M021]) + cs4 * u[2];
+        RMcoll[M212] = HMcoll[M212] + D::cs2_gpu * (HMcoll[M210] + HMcoll[M012]) + cs4 * u[1];
+        RMcoll[M122] = HMcoll[M122] + D::cs2_gpu * (HMcoll[M120] + HMcoll[M102]) + cs4 * u[0];
 
-        RMcoll[M222] = HMcoll[M222] + D::cs2 * (HMcoll[M220] + HMcoll[M202] + HMcoll[M022])
-                       + cs4 * (HMcoll[M200] + HMcoll[M020] + HMcoll[M002]) + D::cs2 * cs4;
+        RMcoll[M222] = HMcoll[M222] + D::cs2_gpu * (HMcoll[M220] + HMcoll[M202] + HMcoll[M022])
+                       + cs4 * (HMcoll[M200] + HMcoll[M020] + HMcoll[M002]) + D::cs2_gpu * cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -1087,7 +1088,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -1102,7 +1103,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CM[i] = 0.;
      *     }
      *
@@ -1117,9 +1118,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      * = 0.; T cMuz = 0.;
      *
      *     for (int i = 0; i<27; ++i) {
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *         // Order 1
      *         CM[M100] += cMux * f[i];
      *         CM[M010] += cMuy * f[i];
@@ -1166,7 +1167,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             CM[i] = 0.;
         }
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -1320,9 +1321,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         CMeq[M010] = 0.;
         CMeq[M001] = 0.;
         // Order 2
-        CMeq[M200] = D::cs2;
-        CMeq[M020] = D::cs2;
-        CMeq[M002] = D::cs2;
+        CMeq[M200] = D::cs2_gpu;
+        CMeq[M020] = D::cs2_gpu;
+        CMeq[M002] = D::cs2_gpu;
         CMeq[M110] = 0.;
         CMeq[M101] = 0.;
         CMeq[M011] = 0.;
@@ -1335,9 +1336,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         CMeq[M012] = 0.;
         CMeq[M111] = 0.;
         // Order 4
-        CMeq[M220] = D::cs2 * D::cs2;
-        CMeq[M202] = D::cs2 * D::cs2;
-        CMeq[M022] = D::cs2 * D::cs2;
+        CMeq[M220] = D::cs2_gpu * D::cs2_gpu;
+        CMeq[M202] = D::cs2_gpu * D::cs2_gpu;
+        CMeq[M022] = D::cs2_gpu * D::cs2_gpu;
         CMeq[M211] = 0.;
         CMeq[M121] = 0.;
         CMeq[M112] = 0.;
@@ -1346,20 +1347,21 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         CMeq[M212] = 0.;
         CMeq[M122] = 0.;
         // Order 6
-        CMeq[M222] = D::cs2 * D::cs2 * D::cs2;
+        CMeq[M222] = D::cs2_gpu * D::cs2_gpu * D::cs2_gpu;
     };
 
     // Equilibrium populations based on 27 moments can be computed using either RM, HM, CM, CHM or
     // Gauss-Hermite formalisms. All formulations are equivalent for the D3Q27 so we use the fastest
     // one (RMs)
     static void CMcomputeEquilibrium(
-        T rho, Array<T, D::d> const &u, Array<T, D::q> const &, Array<T, D::q> &eq)
+        T rho, Array<T, D::d> const &u, [[maybe_unused]] Array<T, D::q> const &CMeq,
+        Array<T, D::q> &eq)
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -1650,7 +1652,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -1665,7 +1667,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CHM[i] = 0.;
      *     }
      *
@@ -1681,13 +1683,13 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     for (int i = 0; i<27; ++i) {
      *
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *
-     *         Hxx = cMux * cMux - D::cs2;
-     *         Hyy = cMuy * cMuy - D::cs2;
-     *         Hzz = cMuz * cMuz - D::cs2;
+     *         Hxx = cMux * cMux - D::cs2_gpu;
+     *         Hyy = cMuy * cMuy - D::cs2_gpu;
+     *         Hzz = cMuz * cMuz - D::cs2_gpu;
      *
      *         // Order 1
      *         CHM[M100] += cMux * f[i];
@@ -1735,7 +1737,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             CHM[i] = 0.;
         }
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -1880,27 +1882,27 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
              + 4. * ux2 * u[1] * u[2] * CHM[M011] + ux2 * uy2 * uz2);
 
         // Compute CHMs from CMs
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
-        CHM[M200] -= (D::cs2);
-        CHM[M020] -= (D::cs2);
-        CHM[M002] -= (D::cs2);
+        CHM[M200] -= (D::cs2_gpu);
+        CHM[M020] -= (D::cs2_gpu);
+        CHM[M002] -= (D::cs2_gpu);
 
-        CHM[M220] -= (D::cs2 * (CHM[M200] + CHM[M020]) + cs4);
-        CHM[M202] -= (D::cs2 * (CHM[M200] + CHM[M002]) + cs4);
-        CHM[M022] -= (D::cs2 * (CHM[M020] + CHM[M002]) + cs4);
+        CHM[M220] -= (D::cs2_gpu * (CHM[M200] + CHM[M020]) + cs4);
+        CHM[M202] -= (D::cs2_gpu * (CHM[M200] + CHM[M002]) + cs4);
+        CHM[M022] -= (D::cs2_gpu * (CHM[M020] + CHM[M002]) + cs4);
 
-        CHM[M211] -= (D::cs2 * CHM[M011]);
-        CHM[M121] -= (D::cs2 * CHM[M101]);
-        CHM[M112] -= (D::cs2 * CHM[M110]);
+        CHM[M211] -= (D::cs2_gpu * CHM[M011]);
+        CHM[M121] -= (D::cs2_gpu * CHM[M101]);
+        CHM[M112] -= (D::cs2_gpu * CHM[M110]);
 
-        CHM[M221] -= (D::cs2 * (CHM[M201] + CHM[M021]));
-        CHM[M212] -= (D::cs2 * (CHM[M210] + CHM[M012]));
-        CHM[M122] -= (D::cs2 * (CHM[M120] + CHM[M102]));
+        CHM[M221] -= (D::cs2_gpu * (CHM[M201] + CHM[M021]));
+        CHM[M212] -= (D::cs2_gpu * (CHM[M210] + CHM[M012]));
+        CHM[M122] -= (D::cs2_gpu * (CHM[M120] + CHM[M102]));
 
         CHM[M222] -=
-            (D::cs2 * (CHM[M220] + CHM[M202] + CHM[M022])
-             + cs4 * (CHM[M200] + CHM[M020] + CHM[M002]) + D::cs2 * cs4);
+            (D::cs2_gpu * (CHM[M220] + CHM[M202] + CHM[M022])
+             + cs4 * (CHM[M200] + CHM[M020] + CHM[M002]) + D::cs2_gpu * cs4);
     };
 
     static void CHMcomputeEquilibriumMoments(Array<T, D::q> &CHMeq)
@@ -1949,9 +1951,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -2187,37 +2189,37 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
                        + 4. * ux2 * u[1] * u[2] * CHMcoll[M011] + ux2 * uy2 * uz2;
 
         // Come back to RMcoll using relationships between HMs and RMs
-        RMcoll[M200] = HMcoll[M200] + D::cs2;
-        RMcoll[M020] = HMcoll[M020] + D::cs2;
-        RMcoll[M002] = HMcoll[M002] + D::cs2;
+        RMcoll[M200] = HMcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = HMcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = HMcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = HMcoll[M110];
         RMcoll[M101] = HMcoll[M101];
         RMcoll[M011] = HMcoll[M011];
 
-        RMcoll[M210] = HMcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = HMcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = HMcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = HMcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = HMcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = HMcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = HMcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = HMcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = HMcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = HMcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = HMcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = HMcoll[M012] + D::cs2_gpu * u[1];
 
         RMcoll[M111] = HMcoll[M111];
 
-        RMcoll[M220] = HMcoll[M220] + D::cs2 * (HMcoll[M200] + HMcoll[M020]) + cs4;
-        RMcoll[M202] = HMcoll[M202] + D::cs2 * (HMcoll[M200] + HMcoll[M002]) + cs4;
-        RMcoll[M022] = HMcoll[M022] + D::cs2 * (HMcoll[M020] + HMcoll[M002]) + cs4;
+        RMcoll[M220] = HMcoll[M220] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M020]) + cs4;
+        RMcoll[M202] = HMcoll[M202] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M002]) + cs4;
+        RMcoll[M022] = HMcoll[M022] + D::cs2_gpu * (HMcoll[M020] + HMcoll[M002]) + cs4;
 
-        RMcoll[M211] = HMcoll[M211] + D::cs2 * HMcoll[M011];
-        RMcoll[M121] = HMcoll[M121] + D::cs2 * HMcoll[M101];
-        RMcoll[M112] = HMcoll[M112] + D::cs2 * HMcoll[M110];
+        RMcoll[M211] = HMcoll[M211] + D::cs2_gpu * HMcoll[M011];
+        RMcoll[M121] = HMcoll[M121] + D::cs2_gpu * HMcoll[M101];
+        RMcoll[M112] = HMcoll[M112] + D::cs2_gpu * HMcoll[M110];
 
-        RMcoll[M221] = HMcoll[M221] + D::cs2 * (HMcoll[M201] + HMcoll[M021]) + cs4 * u[2];
-        RMcoll[M212] = HMcoll[M212] + D::cs2 * (HMcoll[M210] + HMcoll[M012]) + cs4 * u[1];
-        RMcoll[M122] = HMcoll[M122] + D::cs2 * (HMcoll[M120] + HMcoll[M102]) + cs4 * u[0];
+        RMcoll[M221] = HMcoll[M221] + D::cs2_gpu * (HMcoll[M201] + HMcoll[M021]) + cs4 * u[2];
+        RMcoll[M212] = HMcoll[M212] + D::cs2_gpu * (HMcoll[M210] + HMcoll[M012]) + cs4 * u[1];
+        RMcoll[M122] = HMcoll[M122] + D::cs2_gpu * (HMcoll[M120] + HMcoll[M102]) + cs4 * u[0];
 
-        RMcoll[M222] = HMcoll[M222] + D::cs2 * (HMcoll[M220] + HMcoll[M202] + HMcoll[M022])
-                       + cs4 * (HMcoll[M200] + HMcoll[M020] + HMcoll[M002]) + D::cs2 * cs4;
+        RMcoll[M222] = HMcoll[M222] + D::cs2_gpu * (HMcoll[M220] + HMcoll[M202] + HMcoll[M022])
+                       + cs4 * (HMcoll[M200] + HMcoll[M020] + HMcoll[M002]) + D::cs2_gpu * cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -2289,7 +2291,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -2305,7 +2307,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *     Array<T, D::q> f;
      *     Array<T,D::q> CM;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CM[i] = 0.;
      *     }
      *
@@ -2321,9 +2323,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     // Computation of central moments in a first time
      *     for (int i = 0; i<27; ++i) {
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *         // Order 1
      *         CM[M100] += cMux * f[i];
      *         CM[M010] += cMuy * f[i];
@@ -2409,7 +2411,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             K[i] = 0.;
         }
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -2592,9 +2594,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         Keq[M010] = u[1];
         Keq[M001] = u[2];
         // Order 2
-        Keq[M200] = D::cs2;
-        Keq[M020] = D::cs2;
-        Keq[M002] = D::cs2;
+        Keq[M200] = D::cs2_gpu;
+        Keq[M020] = D::cs2_gpu;
+        Keq[M002] = D::cs2_gpu;
         Keq[M110] = 0.;
         Keq[M101] = 0.;
         Keq[M011] = 0.;
@@ -2629,9 +2631,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -2970,7 +2972,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -2984,7 +2986,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         GH[i] = 0.;
      *     }
      *
@@ -2994,47 +2996,47 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     for (int i = 0; i<27; ++i) {
      *
-     *         Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         GH[M000] += f[i];
      *
      *         // Order 1
-     *         GH[M100] += D::c[i][0] * f[i];
-     *         GH[M010] += D::c[i][1] * f[i];
-     *         GH[M001] += D::c[i][2] * f[i];
+     *         GH[M100] += D::c_gpu(i,0) * f[i];
+     *         GH[M010] += D::c_gpu(i,1) * f[i];
+     *         GH[M001] += D::c_gpu(i,2) * f[i];
      *
      *         // Order 2
      *         GH[M200] += Hxx * f[i];
      *         GH[M020] += Hyy * f[i];
      *         GH[M002] += Hzz * f[i];
-     *         GH[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         GH[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         GH[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         GH[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         GH[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         GH[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *
      *         // Order 3
-     *         GH[M210] += Hxx * D::c[i][1] * f[i];
-     *         GH[M201] += Hxx * D::c[i][2] * f[i];
-     *         GH[M021] += Hyy * D::c[i][2] * f[i];
-     *         GH[M120] += D::c[i][0] * Hyy * f[i];
-     *         GH[M102] += D::c[i][0] * Hzz * f[i];
-     *         GH[M012] += D::c[i][1] * Hzz * f[i];
-     *         GH[M111] += D::c[i][0] * D::c[i][1] * D::c[i][2] * f[i];
+     *         GH[M210] += Hxx * D::c_gpu(i,1) * f[i];
+     *         GH[M201] += Hxx * D::c_gpu(i,2) * f[i];
+     *         GH[M021] += Hyy * D::c_gpu(i,2) * f[i];
+     *         GH[M120] += D::c_gpu(i,0) * Hyy * f[i];
+     *         GH[M102] += D::c_gpu(i,0) * Hzz * f[i];
+     *         GH[M012] += D::c_gpu(i,1) * Hzz * f[i];
+     *         GH[M111] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *
      *         // Order 4
      *         GH[M220] += Hxx * Hyy * f[i];
      *         GH[M202] += Hxx * Hzz * f[i];
      *         GH[M022] += Hyy * Hzz * f[i];
-     *         GH[M211] += Hxx * D::c[i][1] * D::c[i][2] * f[i];
-     *         GH[M121] += D::c[i][0] * Hyy * D::c[i][2] * f[i];
-     *         GH[M112] += D::c[i][0] * D::c[i][1] * Hzz * f[i];
+     *         GH[M211] += Hxx * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         GH[M121] += D::c_gpu(i,0) * Hyy * D::c_gpu(i,2) * f[i];
+     *         GH[M112] += D::c_gpu(i,0) * D::c_gpu(i,1) * Hzz * f[i];
      *
      *         // Order 5
-     *         GH[M221] += Hxx * Hyy * D::c[i][2] * f[i];
-     *         GH[M212] += Hxx * D::c[i][1] * Hzz * f[i];
-     *         GH[M122] += D::c[i][0] * Hyy * Hzz * f[i];
+     *         GH[M221] += Hxx * Hyy * D::c_gpu(i,2) * f[i];
+     *         GH[M212] += Hxx * D::c_gpu(i,1) * Hzz * f[i];
+     *         GH[M122] += D::c_gpu(i,0) * Hyy * Hzz * f[i];
      *
      *         // Order 6
      *         GH[M222] += Hxx * Hyy * Hzz * f[i];
@@ -3053,7 +3055,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
 
         T A1 = f[FMMM] + f[FMMP] + f[FMPM] + f[FMPP];
@@ -3119,32 +3121,32 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         GH[M000] = 1.;
 
         // We come back to Hermite moments
-        T cs4 = D::cs2 * D::cs2;
-        GH[M200] -= D::cs2;
-        GH[M020] -= D::cs2;
-        GH[M002] -= D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
+        GH[M200] -= D::cs2_gpu;
+        GH[M020] -= D::cs2_gpu;
+        GH[M002] -= D::cs2_gpu;
 
-        GH[M210] -= D::cs2 * GH[M010];
-        GH[M201] -= D::cs2 * GH[M001];
-        GH[M021] -= D::cs2 * GH[M001];
-        GH[M120] -= D::cs2 * GH[M100];
-        GH[M102] -= D::cs2 * GH[M100];
-        GH[M012] -= D::cs2 * GH[M010];
+        GH[M210] -= D::cs2_gpu * GH[M010];
+        GH[M201] -= D::cs2_gpu * GH[M001];
+        GH[M021] -= D::cs2_gpu * GH[M001];
+        GH[M120] -= D::cs2_gpu * GH[M100];
+        GH[M102] -= D::cs2_gpu * GH[M100];
+        GH[M012] -= D::cs2_gpu * GH[M010];
 
-        GH[M220] -= (D::cs2 * (GH[M200] + GH[M020]) + cs4);
-        GH[M202] -= (D::cs2 * (GH[M200] + GH[M002]) + cs4);
-        GH[M022] -= (D::cs2 * (GH[M020] + GH[M002]) + cs4);
-        GH[M211] -= (D::cs2 * GH[M011]);
-        GH[M121] -= (D::cs2 * GH[M101]);
-        GH[M112] -= (D::cs2 * GH[M110]);
+        GH[M220] -= (D::cs2_gpu * (GH[M200] + GH[M020]) + cs4);
+        GH[M202] -= (D::cs2_gpu * (GH[M200] + GH[M002]) + cs4);
+        GH[M022] -= (D::cs2_gpu * (GH[M020] + GH[M002]) + cs4);
+        GH[M211] -= (D::cs2_gpu * GH[M011]);
+        GH[M121] -= (D::cs2_gpu * GH[M101]);
+        GH[M112] -= (D::cs2_gpu * GH[M110]);
 
-        GH[M221] -= (D::cs2 * (GH[M201] + GH[M021]) + cs4 * GH[M001]);
-        GH[M212] -= (D::cs2 * (GH[M210] + GH[M012]) + cs4 * GH[M010]);
-        GH[M122] -= (D::cs2 * (GH[M120] + GH[M102]) + cs4 * GH[M100]);
+        GH[M221] -= (D::cs2_gpu * (GH[M201] + GH[M021]) + cs4 * GH[M001]);
+        GH[M212] -= (D::cs2_gpu * (GH[M210] + GH[M012]) + cs4 * GH[M010]);
+        GH[M122] -= (D::cs2_gpu * (GH[M120] + GH[M102]) + cs4 * GH[M100]);
 
         GH[M222] -=
-            (D::cs2 * (GH[M220] + GH[M202] + GH[M022]) + cs4 * (GH[M200] + GH[M020] + GH[M002])
-             + D::cs2 * cs4);
+            (D::cs2_gpu * (GH[M220] + GH[M202] + GH[M022]) + cs4 * (GH[M200] + GH[M020] + GH[M002])
+             + D::cs2_gpu * cs4);
     };
 
     static void GHcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &GHeq)
@@ -3193,9 +3195,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         Array<T, D::d> u(GHeq[1], GHeq[2], GHeq[3]);
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -3533,7 +3535,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
                + 27. * GHcoll[M222]);
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -3547,7 +3549,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<27; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         RR[i] = 0.;
      *     }
      *
@@ -3556,23 +3558,23 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
      *     T Hzz = 0.;
      *
      *     for (int i = 0; i<27; ++i) {
-     *         Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         RR[M000] += f[i];
      *         // Order 1
-     *         RR[M100] += D::c[i][0] * f[i];
-     *         RR[M010] += D::c[i][1] * f[i];
-     *         RR[M001] += D::c[i][2] * f[i];
+     *         RR[M100] += D::c_gpu(i,0) * f[i];
+     *         RR[M010] += D::c_gpu(i,1) * f[i];
+     *         RR[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
      *         RR[M200] += Hxx * f[i];
      *         RR[M020] += Hyy * f[i];
      *         RR[M002] += Hzz * f[i];
-     *         RR[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         RR[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         RR[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         RR[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RR[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RR[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *     }
      *
      *     rho = RR[M000];
@@ -3589,7 +3591,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 27; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             RR[i] = 0.;
         }
 
@@ -3634,9 +3636,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
                       + f[FPPP] - f[FPPM] - f[FPMP] + f[FPMM]);
 
         // We come back to Hermite moments
-        RR[M200] -= D::cs2;
-        RR[M020] -= D::cs2;
-        RR[M002] -= D::cs2;
+        RR[M200] -= D::cs2_gpu;
+        RR[M020] -= D::cs2_gpu;
+        RR[M002] -= D::cs2_gpu;
     };
 
     static void RRcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &RReq)
@@ -3685,9 +3687,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         Array<T, D::d> u(RReq[1], RReq[2], RReq[3]);
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -3884,39 +3886,39 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
         RRcoll[M222] = (1. - omega8) * RRneq[M222] + RReq[M222];
 
         // Come back to RMcoll using relationships between GHs and RMs
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
-        RMcoll[M200] = RRcoll[M200] + D::cs2;
-        RMcoll[M020] = RRcoll[M020] + D::cs2;
-        RMcoll[M002] = RRcoll[M002] + D::cs2;
+        RMcoll[M200] = RRcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = RRcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = RRcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = RRcoll[M110];
         RMcoll[M101] = RRcoll[M101];
         RMcoll[M011] = RRcoll[M011];
 
-        RMcoll[M210] = RRcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = RRcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = RRcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = RRcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = RRcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = RRcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = RRcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = RRcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = RRcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = RRcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = RRcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = RRcoll[M012] + D::cs2_gpu * u[1];
 
         RMcoll[M111] = RRcoll[M111];
 
-        RMcoll[M220] = RRcoll[M220] + D::cs2 * (RRcoll[M200] + RRcoll[M020]) + cs4;
-        RMcoll[M202] = RRcoll[M202] + D::cs2 * (RRcoll[M200] + RRcoll[M002]) + cs4;
-        RMcoll[M022] = RRcoll[M022] + D::cs2 * (RRcoll[M020] + RRcoll[M002]) + cs4;
+        RMcoll[M220] = RRcoll[M220] + D::cs2_gpu * (RRcoll[M200] + RRcoll[M020]) + cs4;
+        RMcoll[M202] = RRcoll[M202] + D::cs2_gpu * (RRcoll[M200] + RRcoll[M002]) + cs4;
+        RMcoll[M022] = RRcoll[M022] + D::cs2_gpu * (RRcoll[M020] + RRcoll[M002]) + cs4;
 
-        RMcoll[M211] = RRcoll[M211] + D::cs2 * RRcoll[M011];
-        RMcoll[M121] = RRcoll[M121] + D::cs2 * RRcoll[M101];
-        RMcoll[M112] = RRcoll[M112] + D::cs2 * RRcoll[M110];
+        RMcoll[M211] = RRcoll[M211] + D::cs2_gpu * RRcoll[M011];
+        RMcoll[M121] = RRcoll[M121] + D::cs2_gpu * RRcoll[M101];
+        RMcoll[M112] = RRcoll[M112] + D::cs2_gpu * RRcoll[M110];
 
-        RMcoll[M221] = RRcoll[M221] + D::cs2 * (RRcoll[M201] + RRcoll[M021]) + cs4 * u[2];
-        RMcoll[M212] = RRcoll[M212] + D::cs2 * (RRcoll[M210] + RRcoll[M012]) + cs4 * u[1];
-        RMcoll[M122] = RRcoll[M122] + D::cs2 * (RRcoll[M120] + RRcoll[M102]) + cs4 * u[0];
+        RMcoll[M221] = RRcoll[M221] + D::cs2_gpu * (RRcoll[M201] + RRcoll[M021]) + cs4 * u[2];
+        RMcoll[M212] = RRcoll[M212] + D::cs2_gpu * (RRcoll[M210] + RRcoll[M012]) + cs4 * u[1];
+        RMcoll[M122] = RRcoll[M122] + D::cs2_gpu * (RRcoll[M120] + RRcoll[M102]) + cs4 * u[0];
 
-        RMcoll[M222] = RRcoll[M222] + D::cs2 * (RRcoll[M220] + RRcoll[M202] + RRcoll[M022])
-                       + cs4 * (RRcoll[M200] + RRcoll[M020] + RRcoll[M002]) + D::cs2 * cs4;
+        RMcoll[M222] = RRcoll[M222] + D::cs2_gpu * (RRcoll[M220] + RRcoll[M202] + RRcoll[M022])
+                       + cs4 * (RRcoll[M200] + RRcoll[M020] + RRcoll[M002]) + D::cs2_gpu * cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -3988,7 +3990,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q27DescriptorBase<T>
             0.25 * rho * (-RMcoll[M111] - RMcoll[M221] - RMcoll[M212] - RMcoll[M122]) + cell[FPPP];
 
         for (int i = 0; i < 27; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -4060,7 +4062,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         RM[i] = 0.;
      *     }
      *
@@ -4068,27 +4070,27 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *         // Order 0
      *         RM[M000] += f[i];
      *         // Order 1
-     *         RM[M100] += D::c[i][0] * f[i];
-     *         RM[M010] += D::c[i][1] * f[i];
-     *         RM[M001] += D::c[i][2] * f[i];
+     *         RM[M100] += D::c_gpu(i,0) * f[i];
+     *         RM[M010] += D::c_gpu(i,1) * f[i];
+     *         RM[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
-     *         RM[M200] += D::c[i][0] * D::c[i][0] * f[i];
-     *         RM[M020] += D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M002] += D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         RM[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         RM[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         RM[M200] += D::c_gpu(i,0) * D::c_gpu(i,0) * f[i];
+     *         RM[M020] += D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M002] += D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RM[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RM[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 3
-     *         RM[M210] += D::c[i][0] * D::c[i][0] * D::c[i][1] * f[i];
-     *         RM[M201] += D::c[i][0] * D::c[i][0] * D::c[i][2] * f[i];
-     *         RM[M021] += D::c[i][1] * D::c[i][1] * D::c[i][2] * f[i];
-     *         RM[M120] += D::c[i][0] * D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M102] += D::c[i][0] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M012] += D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
+     *         RM[M210] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RM[M201] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RM[M021] += D::c_gpu(i,1) * D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
+     *         RM[M120] += D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M102] += D::c_gpu(i,0) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M012] += D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
      *         // Order 4
-     *         RM[M220] += D::c[i][0] * D::c[i][0] * D::c[i][1] * D::c[i][1] * f[i];
-     *         RM[M202] += D::c[i][0] * D::c[i][0] * D::c[i][2] * D::c[i][2] * f[i];
-     *         RM[M022] += D::c[i][1] * D::c[i][1] * D::c[i][2] * D::c[i][2] * f[i];
+     *         RM[M220] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,1) * D::c_gpu(i,1) * f[i];
+     *         RM[M202] += D::c_gpu(i,0) * D::c_gpu(i,0) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
+     *         RM[M022] += D::c_gpu(i,1) * D::c_gpu(i,1) * D::c_gpu(i,2) * D::c_gpu(i,2) * f[i];
      *     }
      *
      *     rho = RM[M000];
@@ -4103,7 +4105,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *     }
      *
      *     // Order 0
@@ -4144,7 +4146,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
         T X_P1 = f[FP00] + f[FPP0] + f[FPM0] + f[FP0P] + f[FP0M];
@@ -4194,9 +4196,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         RMeq[M010] = u[1];
         RMeq[M001] = u[2];
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -4331,7 +4333,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -4345,35 +4347,35 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         HM[i] = 0.;
      *     }
      *
      *     for (int i = 0; i<19; ++i) {
-     *         T Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         T Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         T Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         T Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         T Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         T Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         HM[M000] += f[i];
      *         // Order 1
-     *         HM[M100] += D::c[i][0] * f[i];
-     *         HM[M010] += D::c[i][1] * f[i];
-     *         HM[M001] += D::c[i][2] * f[i];
+     *         HM[M100] += D::c_gpu(i,0) * f[i];
+     *         HM[M010] += D::c_gpu(i,1) * f[i];
+     *         HM[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
      *         HM[M200] += Hxx * f[i];
      *         HM[M020] += Hyy * f[i];
      *         HM[M002] += Hzz * f[i];
-     *         HM[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         HM[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         HM[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         HM[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         HM[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         HM[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 3
-     *         HM[M210] += Hxx * D::c[i][1] * f[i];
-     *         HM[M201] += Hxx * D::c[i][2] * f[i];
-     *         HM[M021] += Hyy * D::c[i][2] * f[i];
-     *         HM[M120] += D::c[i][0] * Hyy * f[i];
-     *         HM[M102] += D::c[i][0] * Hzz * f[i];
-     *         HM[M012] += D::c[i][1] * Hzz * f[i];
+     *         HM[M210] += Hxx * D::c_gpu(i,1) * f[i];
+     *         HM[M201] += Hxx * D::c_gpu(i,2) * f[i];
+     *         HM[M021] += Hyy * D::c_gpu(i,2) * f[i];
+     *         HM[M120] += D::c_gpu(i,0) * Hyy * f[i];
+     *         HM[M102] += D::c_gpu(i,0) * Hzz * f[i];
+     *         HM[M012] += D::c_gpu(i,1) * Hzz * f[i];
      *         // Order 4
      *         HM[M220] += Hxx * Hyy * f[i];
      *         HM[M202] += Hxx * Hzz * f[i];
@@ -4391,7 +4393,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *     }
      *
      *     T a1 = 1./3. ;
@@ -4448,7 +4450,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
         T X_P1 = f[FP00] + f[FPP0] + f[FPM0] + f[FP0P] + f[FP0M];
@@ -4489,21 +4491,21 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         HM[M022] = HM[M011] + two_invRho * (f[F0MP] + f[F0PM]);
 
         // We come back to Hermite moments
-        T cs4 = D::cs2 * D::cs2;
-        HM[M200] -= D::cs2;
-        HM[M020] -= D::cs2;
-        HM[M002] -= D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
+        HM[M200] -= D::cs2_gpu;
+        HM[M020] -= D::cs2_gpu;
+        HM[M002] -= D::cs2_gpu;
 
-        HM[M210] -= D::cs2 * HM[M010];
-        HM[M201] -= D::cs2 * HM[M001];
-        HM[M021] -= D::cs2 * HM[M001];
-        HM[M120] -= D::cs2 * HM[M100];
-        HM[M102] -= D::cs2 * HM[M100];
-        HM[M012] -= D::cs2 * HM[M010];
+        HM[M210] -= D::cs2_gpu * HM[M010];
+        HM[M201] -= D::cs2_gpu * HM[M001];
+        HM[M021] -= D::cs2_gpu * HM[M001];
+        HM[M120] -= D::cs2_gpu * HM[M100];
+        HM[M102] -= D::cs2_gpu * HM[M100];
+        HM[M012] -= D::cs2_gpu * HM[M010];
 
-        HM[M220] -= (D::cs2 * (HM[M200] + HM[M020]) + cs4);
-        HM[M202] -= (D::cs2 * (HM[M200] + HM[M002]) + cs4);
-        HM[M022] -= (D::cs2 * (HM[M020] + HM[M002]) + cs4);
+        HM[M220] -= (D::cs2_gpu * (HM[M200] + HM[M020]) + cs4);
+        HM[M202] -= (D::cs2_gpu * (HM[M200] + HM[M002]) + cs4);
+        HM[M022] -= (D::cs2_gpu * (HM[M020] + HM[M002]) + cs4);
     };
 
     static void HMcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &HMeq)
@@ -4542,9 +4544,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         Array<T, D::d> u(HMeq[1], HMeq[2], HMeq[3]);
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -4607,7 +4609,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         T omegaPlus = (omegaBulk + 2. * omega1) / 3.;  // Notation used by Fei
         T omegaMinus = (omegaBulk - omega1) / 3.;      // Notation used by Fei
 
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
         // Post-collision moments.
         Array<T, D::q> HMcoll;
@@ -4641,24 +4643,24 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         HMcoll[M022] = (1. - omega4) * HM[M022] + omega4 * HMeq[M022];
 
         // Come back to RMcoll using relationships between HMs and RMs
-        RMcoll[M200] = HMcoll[M200] + D::cs2;
-        RMcoll[M020] = HMcoll[M020] + D::cs2;
-        RMcoll[M002] = HMcoll[M002] + D::cs2;
+        RMcoll[M200] = HMcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = HMcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = HMcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = HMcoll[M110];
         RMcoll[M101] = HMcoll[M101];
         RMcoll[M011] = HMcoll[M011];
 
-        RMcoll[M210] = HMcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = HMcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = HMcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = HMcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = HMcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = HMcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = HMcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = HMcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = HMcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = HMcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = HMcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = HMcoll[M012] + D::cs2_gpu * u[1];
 
-        RMcoll[M220] = HMcoll[M220] + D::cs2 * (HMcoll[M200] + HMcoll[M020]) + cs4;
-        RMcoll[M202] = HMcoll[M202] + D::cs2 * (HMcoll[M200] + HMcoll[M002]) + cs4;
-        RMcoll[M022] = HMcoll[M022] + D::cs2 * (HMcoll[M020] + HMcoll[M002]) + cs4;
+        RMcoll[M220] = HMcoll[M220] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M020]) + cs4;
+        RMcoll[M202] = HMcoll[M202] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M002]) + cs4;
+        RMcoll[M022] = HMcoll[M022] + D::cs2_gpu * (HMcoll[M020] + HMcoll[M002]) + cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -4697,7 +4699,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -4712,7 +4714,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CM[i] = 0.;
      *     }
      *
@@ -4730,9 +4732,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     for (int i = 0; i<19; ++i) {
      *
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *
      *         // // Order 0
      *         // CM[M000] += f[i];
@@ -4776,7 +4778,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             CM[i] = 0.;
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
@@ -4860,9 +4862,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         CMeq[M010] = 0.;
         CMeq[M001] = 0.;
         // Order 2
-        CMeq[M200] = D::cs2;
-        CMeq[M020] = D::cs2;
-        CMeq[M002] = D::cs2;
+        CMeq[M200] = D::cs2_gpu;
+        CMeq[M020] = D::cs2_gpu;
+        CMeq[M002] = D::cs2_gpu;
         CMeq[M110] = 0.;
         CMeq[M101] = 0.;
         CMeq[M011] = 0.;
@@ -4874,9 +4876,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         CMeq[M102] = 0.;
         CMeq[M012] = 0.;
         // Order 4
-        CMeq[M220] = D::cs2 * D::cs2;
-        CMeq[M202] = D::cs2 * D::cs2;
-        CMeq[M022] = D::cs2 * D::cs2;
+        CMeq[M220] = D::cs2_gpu * D::cs2_gpu;
+        CMeq[M202] = D::cs2_gpu * D::cs2_gpu;
+        CMeq[M022] = D::cs2_gpu * D::cs2_gpu;
     };
 
     // Equilibrium populations based on 19 moments can be computed using either RM, HM, CM, CHM or
@@ -4888,9 +4890,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -5051,7 +5053,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -5066,7 +5068,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CHM[i] = 0.;
      *     }
      *
@@ -5079,13 +5081,13 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     for (int i = 0; i<19; ++i) {
      *
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *
-     *         Hxx = cMux * cMux - D::cs2;
-     *         Hyy = cMuy * cMuy - D::cs2;
-     *         Hzz = cMuz * cMuz - D::cs2;
+     *         Hxx = cMux * cMux - D::cs2_gpu;
+     *         Hyy = cMuy * cMuy - D::cs2_gpu;
+     *         Hzz = cMuz * cMuz - D::cs2_gpu;
      *
      *         // // Order 0
      *         // CHM[M000] += f[i];
@@ -5129,7 +5131,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             CHM[i] = 0.;
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
@@ -5204,15 +5206,15 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
              + 4. * u[1] * u[2] * CHM[M011] + uy2 * uz2);
 
         // Compute CHMs from CMs
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
-        CHM[M200] -= D::cs2;
-        CHM[M020] -= D::cs2;
-        CHM[M002] -= D::cs2;
+        CHM[M200] -= D::cs2_gpu;
+        CHM[M020] -= D::cs2_gpu;
+        CHM[M002] -= D::cs2_gpu;
 
-        CHM[M220] -= (D::cs2 * (CHM[M200] + CHM[M020]) + cs4);
-        CHM[M202] -= (D::cs2 * (CHM[M200] + CHM[M002]) + cs4);
-        CHM[M022] -= (D::cs2 * (CHM[M020] + CHM[M002]) + cs4);
+        CHM[M220] -= (D::cs2_gpu * (CHM[M200] + CHM[M020]) + cs4);
+        CHM[M202] -= (D::cs2_gpu * (CHM[M200] + CHM[M002]) + cs4);
+        CHM[M022] -= (D::cs2_gpu * (CHM[M020] + CHM[M002]) + cs4);
     };
 
     static void CHMcomputeEquilibriumMoments(Array<T, D::q> &CHMeq)
@@ -5252,9 +5254,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -5320,7 +5322,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         T ux2 = u[0] * u[0];
         T uy2 = u[1] * u[1];
         T uz2 = u[2] * u[2];
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
         // Post-collision moments.
         Array<T, D::q> CHMcoll;
@@ -5389,24 +5391,24 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
                        + 4. * u[1] * u[2] * CHMcoll[M011] + uy2 * uz2;
 
         // Come back to RMcoll using relationships between HMs and RMs
-        RMcoll[M200] = HMcoll[M200] + D::cs2;
-        RMcoll[M020] = HMcoll[M020] + D::cs2;
-        RMcoll[M002] = HMcoll[M002] + D::cs2;
+        RMcoll[M200] = HMcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = HMcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = HMcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = HMcoll[M110];
         RMcoll[M101] = HMcoll[M101];
         RMcoll[M011] = HMcoll[M011];
 
-        RMcoll[M210] = HMcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = HMcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = HMcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = HMcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = HMcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = HMcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = HMcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = HMcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = HMcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = HMcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = HMcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = HMcoll[M012] + D::cs2_gpu * u[1];
 
-        RMcoll[M220] = HMcoll[M220] + D::cs2 * (HMcoll[M200] + HMcoll[M020]) + cs4;
-        RMcoll[M202] = HMcoll[M202] + D::cs2 * (HMcoll[M200] + HMcoll[M002]) + cs4;
-        RMcoll[M022] = HMcoll[M022] + D::cs2 * (HMcoll[M020] + HMcoll[M002]) + cs4;
+        RMcoll[M220] = HMcoll[M220] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M020]) + cs4;
+        RMcoll[M202] = HMcoll[M202] + D::cs2_gpu * (HMcoll[M200] + HMcoll[M002]) + cs4;
+        RMcoll[M022] = HMcoll[M022] + D::cs2_gpu * (HMcoll[M020] + HMcoll[M002]) + cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -5445,7 +5447,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -5461,7 +5463,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *     Array<T, D::q> f;
      *     Array<T,D::q> CM;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         CM[i] = 0.;
      *     }
      *     rho = f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7] + f[8] + f[9] + f[10] + f[11]
@@ -5474,9 +5476,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *     // Computation of central moments in a first time
      *     for (int i = 0; i<19; ++i) {
      *
-     *         cMux = D::c[i][0]- u[0];
-     *         cMuy = D::c[i][1]- u[1];
-     *         cMuz = D::c[i][2]- u[2];
+     *         cMux = D::c_gpu(i,0)- u[0];
+     *         cMuy = D::c_gpu(i,1)- u[1];
+     *         cMuz = D::c_gpu(i,2)- u[2];
      *
      *         // // Order 0
      *         // CM[M000] += f[i];
@@ -5542,7 +5544,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
             K[i] = 0.;
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
@@ -5631,9 +5633,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         Keq[M010] = u[1];
         Keq[M001] = u[2];
         // Order 2
-        Keq[M200] = D::cs2;
-        Keq[M020] = D::cs2;
-        Keq[M002] = D::cs2;
+        Keq[M200] = D::cs2_gpu;
+        Keq[M020] = D::cs2_gpu;
+        Keq[M002] = D::cs2_gpu;
         Keq[M110] = 0.;
         Keq[M101] = 0.;
         Keq[M011] = 0.;
@@ -5659,9 +5661,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -5840,7 +5842,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -5854,35 +5856,35 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         GH[i] = 0.;
      *     }
      *
      *     for (int i = 0; i<19; ++i) {
-     *         T Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         T Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         T Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         T Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         T Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         T Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         GH[M000] += f[i];
      *         // Order 1
-     *         GH[M100] += D::c[i][0] * f[i];
-     *         GH[M010] += D::c[i][1] * f[i];
-     *         GH[M001] += D::c[i][2] * f[i];
+     *         GH[M100] += D::c_gpu(i,0) * f[i];
+     *         GH[M010] += D::c_gpu(i,1) * f[i];
+     *         GH[M001] += D::c_gpu(i,2) * f[i];
      *         // Order 2
      *         GH[M200] += Hxx * f[i];
      *         GH[M020] += Hyy * f[i];
      *         GH[M002] += Hzz * f[i];
-     *         GH[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         GH[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         GH[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         GH[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         GH[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         GH[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *         // Order 3
-     *         GH[M210] += Hxx * D::c[i][1] * f[i];
-     *         GH[M201] += Hxx * D::c[i][2] * f[i];
-     *         GH[M021] += Hyy * D::c[i][2] * f[i];
-     *         GH[M120] += D::c[i][0] * Hyy * f[i];
-     *         GH[M102] += D::c[i][0] * Hzz * f[i];
-     *         GH[M012] += D::c[i][1] * Hzz * f[i];
+     *         GH[M210] += Hxx * D::c_gpu(i,1) * f[i];
+     *         GH[M201] += Hxx * D::c_gpu(i,2) * f[i];
+     *         GH[M021] += Hyy * D::c_gpu(i,2) * f[i];
+     *         GH[M120] += D::c_gpu(i,0) * Hyy * f[i];
+     *         GH[M102] += D::c_gpu(i,0) * Hzz * f[i];
+     *         GH[M012] += D::c_gpu(i,1) * Hzz * f[i];
      *         // Order 4
      *         GH[M220] += Hxx * Hyy * f[i];
      *         GH[M202] += Hxx * Hzz * f[i];
@@ -5900,7 +5902,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *     }
      *
      *     T a1 = 1./3. ;
@@ -5957,7 +5959,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
         T X_P1 = f[FP00] + f[FPP0] + f[FPM0] + f[FP0P] + f[FP0M];
@@ -5998,21 +6000,21 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         GH[M022] = GH[M011] + two_invRho * (f[F0MP] + f[F0PM]);
 
         // We come back to Hermite moments
-        T cs4 = D::cs2 * D::cs2;
-        GH[M200] -= D::cs2;
-        GH[M020] -= D::cs2;
-        GH[M002] -= D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
+        GH[M200] -= D::cs2_gpu;
+        GH[M020] -= D::cs2_gpu;
+        GH[M002] -= D::cs2_gpu;
 
-        GH[M210] -= D::cs2 * GH[M010];
-        GH[M201] -= D::cs2 * GH[M001];
-        GH[M021] -= D::cs2 * GH[M001];
-        GH[M120] -= D::cs2 * GH[M100];
-        GH[M102] -= D::cs2 * GH[M100];
-        GH[M012] -= D::cs2 * GH[M010];
+        GH[M210] -= D::cs2_gpu * GH[M010];
+        GH[M201] -= D::cs2_gpu * GH[M001];
+        GH[M021] -= D::cs2_gpu * GH[M001];
+        GH[M120] -= D::cs2_gpu * GH[M100];
+        GH[M102] -= D::cs2_gpu * GH[M100];
+        GH[M012] -= D::cs2_gpu * GH[M010];
 
-        GH[M220] -= (D::cs2 * (GH[M200] + GH[M020]) + cs4);
-        GH[M202] -= (D::cs2 * (GH[M200] + GH[M002]) + cs4);
-        GH[M022] -= (D::cs2 * (GH[M020] + GH[M002]) + cs4);
+        GH[M220] -= (D::cs2_gpu * (GH[M200] + GH[M020]) + cs4);
+        GH[M202] -= (D::cs2_gpu * (GH[M200] + GH[M002]) + cs4);
+        GH[M022] -= (D::cs2_gpu * (GH[M020] + GH[M002]) + cs4);
     };
 
     static void GHcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &GHeq)
@@ -6067,90 +6069,90 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         GHeq_M202 = GHeq[M202] + (2. / 7.) * GHeq_M220;
         GHeq_M022 = GHeq[M022] + (2. / 7.) * GHeq_M220 + (2. / 5.) * GHeq_M202;
 
-        eq[F000] = (rho * D::t[F000])
+        eq[F000] = (rho * D::t_gpu(F000))
                    * (1. - 1.5 * (GHeq[M200] + GHeq[M020] + GHeq[M002]) + (9. / 7.) * GHeq_M220
                       + (9. / 5.) * GHeq_M202 + 3. * GHeq_M022);
 
-        eq[FP00] = (rho * D::t[FP00])
+        eq[FP00] = (rho * D::t_gpu(FP00))
                    * (1. + 3. * u[0] + 1.5 * (2. * GHeq[M200] - GHeq[M020] - GHeq[M002])
                       - 9. * GHeq_M120 - (45. / 7.) * GHeq_M220 - 9. * GHeq_M202);
-        eq[FM00] = (rho * D::t[FM00])
+        eq[FM00] = (rho * D::t_gpu(FM00))
                    * (1. - 3. * u[0] + 1.5 * (2. * GHeq[M200] - GHeq[M020] - GHeq[M002])
                       + 9. * GHeq_M120 - (45. / 7.) * GHeq_M220 - 9. * GHeq_M202);
 
         eq[F0P0] =
-            (rho * D::t[F0P0])
+            (rho * D::t_gpu(F0P0))
             * (1. + 3. * u[1] + 1.5 * (2. * GHeq[M020] - GHeq[M200] - GHeq[M002]) - 9. * GHeq_M210
                - (45. / 7.) * GHeq_M220 + (18. / 5.) * GHeq_M202 - 9. * GHeq_M022);
         eq[F0M0] =
-            (rho * D::t[F0M0])
+            (rho * D::t_gpu(F0M0))
             * (1. - 3. * u[1] + 1.5 * (2. * GHeq[M020] - GHeq[M200] - GHeq[M002]) + 9. * GHeq_M210
                - (45. / 7.) * GHeq_M220 + (18. / 5.) * GHeq_M202 - 9. * GHeq_M022);
 
         eq[F00P] =
-            (rho * D::t[F00P])
+            (rho * D::t_gpu(F00P))
             * (1. + 3. * u[2] + 1.5 * (2. * GHeq[M002] - GHeq[M200] - GHeq[M020]) - 9. * GHeq_M201
                + (36. / 7.) * GHeq_M220 - (27. / 5.) * GHeq_M202 - 9. * GHeq_M022);
         eq[F00M] =
-            (rho * D::t[F00M])
+            (rho * D::t_gpu(F00M))
             * (1. - 3. * u[2] + 1.5 * (2. * GHeq[M002] - GHeq[M200] - GHeq[M020]) + 9. * GHeq_M201
                + (36. / 7.) * GHeq_M220 - (27. / 5.) * GHeq_M202 - 9. * GHeq_M022);
 
-        eq[FPP0] = (rho * D::t[FPP0])
+        eq[FPP0] = (rho * D::t_gpu(FPP0))
                    * (1. + 3. * (+u[0] + u[1])
                       + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M020] - GHeq[M002]) + 9. * GHeq[M110]
                       + 4.5 * (GHeq_M210 + GHeq_M120 - GHeq_M102 - GHeq_M012) + 9. * GHeq_M220);
-        eq[FMP0] = (rho * D::t[FMP0])
+        eq[FMP0] = (rho * D::t_gpu(FMP0))
                    * (1. + 3. * (-u[0] + u[1])
                       + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M020] - GHeq[M002]) - 9. * GHeq[M110]
                       + 4.5 * (GHeq_M210 - GHeq_M120 + GHeq_M102 - GHeq_M012) + 9. * GHeq_M220);
-        eq[FPM0] = (rho * D::t[FPM0])
+        eq[FPM0] = (rho * D::t_gpu(FPM0))
                    * (1. + 3. * (+u[0] - u[1])
                       + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M020] - GHeq[M002]) - 9. * GHeq[M110]
                       + 4.5 * (-GHeq_M210 + GHeq_M120 - GHeq_M102 + GHeq_M012) + 9. * GHeq_M220);
-        eq[FMM0] = (rho * D::t[FMM0])
+        eq[FMM0] = (rho * D::t_gpu(FMM0))
                    * (1. + 3. * (-u[0] - u[1])
                       + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M020] - GHeq[M002]) + 9. * GHeq[M110]
                       + 4.5 * (-GHeq_M210 - GHeq_M120 + GHeq_M102 + GHeq_M012) + 9. * GHeq_M220);
 
         eq[FP0P] =
-            (rho * D::t[FP0P])
+            (rho * D::t_gpu(FP0P))
             * (1. + 3. * (+u[0] + u[2]) + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M002] - GHeq[M020])
                + 9. * GHeq[M101] + 4.5 * (GHeq_M201 + GHeq_M102 + GHeq_M120 - GHeq_M021)
                - (18. / 7.) * GHeq_M220 + 9. * GHeq_M202);
         eq[FM0P] =
-            (rho * D::t[FM0P])
+            (rho * D::t_gpu(FM0P))
             * (1. + 3. * (-u[0] + u[2]) + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M002] - GHeq[M020])
                - 9. * GHeq[M101] + 4.5 * (GHeq_M201 - GHeq_M102 - GHeq_M120 - GHeq_M021)
                - (18. / 7.) * GHeq_M220 + 9. * GHeq_M202);
         eq[FP0M] =
-            (rho * D::t[FP0M])
+            (rho * D::t_gpu(FP0M))
             * (1. + 3. * (+u[0] - u[2]) + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M002] - GHeq[M020])
                - 9. * GHeq[M101] + 4.5 * (-GHeq_M201 + GHeq_M102 + GHeq_M120 + GHeq_M021)
                - (18. / 7.) * GHeq_M220 + 9. * GHeq_M202);
         eq[FM0M] =
-            (rho * D::t[FM0M])
+            (rho * D::t_gpu(FM0M))
             * (1. + 3. * (-u[0] - u[2]) + 1.5 * (2. * GHeq[M200] + 2. * GHeq[M002] - GHeq[M020])
                + 9. * GHeq[M101] + 4.5 * (-GHeq_M201 - GHeq_M102 - GHeq_M120 + GHeq_M021)
                - (18. / 7.) * GHeq_M220 + 9. * GHeq_M202);
 
         eq[F0PP] =
-            (rho * D::t[F0PP])
+            (rho * D::t_gpu(F0PP))
             * (1. + 3. * (+u[1] + u[2]) + 1.5 * (2. * GHeq[M020] + 2. * GHeq[M002] - GHeq[M200])
                + 9. * GHeq[M011] + 4.5 * (GHeq_M021 + GHeq_M012 + GHeq_M210 + GHeq_M201)
                - (18. / 7.) * GHeq_M220 - (18. / 5.) * GHeq_M202 + 9. * GHeq_M022);
         eq[F0MP] =
-            (rho * D::t[F0MP])
+            (rho * D::t_gpu(F0MP))
             * (1. + 3. * (-u[1] + u[2]) + 1.5 * (2. * GHeq[M020] + 2. * GHeq[M002] - GHeq[M200])
                - 9. * GHeq[M011] + 4.5 * (GHeq_M021 - GHeq_M012 - GHeq_M210 + GHeq_M201)
                - (18. / 7.) * GHeq_M220 - (18. / 5.) * GHeq_M202 + 9. * GHeq_M022);
         eq[F0PM] =
-            (rho * D::t[F0PM])
+            (rho * D::t_gpu(F0PM))
             * (1. + 3. * (+u[1] - u[2]) + 1.5 * (2. * GHeq[M020] + 2. * GHeq[M002] - GHeq[M200])
                - 9. * GHeq[M011] + 4.5 * (-GHeq_M021 + GHeq_M012 + GHeq_M210 - GHeq_M201)
                - (18. / 7.) * GHeq_M220 - (18. / 5.) * GHeq_M202 + 9. * GHeq_M022);
         eq[F0MM] =
-            (rho * D::t[F0MM])
+            (rho * D::t_gpu(F0MM))
             * (1. + 3. * (-u[1] - u[2]) + 1.5 * (2. * GHeq[M020] + 2. * GHeq[M002] - GHeq[M200])
                + 9. * GHeq[M011] + 4.5 * (-GHeq_M021 - GHeq_M012 - GHeq_M210 - GHeq_M201)
                - (18. / 7.) * GHeq_M220 - (18. / 5.) * GHeq_M202 + 9. * GHeq_M022);
@@ -6233,112 +6235,112 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         GHcoll[M202] = (1. - omega4) * GH_M202 + omega4 * GHeq_M202;
         GHcoll[M022] = (1. - omega4) * GH_M022 + omega4 * GHeq_M022;
 
-        cell[F000] = (rho * D::t[F000])
+        cell[F000] = (rho * D::t_gpu(F000))
                      * (1. - 1.5 * (GHcoll[M200] + GHcoll[M020] + GHcoll[M002])
                         + (9. / 7.) * GHcoll[M220] + (9. / 5.) * GHcoll[M202] + 3. * GHcoll[M022]);
 
-        cell[FP00] = (rho * D::t[FP00])
+        cell[FP00] = (rho * D::t_gpu(FP00))
                      * (1. + 3. * u[0] + 1.5 * (2. * GHcoll[M200] - GHcoll[M020] - GHcoll[M002])
                         - 9. * GHcoll[M120] - (45. / 7.) * GHcoll[M220] - 9. * GHcoll[M202]);
-        cell[FM00] = (rho * D::t[FM00])
+        cell[FM00] = (rho * D::t_gpu(FM00))
                      * (1. - 3. * u[0] + 1.5 * (2. * GHcoll[M200] - GHcoll[M020] - GHcoll[M002])
                         + 9. * GHcoll[M120] - (45. / 7.) * GHcoll[M220] - 9. * GHcoll[M202]);
 
-        cell[F0P0] = (rho * D::t[F0P0])
+        cell[F0P0] = (rho * D::t_gpu(F0P0))
                      * (1. + 3. * u[1] + 1.5 * (2. * GHcoll[M020] - GHcoll[M200] - GHcoll[M002])
                         - 9. * GHcoll[M210] - (45. / 7.) * GHcoll[M220] + (18. / 5.) * GHcoll[M202]
                         - 9. * GHcoll[M022]);
-        cell[F0M0] = (rho * D::t[F0M0])
+        cell[F0M0] = (rho * D::t_gpu(F0M0))
                      * (1. - 3. * u[1] + 1.5 * (2. * GHcoll[M020] - GHcoll[M200] - GHcoll[M002])
                         + 9. * GHcoll[M210] - (45. / 7.) * GHcoll[M220] + (18. / 5.) * GHcoll[M202]
                         - 9. * GHcoll[M022]);
 
-        cell[F00P] = (rho * D::t[F00P])
+        cell[F00P] = (rho * D::t_gpu(F00P))
                      * (1. + 3. * u[2] + 1.5 * (2. * GHcoll[M002] - GHcoll[M200] - GHcoll[M020])
                         - 9. * GHcoll[M201] + (36. / 7.) * GHcoll[M220] - (27. / 5.) * GHcoll[M202]
                         - 9. * GHcoll[M022]);
-        cell[F00M] = (rho * D::t[F00M])
+        cell[F00M] = (rho * D::t_gpu(F00M))
                      * (1. - 3. * u[2] + 1.5 * (2. * GHcoll[M002] - GHcoll[M200] - GHcoll[M020])
                         + 9. * GHcoll[M201] + (36. / 7.) * GHcoll[M220] - (27. / 5.) * GHcoll[M202]
                         - 9. * GHcoll[M022]);
 
         cell[FPP0] =
-            (rho * D::t[FPP0])
+            (rho * D::t_gpu(FPP0))
             * (1. + 3. * (+u[0] + u[1])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M020] - GHcoll[M002]) + 9. * GHcoll[M110]
                + 4.5 * (GHcoll[M210] + GHcoll[M120] - GHcoll[M102] - GHcoll[M012])
                + 9. * GHcoll[M220]);
         cell[FMP0] =
-            (rho * D::t[FMP0])
+            (rho * D::t_gpu(FMP0))
             * (1. + 3. * (-u[0] + u[1])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M020] - GHcoll[M002]) - 9. * GHcoll[M110]
                + 4.5 * (GHcoll[M210] - GHcoll[M120] + GHcoll[M102] - GHcoll[M012])
                + 9. * GHcoll[M220]);
         cell[FPM0] =
-            (rho * D::t[FPM0])
+            (rho * D::t_gpu(FPM0))
             * (1. + 3. * (+u[0] - u[1])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M020] - GHcoll[M002]) - 9. * GHcoll[M110]
                + 4.5 * (-GHcoll[M210] + GHcoll[M120] - GHcoll[M102] + GHcoll[M012])
                + 9. * GHcoll[M220]);
         cell[FMM0] =
-            (rho * D::t[FMM0])
+            (rho * D::t_gpu(FMM0))
             * (1. + 3. * (-u[0] - u[1])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M020] - GHcoll[M002]) + 9. * GHcoll[M110]
                + 4.5 * (-GHcoll[M210] - GHcoll[M120] + GHcoll[M102] + GHcoll[M012])
                + 9. * GHcoll[M220]);
 
         cell[FP0P] =
-            (rho * D::t[FP0P])
+            (rho * D::t_gpu(FP0P))
             * (1. + 3. * (+u[0] + u[2])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M002] - GHcoll[M020]) + 9. * GHcoll[M101]
                + 4.5 * (GHcoll[M201] + GHcoll[M102] + GHcoll[M120] - GHcoll[M021])
                - (18. / 7.) * GHcoll[M220] + 9. * GHcoll[M202]);
         cell[FM0P] =
-            (rho * D::t[FM0P])
+            (rho * D::t_gpu(FM0P))
             * (1. + 3. * (-u[0] + u[2])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M002] - GHcoll[M020]) - 9. * GHcoll[M101]
                + 4.5 * (GHcoll[M201] - GHcoll[M102] - GHcoll[M120] - GHcoll[M021])
                - (18. / 7.) * GHcoll[M220] + 9. * GHcoll[M202]);
         cell[FP0M] =
-            (rho * D::t[FP0M])
+            (rho * D::t_gpu(FP0M))
             * (1. + 3. * (+u[0] - u[2])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M002] - GHcoll[M020]) - 9. * GHcoll[M101]
                + 4.5 * (-GHcoll[M201] + GHcoll[M102] + GHcoll[M120] + GHcoll[M021])
                - (18. / 7.) * GHcoll[M220] + 9. * GHcoll[M202]);
         cell[FM0M] =
-            (rho * D::t[FM0M])
+            (rho * D::t_gpu(FM0M))
             * (1. + 3. * (-u[0] - u[2])
                + 1.5 * (2. * GHcoll[M200] + 2. * GHcoll[M002] - GHcoll[M020]) + 9. * GHcoll[M101]
                + 4.5 * (-GHcoll[M201] - GHcoll[M102] - GHcoll[M120] + GHcoll[M021])
                - (18. / 7.) * GHcoll[M220] + 9. * GHcoll[M202]);
 
         cell[F0PP] =
-            (rho * D::t[F0PP])
+            (rho * D::t_gpu(F0PP))
             * (1. + 3. * (+u[1] + u[2])
                + 1.5 * (2. * GHcoll[M020] + 2. * GHcoll[M002] - GHcoll[M200]) + 9. * GHcoll[M011]
                + 4.5 * (GHcoll[M021] + GHcoll[M012] + GHcoll[M210] + GHcoll[M201])
                - (18. / 7.) * GHcoll[M220] - (18. / 5.) * GHcoll[M202] + 9. * GHcoll[M022]);
         cell[F0MP] =
-            (rho * D::t[F0MP])
+            (rho * D::t_gpu(F0MP))
             * (1. + 3. * (-u[1] + u[2])
                + 1.5 * (2. * GHcoll[M020] + 2. * GHcoll[M002] - GHcoll[M200]) - 9. * GHcoll[M011]
                + 4.5 * (GHcoll[M021] - GHcoll[M012] - GHcoll[M210] + GHcoll[M201])
                - (18. / 7.) * GHcoll[M220] - (18. / 5.) * GHcoll[M202] + 9. * GHcoll[M022]);
         cell[F0PM] =
-            (rho * D::t[F0PM])
+            (rho * D::t_gpu(F0PM))
             * (1. + 3. * (+u[1] - u[2])
                + 1.5 * (2. * GHcoll[M020] + 2. * GHcoll[M002] - GHcoll[M200]) - 9. * GHcoll[M011]
                + 4.5 * (-GHcoll[M021] + GHcoll[M012] + GHcoll[M210] - GHcoll[M201])
                - (18. / 7.) * GHcoll[M220] - (18. / 5.) * GHcoll[M202] + 9. * GHcoll[M022]);
         cell[F0MM] =
-            (rho * D::t[F0MM])
+            (rho * D::t_gpu(F0MM))
             * (1. + 3. * (-u[1] - u[2])
                + 1.5 * (2. * GHcoll[M020] + 2. * GHcoll[M002] - GHcoll[M200]) + 9. * GHcoll[M011]
                + 4.5 * (-GHcoll[M021] - GHcoll[M012] - GHcoll[M210] - GHcoll[M201])
                - (18. / 7.) * GHcoll[M220] - (18. / 5.) * GHcoll[M202] + 9. * GHcoll[M022]);
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 
@@ -6352,7 +6354,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     Array<T, D::q> f;
      *     for (int i = 0; i<19; ++i) {
-     *         f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+     *         f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
      *         RR[i] = 0.;
      *     }
      *
@@ -6362,25 +6364,25 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
      *
      *     for (int i = 0; i<19; ++i) {
      *
-     *         Hxx = D::c[i][0] * D::c[i][0] - D::cs2;
-     *         Hyy = D::c[i][1] * D::c[i][1] - D::cs2;
-     *         Hzz = D::c[i][2] * D::c[i][2] - D::cs2;
+     *         Hxx = D::c_gpu(i,0) * D::c_gpu(i,0) - D::cs2_gpu;
+     *         Hyy = D::c_gpu(i,1) * D::c_gpu(i,1) - D::cs2_gpu;
+     *         Hzz = D::c_gpu(i,2) * D::c_gpu(i,2) - D::cs2_gpu;
      *
      *         // Order 0
      *         RR[M000] += f[i];
      *
      *         // Order 1
-     *         RR[M100] += D::c[i][0] * f[i];
-     *         RR[M010] += D::c[i][1] * f[i];
-     *         RR[M001] += D::c[i][2] * f[i];
+     *         RR[M100] += D::c_gpu(i,0) * f[i];
+     *         RR[M010] += D::c_gpu(i,1) * f[i];
+     *         RR[M001] += D::c_gpu(i,2) * f[i];
      *
      *         // Order 2
      *         RR[M200] += Hxx * f[i];
      *         RR[M020] += Hyy * f[i];
      *         RR[M002] += Hzz * f[i];
-     *         RR[M110] += D::c[i][0] * D::c[i][1] * f[i];
-     *         RR[M101] += D::c[i][0] * D::c[i][2] * f[i];
-     *         RR[M011] += D::c[i][1] * D::c[i][2] * f[i];
+     *         RR[M110] += D::c_gpu(i,0) * D::c_gpu(i,1) * f[i];
+     *         RR[M101] += D::c_gpu(i,0) * D::c_gpu(i,2) * f[i];
+     *         RR[M011] += D::c_gpu(i,1) * D::c_gpu(i,2) * f[i];
      *     }
      *
      *     rho = RR[M000];
@@ -6396,7 +6398,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
     {
         Array<T, D::q> f;
         for (int i = 0; i < 19; ++i) {
-            f[i] = cell[i] + D::SkordosFactor() * D::t[i];
+            f[i] = cell[i] + D::SkordosFactor() * D::t_gpu(i);
         }
         T X_M1 = f[FM00] + f[FMM0] + f[FMP0] + f[FM0M] + f[FM0P];
         T X_P1 = f[FP00] + f[FPP0] + f[FPM0] + f[FP0P] + f[FP0M];
@@ -6425,9 +6427,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         RR[M011] = invRho * (f[F0MM] - f[F0MP] + f[F0PP] - f[F0PM]);
 
         // We come back to Hermite moments
-        RR[M200] -= D::cs2;
-        RR[M020] -= D::cs2;
-        RR[M002] -= D::cs2;
+        RR[M200] -= D::cs2_gpu;
+        RR[M020] -= D::cs2_gpu;
+        RR[M002] -= D::cs2_gpu;
     }
 
     static void RRcomputeEquilibriumMoments(Array<T, D::d> const &u, Array<T, D::q> &RReq)
@@ -6465,9 +6467,9 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         Array<T, D::d> u(RReq[1], RReq[2], RReq[3]);
         Array<T, D::q> RMeq;
         // Order 2
-        RMeq[M200] = u[0] * u[0] + D::cs2;
-        RMeq[M020] = u[1] * u[1] + D::cs2;
-        RMeq[M002] = u[2] * u[2] + D::cs2;
+        RMeq[M200] = u[0] * u[0] + D::cs2_gpu;
+        RMeq[M020] = u[1] * u[1] + D::cs2_gpu;
+        RMeq[M002] = u[2] * u[2] + D::cs2_gpu;
         RMeq[M110] = u[0] * u[1];
         RMeq[M101] = u[0] * u[2];
         RMeq[M011] = u[1] * u[2];
@@ -6532,7 +6534,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         T omegaPlus = (omegaBulk + 2. * omega1) / 3.;  // Notation used by Fei
         T omegaMinus = (omegaBulk - omega1) / 3.;      // Notation used by Fei
 
-        T cs4 = D::cs2 * D::cs2;
+        T cs4 = D::cs2_gpu * D::cs2_gpu;
 
         // Post-collision and Nonequilibrium moments.
         Array<T, D::q> RRneq;
@@ -6591,24 +6593,24 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         RRcoll[M022] = (1. - omega4) * RRneq[M022] + RReq[M022];
 
         // Come back to RMcoll using relationships between RRs and RMs
-        RMcoll[M200] = RRcoll[M200] + D::cs2;
-        RMcoll[M020] = RRcoll[M020] + D::cs2;
-        RMcoll[M002] = RRcoll[M002] + D::cs2;
+        RMcoll[M200] = RRcoll[M200] + D::cs2_gpu;
+        RMcoll[M020] = RRcoll[M020] + D::cs2_gpu;
+        RMcoll[M002] = RRcoll[M002] + D::cs2_gpu;
 
         RMcoll[M110] = RRcoll[M110];
         RMcoll[M101] = RRcoll[M101];
         RMcoll[M011] = RRcoll[M011];
 
-        RMcoll[M210] = RRcoll[M210] + D::cs2 * u[1];
-        RMcoll[M201] = RRcoll[M201] + D::cs2 * u[2];
-        RMcoll[M021] = RRcoll[M021] + D::cs2 * u[2];
-        RMcoll[M120] = RRcoll[M120] + D::cs2 * u[0];
-        RMcoll[M102] = RRcoll[M102] + D::cs2 * u[0];
-        RMcoll[M012] = RRcoll[M012] + D::cs2 * u[1];
+        RMcoll[M210] = RRcoll[M210] + D::cs2_gpu * u[1];
+        RMcoll[M201] = RRcoll[M201] + D::cs2_gpu * u[2];
+        RMcoll[M021] = RRcoll[M021] + D::cs2_gpu * u[2];
+        RMcoll[M120] = RRcoll[M120] + D::cs2_gpu * u[0];
+        RMcoll[M102] = RRcoll[M102] + D::cs2_gpu * u[0];
+        RMcoll[M012] = RRcoll[M012] + D::cs2_gpu * u[1];
 
-        RMcoll[M220] = RRcoll[M220] + D::cs2 * (RRcoll[M200] + RRcoll[M020]) + cs4;
-        RMcoll[M202] = RRcoll[M202] + D::cs2 * (RRcoll[M200] + RRcoll[M002]) + cs4;
-        RMcoll[M022] = RRcoll[M022] + D::cs2 * (RRcoll[M020] + RRcoll[M002]) + cs4;
+        RMcoll[M220] = RRcoll[M220] + D::cs2_gpu * (RRcoll[M200] + RRcoll[M020]) + cs4;
+        RMcoll[M202] = RRcoll[M202] + D::cs2_gpu * (RRcoll[M200] + RRcoll[M002]) + cs4;
+        RMcoll[M022] = RRcoll[M022] + D::cs2_gpu * (RRcoll[M020] + RRcoll[M002]) + cs4;
 
         // Compute post collision populations from RM
         // Optimization based on symmetries between populations and their opposite counterpart
@@ -6647,7 +6649,7 @@ struct comprehensiveDynamicsTemplatesImpl<T, descriptors::D3Q19DescriptorBase<T>
         cell[F0MM] = 0.5 * rho * (-RMcoll[M021] - RMcoll[M012]) + cell[F0PP];
 
         for (int i = 0; i < 19; ++i) {
-            cell[i] -= D::SkordosFactor() * D::t[i];
+            cell[i] -= D::SkordosFactor() * D::t_gpu(i);
         }
     };
 

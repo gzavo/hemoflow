@@ -51,6 +51,64 @@
 
 namespace plb {
 
+/* ******** AcceleratedStoreDynamicsFunctional3D ************************************ */
+
+template <typename T, template <typename U> class Descriptor>
+AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::AcceleratedStoreDynamicsFunctional3D() :
+    maxChainLengthId(this->getStatistics().subscribeMax())
+{ }
+
+template <typename T, template <typename U> class Descriptor>
+void AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::processGenericBlocks(
+    Box3D domain, std::vector<AtomicBlock3D *> blocks)
+{
+    PLB_PRECONDITION(blocks.size() == 2);
+    AtomicAcceleratedLattice3D<T, Descriptor> &lattice =
+        *dynamic_cast<AtomicAcceleratedLattice3D<T, Descriptor> *>(blocks[0]);
+    AtomicContainerBlock3D &container = *dynamic_cast<AtomicContainerBlock3D *>(blocks[1]);
+    StoreDynamicsID *storeID = new StoreDynamicsID;
+    for (plint iX = domain.x0; iX <= domain.x1; ++iX) {
+        for (plint iY = domain.y0; iY <= domain.y1; ++iY) {
+            for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                std::vector<int> chain;
+                constructIdChain(lattice.getDynamics(iX, iY, iZ), chain);
+                storeID->addIdChain(chain);
+                this->getStatistics().gatherMax(maxChainLengthId, (double)chain.size());
+            }
+        }
+    }
+    storeID->startIterations();
+    container.setData(storeID);
+}
+
+template <typename T, template <typename U> class Descriptor>
+AcceleratedStoreDynamicsFunctional3D<T, Descriptor>
+    *AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::clone() const
+{
+    return new AcceleratedStoreDynamicsFunctional3D<T, Descriptor>(*this);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::getTypeOfModification(
+    std::vector<modif::ModifT> &modified) const
+{
+    modified[0] = modif::nothing;
+    modified[1] = modif::staticVariables;
+}
+
+template <typename T, template <typename U> class Descriptor>
+BlockDomain::DomainT AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::appliesTo() const
+{
+    return BlockDomain::bulk;
+}
+
+template <typename T, template <typename U> class Descriptor>
+pluint AcceleratedStoreDynamicsFunctional3D<T, Descriptor>::getMaxChainLength() const
+{
+    double maximum = this->getStatistics().getMax(maxChainLengthId);
+    return (pluint)(.5 + maximum);
+}
+
 /* ******** StoreDynamicsFunctional3D ************************************ */
 
 template <typename T, template <typename U> class Descriptor>

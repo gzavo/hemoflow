@@ -69,6 +69,32 @@ void integrateProcessingFunctional(
     addInternalProcessor(BoxProcessorGenerator3D(functional, domain), atomicBlocks, level);
 }
 
+/* *************** AcceleratedBoxProcessing3D ****************************************** */
+
+template <typename T, template <typename U> class Descriptor>
+void applyProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices)
+{
+    std::vector<AtomicBlock3D *> atomicBlocks(lattices.size());
+    for (pluint iLattice = 0; iLattice < lattices.size(); ++iLattice) {
+        atomicBlocks[iLattice] = dynamic_cast<AtomicBlock3D *>(lattices[iLattice]);
+    }
+    executeDataProcessor(BoxProcessorGenerator3D(functional, domain), atomicBlocks);
+}
+
+template <typename T, template <typename U> class Descriptor>
+void integrateProcessingFunctional(
+    AcceleratedBoxProcessingFunctional3D<T, Descriptor> *functional, Box3D domain,
+    std::vector<AtomicAcceleratedLattice3D<T, Descriptor> *> lattices, plint level)
+{
+    std::vector<AtomicBlock3D *> atomicBlocks(lattices.size());
+    for (pluint iLattice = 0; iLattice < lattices.size(); ++iLattice) {
+        atomicBlocks[iLattice] = dynamic_cast<AtomicBlock3D *>(lattices[iLattice]);
+    }
+    addInternalProcessor(BoxProcessorGenerator3D(functional, domain), atomicBlocks, level);
+}
+
 /* *************** ScalarFieldBoxProcessing3D ******************************* */
 
 template <typename T>

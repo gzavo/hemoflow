@@ -79,6 +79,9 @@ CommunicationStructure3D::CommunicationStructure3D(
         Box3D overlapCoordinates(overlap.getOverlapCoordinates());
         info.fromDomain = originalBulk.toLocal(originalCoordinates);
         info.toDomain = overlapBulk.toLocal(overlapCoordinates);
+        info.to_nx = overlapBulk.getBulk().getNx() + 2 * overlapBulk.getEnvelopeWidth();
+        info.to_ny = overlapBulk.getBulk().getNy() + 2 * overlapBulk.getEnvelopeWidth();
+        info.to_nz = overlapBulk.getBulk().getNz() + 2 * overlapBulk.getEnvelopeWidth();
         info.absoluteOffset = Dot3D(
             overlapCoordinates.x0 - originalCoordinates.x0,
             overlapCoordinates.y0 - originalCoordinates.y0,
@@ -136,6 +139,9 @@ CommunicationPattern3D::CommunicationPattern3D(
         Box3D overlapCoordinates(overlap.getOverlapCoordinates());
         info.fromDomain = originalBulk.toLocal(originalCoordinates);
         info.toDomain = overlapBulk.toLocal(overlapCoordinates);
+        info.to_nx = overlapBulk.getBulk().getNx() + 2 * overlapBulk.getEnvelopeWidth();
+        info.to_ny = overlapBulk.getBulk().getNy() + 2 * overlapBulk.getEnvelopeWidth();
+        info.to_nz = overlapBulk.getBulk().getNz() + 2 * overlapBulk.getEnvelopeWidth();
         info.absoluteOffset = Dot3D(
             overlapCoordinates.x0 - originalCoordinates.x0,
             overlapCoordinates.y0 - originalCoordinates.y0,
@@ -205,19 +211,24 @@ void ParallelBlockCommunicator3D::duplicateOverlaps(
     PeriodicitySwitch3D const &periodicity = multiBlock.periodicity();
 
     // Implement a caching mechanism for the communication structure.
-    if (overlapsModified) {
-        overlapsModified = false;
-        LocalMultiBlockInfo3D const &localInfo = multiBlockManagement.getLocalInfo();
-        std::vector<Overlap3D> overlaps(multiBlockManagement.getLocalInfo().getNormalOverlaps());
-        for (pluint iOverlap = 0; iOverlap < localInfo.getPeriodicOverlaps().size(); ++iOverlap) {
-            PeriodicOverlap3D const &pOverlap = localInfo.getPeriodicOverlaps()[iOverlap];
-            if (periodicity.get(pOverlap.normalX, pOverlap.normalY, pOverlap.normalZ)) {
-                overlaps.push_back(pOverlap.overlap);
+    {
+        nvtx a {"PBC allocate buffers"};
+        if (overlapsModified) {
+            overlapsModified = false;
+            LocalMultiBlockInfo3D const &localInfo = multiBlockManagement.getLocalInfo();
+            std::vector<Overlap3D> overlaps(
+                multiBlockManagement.getLocalInfo().getNormalOverlaps());
+            for (pluint iOverlap = 0; iOverlap < localInfo.getPeriodicOverlaps().size(); ++iOverlap)
+            {
+                PeriodicOverlap3D const &pOverlap = localInfo.getPeriodicOverlaps()[iOverlap];
+                if (periodicity.get(pOverlap.normalX, pOverlap.normalY, pOverlap.normalZ)) {
+                    overlaps.push_back(pOverlap.overlap);
+                }
             }
+            delete communication;
+            communication = new CommunicationStructure3D(
+                overlaps, multiBlockManagement, multiBlockManagement, multiBlock.sizeOfCell());
         }
-        delete communication;
-        communication = new CommunicationStructure3D(
-            overlaps, multiBlockManagement, multiBlockManagement, multiBlock.sizeOfCell());
     }
 
     communicate(*communication, multiBlock, multiBlock, whichData);
@@ -229,10 +240,14 @@ void ParallelBlockCommunicator3D::communicate(
 {
     PLB_PRECONDITION(originMultiBlock.sizeOfCell() == destinationMultiBlock.sizeOfCell());
 
-    CommunicationStructure3D communication(
-        overlaps, originMultiBlock.getMultiBlockManagement(),
-        destinationMultiBlock.getMultiBlockManagement(), originMultiBlock.sizeOfCell());
-    communicate(communication, originMultiBlock, destinationMultiBlock, whichData);
+    {
+        nvtx a {"CS construct"};
+        CommunicationStructure3D communication(
+            overlaps, originMultiBlock.getMultiBlockManagement(),
+            destinationMultiBlock.getMultiBlockManagement(), originMultiBlock.sizeOfCell());
+
+        communicate(communication, originMultiBlock, destinationMultiBlock, whichData);
+    }
 }
 
 void ParallelBlockCommunicator3D::communicate(
@@ -241,42 +256,59 @@ void ParallelBlockCommunicator3D::communicate(
 {
     global::profiler().start("mpiCommunication");
     bool staticMessage = whichData == modif::staticVariables;
-    // 1. Non-blocking receives.
-    communication.recvComm.startBeingReceptive(staticMessage);
-
-    // 2. Non-blocking sends.
-    for (unsigned iSend = 0; iSend < communication.sendPackage.size(); ++iSend) {
-        CommunicationInfo3D const &info = communication.sendPackage[iSend];
-        AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
-        fromBlock.getDataTransfer().send(
-            info.fromDomain, communication.sendComm.getSendBuffer(info.toProcessId), whichData);
-        communication.sendComm.acceptMessage(info.toProcessId, staticMessage);
+    {
+        nvtx a {"Step1 PBC communicate"};
+        // 1. Non-blocking receives.
+        communication.recvComm.startBeingReceptive(staticMessage);
     }
 
-    // 3. Local copies which require no communication.
-    for (unsigned iSendRecv = 0; iSendRecv < communication.sendRecvPackage.size(); ++iSendRecv) {
-        CommunicationInfo3D const &info = communication.sendRecvPackage[iSendRecv];
-        AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
-        AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
-        plint deltaX = info.fromDomain.x0 - info.toDomain.x0;
-        plint deltaY = info.fromDomain.y0 - info.toDomain.y0;
-        plint deltaZ = info.fromDomain.z0 - info.toDomain.z0;
-        toBlock.getDataTransfer().attribute(
-            info.toDomain, deltaX, deltaY, deltaZ, fromBlock, whichData, info.absoluteOffset);
+    {
+        nvtx b {"Step2 PBC communicate"};
+        // 2. Non-blocking sends.
+        for (unsigned iSend = 0; iSend < communication.sendPackage.size(); ++iSend) {
+            CommunicationInfo3D const &info = communication.sendPackage[iSend];
+            AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
+            fromBlock.getDataTransfer().send(
+                info.fromDomain, communication.sendComm.getSendBuffer(info.toProcessId), whichData);
+            communication.sendComm.acceptMessage(info.toProcessId, staticMessage);
+        }
     }
 
-    // 4. Finalize the receives.
-    for (unsigned iRecv = 0; iRecv < communication.recvPackage.size(); ++iRecv) {
-        CommunicationInfo3D const &info = communication.recvPackage[iRecv];
-        AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
-        toBlock.getDataTransfer().receive(
-            info.toDomain, communication.recvComm.receiveMessage(info.fromProcessId, staticMessage),
-            whichData, info.absoluteOffset);
+    {
+        nvtx c {"Step3 PBC communicate"};
+        // 3. Local copies which require no communication.
+        for (unsigned iSendRecv = 0; iSendRecv < communication.sendRecvPackage.size(); ++iSendRecv)
+        {
+            CommunicationInfo3D const &info = communication.sendRecvPackage[iSendRecv];
+            AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
+            AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
+            plint deltaX = info.fromDomain.x0 - info.toDomain.x0;
+            plint deltaY = info.fromDomain.y0 - info.toDomain.y0;
+            plint deltaZ = info.fromDomain.z0 - info.toDomain.z0;
+            toBlock.getDataTransfer().attribute(
+                info.toDomain, deltaX, deltaY, deltaZ, fromBlock, whichData, info.absoluteOffset);
+        }
     }
 
-    // 5. Finalize the sends.
-    communication.sendComm.finalize(staticMessage);
-    global::profiler().stop("mpiCommunication");
+    {
+        nvtx d {"Step4 PBC communicate"};
+        // 4. Finalize the receives.
+        for (unsigned iRecv = 0; iRecv < communication.recvPackage.size(); ++iRecv) {
+            CommunicationInfo3D const &info = communication.recvPackage[iRecv];
+            AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
+            toBlock.getDataTransfer().receive(
+                info.toDomain,
+                communication.recvComm.receiveMessage(info.fromProcessId, staticMessage), whichData,
+                info.absoluteOffset);
+        }
+    }
+
+    {
+        nvtx e {"Step5 PBC communicate"};
+        // 5. Finalize the sends.
+        communication.sendComm.finalize(staticMessage);
+        global::profiler().stop("mpiCommunication");
+    }
 }
 
 void ParallelBlockCommunicator3D::signalPeriodicity() const
@@ -286,10 +318,7 @@ void ParallelBlockCommunicator3D::signalPeriodicity() const
 
 ////////////////////// Class BlockingCommunicator3D /////////////////////
 
-BlockingCommunicator3D::BlockingCommunicator3D() : overlapsModified(true), communication(0)
-{
-    pcout << "Using the blocking version of the communicator." << std::endl;
-}
+BlockingCommunicator3D::BlockingCommunicator3D() : overlapsModified(true), communication(0) { }
 
 // QUESTION: Why is copy constructor doing nothing?
 BlockingCommunicator3D::BlockingCommunicator3D(BlockingCommunicator3D const &) :
@@ -360,6 +389,10 @@ void BlockingCommunicator3D::communicate(
     CommunicationPattern3D &communication, MultiBlock3D const &originMultiBlock,
     MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const
 {
+    if (originMultiBlock.hasRawCommunication()) {
+        communicateRaw(communication, originMultiBlock, destinationMultiBlock, whichData);
+        return;
+    }
     for (unsigned iSendRecv = 0; iSendRecv < communication.sendRecvPackage.size(); ++iSendRecv) {
         CommunicationInfo3D const &info = communication.sendRecvPackage[iSendRecv];
         AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
@@ -397,6 +430,71 @@ void BlockingCommunicator3D::communicate(
             AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
             toBlock.getDataTransfer().receive(
                 info.toDomain, recvBuffer, whichData, info.absoluteOffset);
+        }
+    }
+
+    std::vector<MPI_Status> status1(communication.sendPackage.size());
+    std::vector<MPI_Status> status2(communication.sendPackage.size());
+    for (unsigned i = 0; i < communication.sendPackage.size(); ++i) {
+        if (request1[i] != MPI_REQUEST_NULL) {
+            global::mpi().wait(&request1[i], &status1[i]);
+        }
+        if (request2[i] != MPI_REQUEST_NULL) {
+            global::mpi().wait(&request2[i], &status2[i]);
+        }
+    }
+}
+
+void BlockingCommunicator3D::communicateRaw(
+    CommunicationPattern3D &communication, MultiBlock3D const &originMultiBlock,
+    MultiBlock3D &destinationMultiBlock, modif::ModifT whichData) const
+{
+    for (unsigned iSendRecv = 0; iSendRecv < communication.sendRecvPackage.size(); ++iSendRecv) {
+        CommunicationInfo3D const &info = communication.sendRecvPackage[iSendRecv];
+        AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
+        AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
+        plint deltaX = info.fromDomain.x0 - info.toDomain.x0;
+        plint deltaY = info.fromDomain.y0 - info.toDomain.y0;
+        plint deltaZ = info.fromDomain.z0 - info.toDomain.z0;
+        toBlock.getDataTransfer().attribute(
+            info.toDomain, deltaX, deltaY, deltaZ, fromBlock, whichData, info.absoluteOffset);
+    }
+
+    std::vector<MPI_Request> request1(communication.sendPackage.size(), MPI_REQUEST_NULL);
+    std::vector<MPI_Request> request2(communication.sendPackage.size(), MPI_REQUEST_NULL);
+
+    for (unsigned i = 0; i < communication.sendPackage.size(); ++i) {
+        CommunicationInfo3D const &info = communication.sendPackage[i];
+        AtomicBlock3D const &fromBlock = originMultiBlock.getComponent(info.fromBlockId);
+        plint deltaX = info.fromDomain.x0 - info.toDomain.x0;
+        plint deltaY = info.fromDomain.y0 - info.toDomain.y0;
+        plint deltaZ = info.fromDomain.z0 - info.toDomain.z0;
+        Box3D toBoundingBox(0, info.to_nx - 1, 0, info.to_ny - 1, 0, info.to_nz - 1);
+        fromBlock.getDataTransfer().send_raw(
+            info.toDomain, toBoundingBox, deltaX, deltaY, deltaZ, &info.buffer, info.bufferSize,
+            &info.indices, whichData);
+        global::mpi().iSend(&info.bufferSize, 1, info.toProcessId, &request1[i]);
+        if (info.bufferSize > 0) {
+            global::mpi().iSend(info.buffer, info.bufferSize, info.toProcessId, &request2[i]);
+        }
+    }
+
+    for (unsigned i = 0; i < communication.recvPackage.size(); ++i) {
+        CommunicationInfo3D const &info = communication.recvPackage[i];
+        plint dataSize;
+        global::mpi().receive(&dataSize, 1, info.fromProcessId);
+        if (dataSize > 0) {
+            if (info.buffer == nullptr) {
+                info.bufferSize = dataSize;
+                allocateBytes((char **)&info.buffer, info.bufferSize);
+            } else {
+                PLB_ASSERT(info.bufferSize == dataSize);
+            }
+            global::mpi().receive(info.buffer, info.bufferSize, info.fromProcessId);
+            AtomicBlock3D &toBlock = destinationMultiBlock.getComponent(info.toBlockId);
+            toBlock.getDataTransfer().receive_raw(
+                info.toDomain, info.buffer, info.bufferSize, &info.indices, whichData,
+                info.absoluteOffset);
         }
     }
 
