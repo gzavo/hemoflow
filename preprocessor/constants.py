@@ -5,6 +5,8 @@ def constant(f):
         return f()
     return property(fget, fset)
 
+# Voxel labels. Openings: 10 = inlet (start of the centerline), 11 = smallest outlet,
+# 12, 13, ... = remaining outlets by decreasing radius. 20 = fluid voxels inside a flow diverter.
 class const(object):
     @constant
     def UNUSED_VOXEL():
@@ -24,3 +26,6 @@ class const(object):
     @constant
     def OUTLET_REST_VOXEL():
         return 12
+    @constant
+    def FLOW_DIVERTER_VOXEL():
+        return 20

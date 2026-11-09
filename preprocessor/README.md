@@ -1,45 +1,60 @@
-# LBM_preprocess tools for HemoFlow
+# HemoFlow preprocessor
+
+Turns a vessel surface (STL), its centerline (VTP) and, optionally, a deployed flow
+diverter (STL) into the voxelized geometry file (`.npz`) that the `hemoFlow` solver
+reads. The main [README](../README.md) documents the configuration keys, the input
+requirements and the output arrays in detail.
+
+## Installation
+
+```bash
+conda env create -f environment.yml    # creates the env "lbmpre" (Python 3.12)
+```
 
 ## Usage
 
-See main.py for execution arguments.
+```bash
+conda run -n lbmpre python main.py path/to/case_vox.config
+```
 
-Input: JSON config file
-Output: voxelized geometry
+All file names in the JSON config are relative to the config file, and all outputs are
+written next to it:
 
-Notes: 
-- The nrrd output is saved since it can be opened in 3DSlicer to investigate the results of the voxelisation.
-- The centerline must contain one line per outlet, with each line running from the inlet (source) to one outlet (target)
-.
-### Specify sides that should contain an opening.
-This will practically cut away a layer of voxels from these sides.
+* `<output_base_name>c.npz`: the solver input
+* `<output_base_name>geometry.nrrd`: the label volume, to inspect the voxelization
+  (e.g. in 3D Slicer)
 
-Cutlist meaning -> cut one layer from the planes:
-    # 0,1 => Xmin, Xmax
-    # 2,3 => Ymin, Ymax
-    # 4,5 => Zmin, Zmax
+## What it does
 
-## Installation
-After cloning the directory use miniconda to create the required environment (run in repository directory):
+1. `voxelizeStl.py`, `slice.py`, `perimeter.py`: scan-line voxelization of the STL
+   (pure Python).
+2. `createFluidSolid.py`: adds a one-voxel wall around the fluid, removes empty outer
+   layers and cuts one layer from every bounding-box face that contains an opening.
+3. `readCL.py`: reads the opening radii and directions from the centerline end points.
+4. `detectOpenings.py`: finds the openings on the domain faces and labels them.
+5. `main.py`: matches openings to centerline end points, voxelizes the flow diverter
+   (union of three projections, restricted to the lumen), computes the physical origin
+   of the grid and writes the outputs.
 
-    conda env create -f environment.yml
-    conda activate lbmpre
+## Voxel labels
 
+| Label | Meaning |
+|---|---|
+| 0 | Outside the vessel |
+| 1 | Wall |
+| 2 | Fluid |
+| 10 | Inlet: the opening at the start of the centerline |
+| 11 | The smallest outlet |
+| 12, 13, ... | The other outlets, by decreasing radius |
+| 20 | Fluid voxels inside the flow diverter (visualization; the solver treats them as fluid) |
 
-### Known problems
+## Known limitations
 
-- The triangle size cannot be smaller than the projected voxel size. I.e.: If you see walls appearing inside the fluid domain, or get complaints that the thing is not watertight (but you are sure it is), increase the resolution (also reduce the number of faces on the geometry?).
-
-- The inlet and the pressure outlet are automatically detected as the largest and smallest are opening. Due to the various cut angles, this can be incorrect! Look for a better method based on centerline!
-
-- Also automate the cutlist based on the centerline!
-
-## Flag table
-
-- 0 unused
-- 1 wall
-- 2 fluid
-- 3 porous
-- 10 inlet (velocity)
-- 11 outlet 1 (pressure)
-- 12... other outlets (velocity)
+* Openings must be flat cuts that lie on a face of the axis-aligned bounding box,
+  away from its edges and corners.
+* Triangles should not be much smaller than a voxel. "is the geometry watertight?"
+  messages are printed for scan lines that pass through the open cuts; they are only
+  a problem if walls appear inside the fluid.
+* The scan-line voxelizer allocates `int(extent / dx)` samples per axis, so up to
+  about one voxel layer at the maximum y and z sides of the vessel is not voxelized.
+* The voxelizer is slow for large targets (tens of millions of elements).

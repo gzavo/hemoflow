@@ -14,7 +14,7 @@ def mag(a: pv.pyvista_ndarray):
 
 
 def calculate_mean(slice):
-    slice["mean_density"] = slice["density [Pa]"] / slice["Area"]
+    slice["mean_pressure"] = slice["pressure [Pa]"] / slice["Area"]
     slice["mean_velocity"] = slice["velocity_magnitude"] / slice["Area"]
     slice["VFR"] = slice["mean_velocity"] * slice["Area"]
 
@@ -54,20 +54,28 @@ def main(path):
     pointdata.point_data["velocity_magnitude"] = velocity_magnitude
     voxeldata = pointdata.point_data_to_cell_data()
     threshold = voxeldata.threshold(value=0.0001, scalars="velocity_magnitude")
-    x_bounds = voxeldata.bounds[1] - voxeldata.bounds[0]
-    y_bounds = voxeldata.bounds[3] - voxeldata.bounds[2]
-    inlet_slice = threshold.slice(origin=[x_bounds / 4, 0, 0], normal=[1, 0, 0])
-    outlet_slice = threshold.slice(origin=[3 / 4 * x_bounds, 0, 0], normal=[1, 0, 0])
+    # The output grid carries the physical origin of the geometry, so measure from its bounds
+    x0, x1, y0, y1, z0, z1 = voxeldata.bounds
+    x_bounds = x1 - x0
+    y_mid, z_mid = (y0 + y1) / 2, (z0 + z1) / 2
+    inlet_slice = threshold.slice(origin=[x0 + x_bounds / 4, y_mid, z_mid], normal=[1, 0, 0])
+    outlet_slice = threshold.slice(origin=[x0 + 3 / 4 * x_bounds, y_mid, z_mid], normal=[1, 0, 0])
     inlet = inlet_slice.integrate_data()
     outlet = outlet_slice.integrate_data()
     calculate_mean(inlet)
     calculate_mean(outlet)
-    pressure_drop = (inlet["mean_density"] - outlet["mean_density"])[0]
+    pressure_drop = (inlet["mean_pressure"] - outlet["mean_pressure"])[0]
 
     rho_blood = 1055
     nu_blood = 3.22e-6
     L_dp = x_bounds / 2
-    D_pipe = y_bounds
+    # Diameter of a circle with the area of the simulated lumen: fluid voxels (label >= 2)
+    # in the geometry file at the two measurement cross-sections
+    geom = np.load(os.path.join(path, "input", "vox_pipe_c.npz"))
+    flags, dx_geom = geom["geometryFlag"], geom["dx"][0]
+    nx = flags.shape[0]
+    lumen_area = np.mean([np.count_nonzero(flags[i] >= 2) for i in (nx // 4, 3 * nx // 4)]) * dx_geom**2
+    D_pipe = np.sqrt(4 * lumen_area / np.pi)
 
     dp_Poiseuille = (8 * nu_blood * rho_blood * L_dp * outlet["VFR"][0]) / (
         3.14 * (D_pipe / 2) ** 4
@@ -75,12 +83,14 @@ def main(path):
     dp_diff = abs(dp_Poiseuille - pressure_drop) / dp_Poiseuille
 
     velocity_profile = threshold.sample_over_line(
-        pointa=[3 / 4 * x_bounds, y_bounds / 2, 0],
-        pointb=[3 / 4 * x_bounds, y_bounds / 2, y_bounds],
+        pointa=[x0 + 3 / 4 * x_bounds, y_mid, z0],
+        pointb=[x0 + 3 / 4 * x_bounds, y_mid, z1],
         resolution=200,
     )
+    # Analytical profile centred on the lumen of the outlet slice
+    z_c = (outlet_slice.bounds[4] + outlet_slice.bounds[5]) / 2
     analyitical_profile = poiseuille_1d(
-        velocity_profile.points[:, 2],
+        np.clip(velocity_profile.points[:, 2] - z_c + D_pipe / 2, 0, D_pipe),
         D_pipe,
         mu=nu_blood * rho_blood,
         dp=dp_Poiseuille,

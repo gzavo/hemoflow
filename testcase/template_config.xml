@@ -1,43 +1,53 @@
+<!-- HemoFlow solver configuration. Paths are relative to this file (absolute paths also work). -->
 <simulation>
-	<dt>1e-4</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
-	<blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
-	<outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
-	<cycle>1</cycle> <!-- number of heart cycles to run; output is only written for the last cycle -->
-	<saveFrequency>0.016</saveFrequency> <!-- [s] -->
+	<dt>1e-4</dt>	<!-- Time step [s]. Optional: without it, omega = 1 and dt = dx^2 / (6 nu). -->
+	<cycle>1</cycle> <!-- Number of cardiac cycles to run; output is only written during the last cycle. -->
+	<saveFrequency>0.016</saveFrequency> <!-- Output interval [s]. -->
+	<outputDir>output</outputDir> <!-- Output directory, created if missing. -->
+	<outputFields>velocity pressure</outputFields> <!-- Optional. Any of: velocity pressure stress (default: velocity pressure). -->
+	<sparse>false</sparse> <!-- Optional. true: only allocate blocks that contain the vessel (default: false, experimental). -->
+	<blockSize>50</blockSize>	<!-- Optional. Block size of the sparse decomposition [LB nodes] (default: 50). -->
+	<!-- <checkpointFrequency>0.1</checkpointFrequency> --> <!-- Optional. Checkpoint interval [s]; restart with -c. -->
+	<!-- <mode>murray</mode> --> <!-- Optional. murray | pzero. Without a mode, every opening needs an <opening_i> block. -->
 </simulation>
 
-<geometry>
-	<file>./geomtry_file.npz</file> <!-- Geometry descriptor file location. Relative to this config file. -->
+<fluid> <!-- Optional. Newtonian fluid; the defaults are for blood. -->
+	<kinematicViscosity>3.22e-6</kinematicViscosity> <!-- [m^2/s] -->
+	<density>1055</density> <!-- [kg/m^3]; only scales the pressure and stress values. -->
+</fluid>
 
-	<!-- Opening types: 1 - Velocity; 2 - Murray (velocity); 3- Pressure; 4 - Freeflow -->
-	<!-- Create a separate tag for every opening. -->
+<geometry>
+	<file>./geometry_file.npz</file> <!-- Geometry file from the preprocessor. -->
+
+	<!-- Opening types: 1 - Velocity; 2 - Murray outlet; 3 - Pressure; 4 - Free outflow -->
+	<!-- One block per opening: opening_0 ... opening_(N-1), N = number of openings in the geometry file. -->
 	<opening_0>
 		<name>Inlet</name> <!-- The name can be any string. -->
 		<type>1</type> <!-- See types 1..4 above. -->
 		<label>10</label> <!-- Label of the opening in the geometry file. -->
-		<timeScaleFunction>./flowrate.txt</timeScaleFunction>  <!-- Scale function for this opening. -->
-		<parameter>0.1</parameter> <!-- [m/s] or [Pa]. The timeScaleFunction will scale this. On velocity openings it can be negative, it creates an outflow. -->
+		<timeScaleFunction>./flowrate.txt</timeScaleFunction>  <!-- Waveform for this opening (optional). -->
+		<parameter>0.1</parameter> <!-- Velocity: mean velocity [m/s] (parabolic profile, peak = 2x); pressure: gauge pressure [Pa]. Multiplied by the waveform. Negative velocities give an outflow. -->
 	</opening_0>
 
 	<opening_1>
-		<name>Outlet 1</name> 
+		<name>Outlet 1 Murray</name> 
 		<type>2</type> 
-		<label>11</label>
-		<timeScaleFunction></timeScaleFunction> <!-- On a Murray and Freeflow opening this is disregarded. -->
-		<parameter>0</parameter> <!-- On a Murray opening this value is disregarded and recalculated every iteration. -->
+		<label>12</label>
+		<timeScaleFunction></timeScaleFunction> <!-- Ignored on Murray and free-outflow openings. -->
+		<parameter></parameter> <!-- Ignored on Murray openings: the flow rate is set every step by Murray's law. -->
 	</opening_1>
 
 	<opening_2>
-		<name>Outlet 3 pressure </name> 
+		<name>Outlet 2 pressure</name> 
 		<type>3</type> 
-		<label>13</label>
-		<timeScaleFunction></timeScaleFunction> <!-- Omitting the scale function will create a constant boundary. -->
+		<label>11</label>
+		<timeScaleFunction></timeScaleFunction> <!-- Without a waveform the boundary value is constant. -->
 		<parameter>0</parameter> <!-- [Pa] -->
 	</opening_2>
 
 </geometry>
 
-<flowdiverter>
-	<linCoeff>0</linCoeff>
-	<quadCoeff>0</quadCoeff>
+<flowdiverter> <!-- Required if the geometry contains a flow diverter. -->
+	<linCoeff>0</linCoeff> <!-- Darcy coefficient a [Pa s/m] of one voxel-thick porous layer. -->
+	<quadCoeff>0</quadCoeff> <!-- Forchheimer coefficient b [Pa s^2/m^2] of one voxel-thick porous layer. -->
 </flowdiverter>

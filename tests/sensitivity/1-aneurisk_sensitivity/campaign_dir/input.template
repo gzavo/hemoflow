@@ -11,7 +11,7 @@
 
         <saveFrequency>$save_dt</saveFrequency> <!-- [s] -->
 
-        <mode>aneurysm</mode>
+        <mode>murray</mode>
 
     </simulation>
 

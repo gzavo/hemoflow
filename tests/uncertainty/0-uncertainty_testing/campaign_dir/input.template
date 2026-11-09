@@ -11,7 +11,7 @@
 
         <saveFrequency>0.016</saveFrequency> <!-- [s] -->
 
-        <mode>aneurysm</mode>
+        <mode>murray</mode>
 
     </simulation>
 

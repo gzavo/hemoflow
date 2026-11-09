@@ -1,11 +1,13 @@
-#include <map>
-#include <string>
-#include <sstream>
-//#include <algorithm>
-#include <cstdlib>
-//#include <iomanip>
-#include <vector>
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
+#include <map>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace std;
 
@@ -18,7 +20,7 @@ using namespace std;
 
 /* ********** GLOBAL VARIABLES ************/
 bool DEBUG = false;
-bool CHECKPOINTING = false;
+bool CHECKPOINTING = false;   // Restart from a checkpoint
 
 // Domain size
 int Nx=0;
@@ -40,9 +42,14 @@ T quadCoeff_lb = 0.0;
 // Simulation parameters structure
 SimPar sim;
 
+// Fluid properties (Newtonian)
+T fluidKinematicViscosity = DEFAULT_BLOOD_KINEMATIC_VISCOSITY;  // [m^2/s]
+T fluidDensity = DEFAULT_BLOOD_DENSITY;                          // [kg/m^3]
+
 // Technical simulation parameters
-bool useCheckpoint = true;
-int blockSize;
+bool useCheckpoint = false;
+bool useSparse = false;   // Sparse block decomposition (opt-in, see README)
+int blockSize = 50;
 int envelopeWidth = 1;
 string outputFolder;
 string workingFolder;
@@ -50,8 +57,9 @@ T simLength;
 int numCycles;
 T cyclePeriod;
 T saveFreqTime;
-T checkpointFreqTime;
+T checkpointFreqTime = 0.0;
 string mode;
+OutputOptions outputOptions;
 
 // Vector of openings
 vector<OpeningHandler*> openings;
@@ -60,123 +68,316 @@ vector<OpeningHandler*> openings;
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
 MultiNTensorField3D<T> *porosityField = nullptr;
 
-// Carreau parameters for human blood
-//  B.M.  Johnston,  P.R.  Johnson,  S.  Corney,  and  D. Kilpatrick, “Non-Newtonian blood flow in human  right  coronary  arteries:  steady  state  simulations,” Journal  of  Biomechanics, 37, 709 – 720 (2004)
-//  Y.I.  Cho  and  K.R.  Kensey,  “Effects  of  the  non-Newtonian viscosity of blood on flows in a   diseased   arterial   vessel.   Part   1:   steady   flows,” Biorheology28, 241 (1991)
-// nu0 = 5.6e-5; nuInf = 3.5e-6;
-T nu0 = 5.6e-5;     // [m^2/s]
-T nuInf = 3.22e-6;   // [m^2/s]
-T lambda = 3.331;
-T n = 0.3568;
+
+namespace {
+
+// ********** Configuration helpers **********
+
+std::string trim(const std::string& s)
+{
+    size_t b = s.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos)
+        return "";
+    size_t e = s.find_last_not_of(" \t\r\n");
+    return s.substr(b, e - b + 1);
+}
+
+template <typename V>
+bool parseValue(const std::string& text, V& value)
+{
+    std::istringstream ss(text);
+    V tmp;
+    if (!(ss >> tmp))
+        return false;
+    ss >> std::ws;
+    if (!ss.eof())
+        return false;
+    value = tmp;
+    return true;
+}
+
+template <>
+bool parseValue<std::string>(const std::string& text, std::string& value)
+{
+    value = text;
+    return true;
+}
+
+template <>
+bool parseValue<bool>(const std::string& text, bool& value)
+{
+    std::string word = text;
+    std::transform(word.begin(), word.end(), word.begin(), ::tolower);
+    if (word == "true" || word == "1" || word == "yes" || word == "on") { value = true; return true; }
+    if (word == "false" || word == "0" || word == "no" || word == "off") { value = false; return true; }
+    return false;
+}
+
+// Text of a child element. Returns false if the element does not exist.
+bool readText(XMLreaderProxy const& parent, const std::string& tag, std::string& text)
+{
+    try {
+        XMLreaderProxy child = parent[tag];
+        child.read(text);
+    }
+    catch (PlbIOException&) {
+        return false;
+    }
+    text = trim(text);
+    return true;
+}
+
+// Optional element: returns false if it is missing or empty, throws if it cannot be parsed.
+template <typename V>
+bool readOptional(XMLreaderProxy const& parent, const std::string& where, const std::string& tag, V& value)
+{
+    std::string text;
+    if (!readText(parent, tag, text) || text.empty())
+        return false;
+    if (!parseValue(text, value))
+        throw std::runtime_error("Cannot parse the value '" + text + "' of <" + where + "><" + tag + ">.");
+    return true;
+}
+
+template <typename V>
+void readRequired(XMLreaderProxy const& parent, const std::string& where, const std::string& tag, V& value)
+{
+    if (!readOptional(parent, where, tag, value))
+        throw std::runtime_error("Missing required element <" + where + "><" + tag + "> in the configuration file.");
+}
+
+bool hasSection(XMLreader const& xml, const std::string& name)
+{
+    try {
+        xml[name];
+    }
+    catch (PlbIOException&) {
+        return false;
+    }
+    return true;
+}
+
+bool hasChild(XMLreaderProxy const& parent, const std::string& name)
+{
+    try {
+        parent[name];
+    }
+    catch (PlbIOException&) {
+        return false;
+    }
+    return true;
+}
+
+// Paths in the configuration are relative to the configuration file, unless absolute.
+std::string resolvePath(const std::string& path)
+{
+    if (!path.empty() && path[0] == '/')
+        return path;
+    return workingFolder + "/" + path;
+}
 
 // Simple find index of a value in an array (where indices are unique)
-int findIndex(const unsigned short *array, int arraySize, unsigned short itemToFind) {
+int findIndex(const unsigned short *array, int arraySize, unsigned short itemToFind)
+{
     for(int i = 0; i < arraySize; i++)
         if(array[i] == itemToFind)
             return i;
     return -1;  // Not found
 }
 
-// *** Calculating LB parameters using Re on the inlet: Re = U_avg * D / nu
-void calcSimulationParameters(SimPar &sim, T dx, T dt = -1, T U_max_LB_ = 0.1)
-{   
+cnpy::NpyArray& requireArray(cnpy::npz_t& npz, const std::string& name, const std::string& fileName)
+{
+    if (npz.count(name) == 0)
+        throw std::runtime_error("The geometry file " + fileName + " has no '" + name + "' array. Re-run the preprocessor.");
+    cnpy::NpyArray& array = npz[name];
+    if (array.fortran_order)
+        throw std::runtime_error("The array '" + name + "' in " + fileName + " is stored in Fortran order; C order is expected.");
+    return array;
+}
+
+// One boundary condition to be created
+struct OpeningSpec {
+    int label;
+    OpeningType type;
+    std::string name;
+    double parameter;          // Velocity: mean velocity [m/s]; pressure: gauge pressure [Pa]
+    std::string waveformFile;  // Empty: constant
+};
+
+const char* VALID_MODES = "'' (no mode), 'murray', 'pzero'";
+
+}  // namespace
+
+
+// *** LB parameters from the voxel size, time step and viscosity
+void calcSimulationParameters(SimPar &sim, T dx, T dt, T nu, T rho, T U_max_LB_ = 0.1)
+{
     sim.C_l = dx;
     sim.U_max_lb = U_max_LB_;
 
-    T nuInf_lb;
+    T nu_lb;
     if(dt > 0.0){
         sim.C_t = dt;
-        nuInf_lb = nuInf * sim.C_t / sim.C_l / sim.C_l;
-        T tau = 3.0*nuInf_lb+0.5;
+        nu_lb = nu * sim.C_t / sim.C_l / sim.C_l;
+        T tau = 3.0*nu_lb+0.5;
         sim.omega = 1.0 / tau;
-    } 
+    }
     else {
         sim.omega = 1.0;
-        nuInf_lb =  0.5 / 3.0;
-        sim.C_t = nuInf_lb * sim.C_l * sim.C_l / nuInf;
+        nu_lb =  0.5 / 3.0;
+        sim.C_t = nu_lb * sim.C_l * sim.C_l / nu;
     }
 
-    T nu0_lb = nu0 * sim.C_t / sim.C_l / sim.C_l;
-
-    // Derived quantities using density
-    sim.C_r = BLOOD_DENSITY;    // TODO IF we are simulating blood.... Note: only changes pressure output values, the simulation results are independent!
+    // Derived quantities using density. The density only scales the pressure and stress output.
+    sim.C_r = rho;
     sim.C_p = sim.C_r * sim.C_l * sim.C_l / (sim.C_t * sim.C_t);
     sim.C_m = sim.C_r * sim.C_l * sim.C_l * sim.C_l;
 
-    // TODO: convert linCoeff and quadCoeff
-    //!!!!NOTE it is multiplied with one lattice lenght unit
-    //https://youtu.be/sOQMXxoKFQM?t=1168
-    
-    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;       // [ kg / (m2 s) ] 
-    quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;     // [ kg / m3 ]
+    // Porous coefficients. The force density in a porous voxel is -(a u + b u|u|) / dx, so
+    // a [Pa s/m] and b [Pa s^2/m^2] describe the pressure drop across ONE voxel-thick layer.
+    // https://youtu.be/sOQMXxoKFQM?t=1168
+    linCoeff_lb = linCoeff * sim.C_l*sim.C_l * sim.C_t / sim.C_m;
+    quadCoeff_lb = quadCoeff * sim.C_l*sim.C_l * sim.C_l / sim.C_m;
 
-    // TODO: add sanity check on parameters here
     if(sim.U_max_lb > 0.1)
         pcout << "** Parameter sanity WARNING ** LBM velocity seems high:" << sim.U_max_lb << endl;
     if(sim.omega > 1.9)
-        pcout << "** Parameter sanity WARNING ** LBM omega seems high:" << sim.omega << endl;
+        pcout << "** Parameter sanity WARNING ** LBM omega seems high: " << sim.omega
+              << " (tau = " << 1.0 / sim.omega << "). The simulation may become unstable; consider a smaller dt." << endl;
 
-    // TODO: using the Smagorinsky dynamics as a base add dynamic viscosity (Carreau and rheoModel)
-    // (ps: solve the Fokker-Plank in rheoModel with finite difference?)
-    global::CarreauParameters().setNu0(nu0_lb);
-    global::CarreauParameters().setNuInf(nuInf_lb);
-    global::CarreauParameters().setLambda(3.313);  //1.
-    global::CarreauParameters().setExponent(0.357);   //0.3
+    // Note: the fluid is Newtonian. Non-Newtonian (e.g. Carreau) rheology is not implemented.
+    //  B.M. Johnston et al., J. Biomech. 37, 709-720 (2004); Y.I. Cho and K.R. Kensey, Biorheology 28, 241 (1991)
 }
 
-// Progress timer for the openings and impose BC values
-void imposeOpenings(T dt, SimPar &sim)
+// Advance the openings by dt and impose their boundary values.
+void imposeOpenings(T dt)
 {
-    T murrayExponent = 3.0;
-    T murrayOutletTotalDiamt = 0.0;
-    T sumInflowRate = 0.0;
+    const T murrayExponent = 3.0;
+    T sumInflow = 0.0;          // Net flow rate imposed on velocity openings [lattice units], inflow positive
+    T sumDiameterPower = 0.0;   // Sum of d^3 over all other openings
 
-    // Phase I - Defined BCs
-    // Get the sum defined inflowrate and the sum undefined outflow surface
-
-    for (auto &o : openings)
-    {
-
-        if (o->getOpeningType() == OPENING_VELOCITY)
-        { // All non-Murray velocity BCs
-
-            o->progressTime(lattice, dt);
-            sumInflowRate += o->getScaledFlowRate(sim); //LBM units
+    // Phase I: openings with a prescribed velocity
+    for (auto &o : openings) {
+        if (o->getOpeningType() == OPENING_VELOCITY) {
+            o->progressTime(*lattice, dt);
+            sumInflow += o->getImposedFluxLB();
         }
-        else
-        {
-            murrayOutletTotalDiamt += pow(o->getRadius() * 2, murrayExponent); // LBM units with Murray exponent
+        else {
+            sumDiameterPower += pow(o->getRadius() * 2, murrayExponent);
         }
     }
 
-    // Phase II - Automatic BCs
-    // Set the undefined outflow rates according to Murray's law
-    // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, “Better Than Nothing: A Rational Approach for Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations,” American Journal of Neuroradiology, vol. 39, no. 2, pp. 337–343, 2018, doi: 10.3174/ajnr.A5484.
-
-    for (auto &o : openings)
-    {
-        if (o->getOpeningType() == OPENING_MURRAY)
-        {
-            T diameter = o->getRadius() * 2; //LBM units
-            T area = pow(o->getRadius(), 2) * 3.14; //LBM units
-            T flowRate = -1 * ((pow(diameter, murrayExponent) * sumInflowRate) / murrayOutletTotalDiamt); //-1 cause it is an outlet, LBM units
-            T murrayVelocity = flowRate / area;                                                          // v=Q/A
-            // The profile flow-rate is 0.5 (we give maximum velocity as a parameter) only if we have a parabolic profile. Let's assume it for performance reasons.
-            // T profileFlowRate = o->getProfileFlowRate();     // Use this if not parabolic!
-            T profileFlowRate = 0.5; 
-            o->setBCParameter(murrayVelocity / profileFlowRate); //LBM units VFR correction factor for voxeled circle outlets? (0.95)
-            o->progressTime(lattice, dt);
+    // Phase II: distribute the outflow over the Murray outlets by d^3; pressure outlets take the rest.
+    // C. Chnafa, O. Brina, V. M. Pereira, and D. A. Steinman, "Better Than Nothing: A Rational Approach for
+    // Minimizing the Impact of Outflow Strategy on Cerebrovascular Simulations," AJNR 39(2), 337-343, 2018.
+    for (auto &o : openings) {
+        if (o->getOpeningType() == OPENING_MURRAY) {
+            T flowRate = -sumInflow * pow(o->getRadius() * 2, murrayExponent) / sumDiameterPower;  // Outflow is negative
+            o->setBCParameterLB(flowRate / o->getProfileFlux());  // Peak velocity of the discrete profile
+            o->progressTime(*lattice, dt);
+        }
+        else if (o->getOpeningType() != OPENING_VELOCITY) {
+            o->progressTime(*lattice, dt);   // Pressure (and free outflow) openings
         }
     }
 }
 
 void print_help()
 {
-    std::cout << "Usage: ./hemoFlow ./input.xml ./checkpoint [OPTIONS]" << endl
-              << "Options:" << endl
-              << "  -d, --debug         Enable debug mode" << endl
-              << "  -c, --checkpoint    Enable checkpointing" << endl
-              << "  -h, --help          Show this help message" << endl;
+    pcout << "Usage: mpirun -np N ./hemoFlow config.xml [OPTIONS]" << endl
+          << "Options:" << endl
+          << "  -d, --debug         Every 200 steps, print the imposed and measured flow rate of every opening" << endl
+          << "  -c, --checkpoint    Restart from the checkpoint in the output directory" << endl
+          << "  -h, --help          Show this help message" << endl;
+}
+
+// Build the list of boundary conditions from the configuration and the openings in the geometry file.
+vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const unsigned short* oiData, int numOpenings)
+{
+    vector<OpeningSpec> specs;
+    XMLreaderProxy geometry = xml["geometry"];
+
+    if (mode == "murray" || mode == "pzero") {
+        // Inlet: label 10 (the centerline inlet), parameters from <opening_0>.
+        if (findIndex(oiData, numOpenings, FIRST_OPENING) == -1)
+            throw std::runtime_error("Mode '" + mode + "' needs the inlet label 10, which is not in the geometry file.");
+        if (!hasChild(geometry, "opening_0"))
+            throw std::runtime_error("Mode '" + mode + "' needs <geometry><opening_0> with the inlet <parameter> and <timeScaleFunction>.");
+        XMLreaderProxy inletXml = geometry["opening_0"];
+
+        OpeningSpec inlet;
+        inlet.label = FIRST_OPENING;
+        inlet.type = OPENING_VELOCITY;
+        inlet.name = "Velocity inlet";
+        readRequired(inletXml, "geometry><opening_0", "parameter", inlet.parameter);
+        inlet.waveformFile = "";
+        readOptional(inletXml, "geometry><opening_0", "timeScaleFunction", inlet.waveformFile);
+        specs.push_back(inlet);
+
+        // Smallest outlet (label 11) is the 0 Pa outlet in Murray mode.
+        const int pressureLabel = FIRST_OPENING + 1;
+        if (mode == "murray" && numOpenings > 1 && findIndex(oiData, numOpenings, pressureLabel) == -1)
+            throw std::runtime_error("Mode 'murray' needs the pressure outlet label 11, which is not in the geometry file.");
+
+        for (int o = 0; o < numOpenings; o++) {
+            int label = oiData[o];
+            if (label == FIRST_OPENING)
+                continue;
+            OpeningSpec outlet;
+            outlet.label = label;
+            outlet.parameter = 0.0;
+            outlet.waveformFile = "";
+            if (mode == "pzero" || label == pressureLabel) {
+                outlet.type = OPENING_PRESSURE;
+                outlet.name = "Pressure outlet " + std::to_string(label);
+            }
+            else {
+                outlet.type = OPENING_MURRAY;
+                outlet.name = "Murray outlet " + std::to_string(label);
+            }
+            specs.push_back(outlet);
+        }
+        return specs;
+    }
+
+    // Default: every opening is described by <opening_i>, i = 0 .. N-1
+    std::set<int> seenLabels;
+    for (int o = 0; o < numOpenings; o++) {
+        string tag = "opening_" + std::to_string(o);
+        string where = "geometry><" + tag;
+        if (!hasChild(geometry, tag))
+            throw std::runtime_error("The geometry file has " + std::to_string(numOpenings) + " openings, but <geometry><" + tag +
+                                     "> is missing. Describe every opening as <opening_0> ... <opening_" +
+                                     std::to_string(numOpenings - 1) + "> or set a <mode>.");
+        XMLreaderProxy openingXml = geometry[tag];
+
+        OpeningSpec spec;
+        int type = 0;
+        readRequired(openingXml, where, "label", spec.label);
+        readRequired(openingXml, where, "type", type);
+        if (type < OPENING_VELOCITY || type > OUTLET_FREEFLOW)
+            throw std::runtime_error("<" + where + "><type> is " + std::to_string(type) + "; valid types are 1 (velocity), 2 (Murray), 3 (pressure), 4 (free outflow).");
+        spec.type = static_cast<OpeningType>(type);
+        spec.name = "Opening " + std::to_string(spec.label);
+        readOptional(openingXml, where, "name", spec.name);
+        spec.parameter = 0.0;
+        if (spec.type == OPENING_VELOCITY)
+            readRequired(openingXml, where, "parameter", spec.parameter);
+        else if (spec.type == OPENING_PRESSURE)
+            readOptional(openingXml, where, "parameter", spec.parameter);
+        spec.waveformFile = "";
+        readOptional(openingXml, where, "timeScaleFunction", spec.waveformFile);
+
+        if (findIndex(oiData, numOpenings, spec.label) == -1)
+            throw std::runtime_error("<" + where + "> has label " + std::to_string(spec.label) + ", which is not in the geometry file.");
+        if (!seenLabels.insert(spec.label).second)
+            throw std::runtime_error("Label " + std::to_string(spec.label) + " is used by more than one <opening_i>.");
+        specs.push_back(spec);
+    }
+    if (hasChild(geometry, "opening_" + std::to_string(numOpenings)))
+        pcout << "WARNING: <opening_" << numOpenings << "> and higher are ignored; the geometry file has only "
+              << numOpenings << " openings." << endl;
+    return specs;
 }
 
 // *** Main simulation entry point
@@ -189,14 +390,14 @@ int main(int argc, char *argv[])
             << "********************************* " << endl;
 
     // *** Reading in command line arguments
-    if (global::argc() < 2)
+    if (argc < 2)
     {
         pcout << "Not enough arguments" << endl;
         print_help();
         return -1;
     }
 
-    for (int i = 2; i < argc; ++i)
+    for (int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
 
@@ -204,6 +405,10 @@ int main(int argc, char *argv[])
         {
             print_help();
             return 0;
+        }
+        else if (i == 1)
+        {
+            continue;   // Configuration file
         }
         else if (arg == "-d" || arg == "--debug")
         {
@@ -213,30 +418,18 @@ int main(int argc, char *argv[])
         else if (arg == "-c" || arg == "--checkpoint")
         {
             CHECKPOINTING = true;
-            pcout << "Checkpointing enabled" << endl;
+            pcout << "Restarting from checkpoint" << endl;
         }
         else
         {
-            std::cout << "Unknown argument: " << arg << "\n";
+            pcout << "Unknown argument: " << arg << endl;
             print_help();
             return 1;
         }
     }
 
-    // Reading in the config file name
-    string paramXmlFileName;
-    try {
-        global::argv(1).read(paramXmlFileName);
-    }
-    catch (PlbIOException& exception) {
-        pcout << "Wrong input XML; the syntax is: "
-              << (std::string)global::argv(0) << " parameter-input-file.xml [-r]" << std::endl;
-        return -1;
-    }
-
+    string paramXmlFileName = argv[1];
     string outDir; // Output directory
-
-    XMLreader xml(paramXmlFileName);
 
     // This also checks if there are folders in the path or not!
     size_t folderIdx = paramXmlFileName.find_last_of("/\\");
@@ -244,141 +437,183 @@ int main(int argc, char *argv[])
         workingFolder = ".";
     else
         workingFolder = paramXmlFileName.substr(0, folderIdx);
-    
-    // *** Load in data files
+
+    // *** Read the configuration and the geometry, set up the lattice and the boundary conditions
     try {
-        pcout << "Loading in data file..." << std::endl;
+        XMLreader xml(paramXmlFileName);
 
-        xml["simulation"]["outputDir"].read(outputFolder);
-        
-        outDir = workingFolder + "/" + outputFolder;
+        if (!hasSection(xml, "simulation"))
+            throw std::runtime_error("The configuration file has no <simulation> section.");
+        if (!hasSection(xml, "geometry"))
+            throw std::runtime_error("The configuration file has no <geometry> section.");
+        XMLreaderProxy simXml = xml["simulation"];
+        XMLreaderProxy geomXml = xml["geometry"];
 
-        // Check if output dir exists and accessible on the main processor
-        if(global::mpi().isMainProcessor()) 
+        // Main simulation parameters
+        readRequired(simXml, "simulation", "outputDir", outputFolder);
+        readRequired(simXml, "simulation", "cycle", numCycles);
+        readRequired(simXml, "simulation", "saveFrequency", saveFreqTime);
+        readOptional(simXml, "simulation", "blockSize", blockSize);
+        readOptional(simXml, "simulation", "sparse", useSparse);
+        useCheckpoint = readOptional(simXml, "simulation", "checkpointFrequency", checkpointFreqTime);
+        if (!useCheckpoint)
+            pcout << "Note: no <checkpointFrequency> in the config, checkpointing is disabled." << std::endl;
+        mode = "";
+        readOptional(simXml, "simulation", "mode", mode);
+        if (mode != "" && mode != "murray" && mode != "pzero")
+            throw std::runtime_error("Unknown boundary condition <mode> '" + mode + "'. Valid modes: " + VALID_MODES + ".");
+
+        if (numCycles < 1)
+            throw std::runtime_error("<simulation><cycle> must be at least 1.");
+        if (saveFreqTime <= 0.0)
+            throw std::runtime_error("<simulation><saveFrequency> must be positive.");
+        if (blockSize < 4)
+            throw std::runtime_error("<simulation><blockSize> must be at least 4.");
+
+        // Output fields
+        string fieldList;
+        if (readOptional(simXml, "simulation", "outputFields", fieldList)) {
+            outputOptions.velocity = outputOptions.pressure = outputOptions.stress = false;
+            std::istringstream fields(fieldList);
+            string field;
+            while (fields >> field) {
+                if (field == "velocity") outputOptions.velocity = true;
+                else if (field == "pressure") outputOptions.pressure = true;
+                else if (field == "stress") outputOptions.stress = true;
+                else throw std::runtime_error("Unknown output field '" + field + "' in <simulation><outputFields> (valid: velocity pressure stress).");
+            }
+        }
+
+        // Fluid properties (optional)
+        if (hasSection(xml, "fluid")) {
+            XMLreaderProxy fluidXml = xml["fluid"];
+            readOptional(fluidXml, "fluid", "kinematicViscosity", fluidKinematicViscosity);
+            readOptional(fluidXml, "fluid", "density", fluidDensity);
+        }
+        if (fluidKinematicViscosity <= 0.0 || fluidDensity <= 0.0)
+            throw std::runtime_error("The fluid viscosity and density must be positive.");
+
+        // Output directory, created by the main process
+        outDir = resolvePath(outputFolder);
+        int dirStatus = 1;
+        if (global::mpi().isMainProcessor()) {
             if (dirExists(outDir) <= 0) {
                 pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
-                mkpath(outDir.c_str(), 0777);
+                dirStatus = (mkpath(outDir.c_str(), 0777) == 0) ? 1 : 0;
             }
-
-        // Sync up after creating the directory by the master process.
-        //global::mpi().barrier();
-
+        }
+        global::mpi().bCast(&dirStatus, 1);
+        global::mpi().barrier();
+        if (!dirStatus)
+            throw std::runtime_error("Cannot create the output folder " + outDir);
         pcout << "Output folder: " << outDir+"/" << std::endl;
-
         global::directories().setOutputDir(outDir+"/");
 
-        // Reading main simulation parameters
-        xml["simulation"]["blockSize"].read(blockSize);
-        xml["simulation"]["cycle"].read(numCycles);
-        xml["simulation"]["saveFrequency"].read(saveFreqTime);
-        
-        // Check for optional checkpoint argument
-        try {
-            xml["simulation"]["checkpointFrequency"].read(checkpointFreqTime);
-        }
-        catch (PlbIOException& exception) {
-            pcout << "Warning: checkpointing tag was not found in config, checkpointing will be disabled!" << std::endl;
-            useCheckpoint = false;
-        }
-
-        // Loading the input file
+        // Loading the geometry file
+        pcout << "Loading in data file..." << std::endl;
         string npzFileName;
-        xml["geometry"]["file"].read(npzFileName);
-        cnpy::npz_t geom_npz = cnpy::npz_load(workingFolder + "/" + npzFileName);
+        readRequired(geomXml, "geometry", "file", npzFileName);
+        npzFileName = resolvePath(npzFileName);
+        cnpy::npz_t geom_npz = cnpy::npz_load(npzFileName);
         pcout << "Input data elements: " << geom_npz.size() << std::endl;
-        
-        for (auto const& array : geom_npz) 
+        for (auto const& array : geom_npz)
             pcout << "->" << array.first << std::endl;
 
-        // TODO - Consider hdf5-based input files (see the Turbulence branch)
-        // Loading geometry
-        geometryFlag = geom_npz["geometryFlag"];
+        geometryFlag = requireArray(geom_npz, "geometryFlag", npzFileName);
+        if (geometryFlag.shape.size() != 3 || geometryFlag.word_size != sizeof(unsigned short))
+            throw std::runtime_error("'geometryFlag' must be a 3D int16 array.");
         gfData = geometryFlag.data<unsigned short>();
         Nx = geometryFlag.shape[0];
         Ny = geometryFlag.shape[1];
         Nz = geometryFlag.shape[2];
         pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
 
-        // Reading dx = C_l from the geometry file
-        cnpy::NpyArray dxA = geom_npz["dx"];
-        double sim_dx = (dxA.data<double>())[0];
+        // Voxel size dx = C_l
+        double sim_dx = requireArray(geom_npz, "dx", npzFileName).data<double>()[0];
+        pcout << "Resolution [m]: " << sim_dx << std::endl;
 
-        pcout << "Resolution [m]: " << sim.C_l << std::endl;
-
-        // Loading the geometry of the stent (if there is one)
-        stentFlag = geom_npz["stent"];
-        
-        if(stentFlag.shape.size() > 1) {    // Check if there is data on the FD
-            pcout << "Found flow diverter information to load." << std::endl;
-            sfData = stentFlag.data<unsigned short>();
-            // Also look for corresponding data in xml
-            xml["flowdiverter"]["linCoeff"].read(linCoeff);
-            xml["flowdiverter"]["quadCoeff"].read(quadCoeff);
-        }
-
-        // Check if time-step is specified
-        double sim_dt = -1.0;
-        try {
-            xml["simulation"]["dt"].read(sim_dt);
-        }
-        catch (PlbIOException& exception) {}
-
-        // Calcualte simulation parameters here!
-        pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(sim, sim_dx, sim_dt);  
-
-        // **** Processing openings ****
-        pcout << "Processing openings..." << std::endl;
-        
-        // Loading information on openings 
-        cnpy::NpyArray openingIndex = geom_npz["openingIndex"];
-        auto* oiData = openingIndex.data<unsigned short>();
-        
-        cnpy::NpyArray openingRadius = geom_npz["openingRadius"];
-        auto* orData = openingRadius.data<double>();
-        
-        /* -- Not needed atm.
-        cnpy::NpyArray openingQRatio = geom_npz["openingNormalizedQRatio"];
-        double* oqData = openingQRatio.data<double>();
-        
-        cnpy::NpyArray openingCenter = geom_npz["openingCenter"];
-        double* ocData = openingCenter.data<double>();
-        */
-
-        cnpy::NpyArray openingNormal = geom_npz["openingNormal"];
-        auto* onData = openingNormal.data<double>();
-
-        if(SPARSE) {
-            pcout << "Setting simulation domain mask for sparse decomposition..." << endl;
-            auto *flagMatrix = new MultiScalarField3D<int>(Nx,Ny,Nz);
-            setToFunction(*flagMatrix, flagMatrix->getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, 1));
-
-            pcout << "Creating sparse representation ..." << endl;
-            
-            //Create sparse representation
-            MultiBlockManagement3D sparseBlockManagement =
-                        computeSparseManagement(*plb::reparallelize(*flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
-                                                            
-            #if LES
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
-                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                            new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago)); 
-            #else
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR> (sparseBlockManagement,
-                                                            defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                                                            defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                                                            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                            new BackgroundDynamics(sim.omega));
-            #endif
+        // Physical position of voxel (0,0,0), used for the output (older geometry files have none)
+        if (geom_npz.count("origin")) {
+            const double* originData = geom_npz["origin"].data<double>();
+            outputOptions.origin = Array<double, 3>(originData[0], originData[1], originData[2]);
+            pcout << "Origin [m]: " << originData[0] << " " << originData[1] << " " << originData[2] << std::endl;
         }
         else {
-            #if LES
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new SmagorinskyRegularizedDynamics<T,DESCRIPTOR>(sim.omega, cSmago));
-            #else
-                lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, new BackgroundDynamics(sim.omega));
-            #endif
+            pcout << "Note: the geometry file has no 'origin'; the output is written in the voxel frame (origin 0,0,0)." << std::endl;
+        }
+
+        // Flow diverter (if there is one)
+        if (geom_npz.count("stent")) {
+            stentFlag = requireArray(geom_npz, "stent", npzFileName);
+            if (stentFlag.shape != geometryFlag.shape || stentFlag.word_size != sizeof(unsigned short))
+                throw std::runtime_error("The 'stent' array must be an int16 array of the same shape as 'geometryFlag'.");
+            pcout << "Found flow diverter information to load." << std::endl;
+            sfData = stentFlag.data<unsigned short>();
+            if (!hasSection(xml, "flowdiverter"))
+                throw std::runtime_error("The geometry contains a flow diverter, but the config has no <flowdiverter> section.");
+            XMLreaderProxy fdXml = xml["flowdiverter"];
+            readRequired(fdXml, "flowdiverter", "linCoeff", linCoeff);
+            readRequired(fdXml, "flowdiverter", "quadCoeff", quadCoeff);
+        }
+
+        // Time step (optional)
+        double sim_dt = -1.0;
+        if (readOptional(simXml, "simulation", "dt", sim_dt) && sim_dt <= 0.0)
+            throw std::runtime_error("<simulation><dt> must be positive.");
+
+        pcout << "Setting LBM parameters..." << std::endl;
+        calcSimulationParameters(sim, sim_dx, sim_dt, fluidKinematicViscosity, fluidDensity);
+
+        // **** Openings in the geometry file ****
+        pcout << "Processing openings..." << std::endl;
+        cnpy::NpyArray& openingIndex = requireArray(geom_npz, "openingIndex", npzFileName);
+        cnpy::NpyArray& openingRadius = requireArray(geom_npz, "openingRadius", npzFileName);
+        cnpy::NpyArray& openingNormal = requireArray(geom_npz, "openingNormal", npzFileName);
+        const unsigned short* oiData = openingIndex.data<unsigned short>();
+        const double* orData = openingRadius.data<double>();
+        const double* onData = openingNormal.data<double>();
+        int numOpenings = openingIndex.num_vals;
+        if ((int)openingRadius.num_vals != numOpenings || openingNormal.shape.size() != 2 ||
+            (int)openingNormal.shape[0] != numOpenings || openingNormal.shape[1] != 3)
+            throw std::runtime_error("The opening arrays in the geometry file have inconsistent sizes.");
+        if (numOpenings < 2)
+            throw std::runtime_error("The geometry has fewer than 2 openings.");
+
+        pcout << "Number of openings in geometry: " << numOpenings << std::endl;
+        pcout << "Opening labels: ";
+        for (int o = 0; o < numOpenings; o++)
+            pcout << oiData[o] << " ";
+        pcout << endl;
+        pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
+
+        vector<OpeningSpec> specs = buildOpeningSpecs(xml, oiData, numOpenings);
+
+        // **** Lattice ****
+        Dynamics<T, DESCRIPTOR>* bulkDynamics =
+        #if LES
+            new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
+        #else
+            new BackgroundDynamics(sim.omega);
+        #endif
+
+        if (useSparse) {
+            pcout << "Setting simulation domain mask for sparse decomposition (block size " << blockSize << ")..." << endl;
+            // Keep every block that contains a wall, fluid or opening voxel (label > UNUSED).
+            MultiScalarField3D<int> flagMatrix(Nx, Ny, Nz);
+            setToFunction(flagMatrix, flagMatrix.getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, UNUSED));
+
+            pcout << "Creating sparse representation ..." << endl;
+            MultiBlockManagement3D sparseBlockManagement =
+                computeSparseManagement(*plb::reparallelize(flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
+
+            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(sparseBlockManagement,
+                                                        defaultMultiBlockPolicy3D().getBlockCommunicator(),
+                                                        defaultMultiBlockPolicy3D().getCombinedStatistics(),
+                                                        defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+                                                        bulkDynamics);
+        }
+        else {
+            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, bulkDynamics);
         }
 
         #if LES
@@ -387,289 +622,125 @@ int main(int argc, char *argv[])
 
         pcout << getMultiBlockInfo(*lattice) << endl;
 
-        // Loop through the openings in the datafile 
-        unsigned int numOpenings = openingRadius.shape[0];
-        pcout << "Number of openings in geometry: " << numOpenings << std::endl;
-        pcout << "Opening flags: ";
+        // **** Boundary conditions ****
+        for (auto const& spec : specs) {
+            int idx = findIndex(oiData, numOpenings, spec.label);
+            pcout << "Processing opening with label " << spec.label << std::endl;
 
-        for(unsigned int o=0; o < numOpenings; o++)
-            pcout << oiData[o] << " ";
-        pcout << endl;
+            vec3d dir(onData[gT2D(3, idx, 0)], onData[gT2D(3, idx, 1)], onData[gT2D(3, idx, 2)]);
+            auto *opening = new OpeningHandler(gfData, spec.label, spec.type, orData[idx] / sim.C_l, dir);
+            opening->setName(spec.name);
+            opening->setBCType(*lattice);
 
-        try
-        {
-            xml["simulation"]["mode"].read(mode);
-        }
-        catch (PlbIOException &exception)
-        {
-            pcout << "No mode is defined, all BCs must be declared in XML." << std::endl;
-            mode = "";
-        }
-        pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
-        // Loop through the openings following the xml config
-        if (mode == "murray")
-        {
-            pcout << "Aneurysm boundary condition mode activated";
-            for (unsigned int o = 0; o < numOpenings; o++)
-            {
-                if (o == 0)
-                {
-                    int label = oiData[o];
-                    int type_velocity = 1;
-                    pcout << "Processing opening: " << o << std::endl;
+            if (spec.type == OPENING_VELOCITY)
+                opening->setBCParameter(spec.parameter * 2, sim);   // Mean velocity -> peak velocity of a paraboloid
+            else
+                opening->setBCParameter(spec.parameter, sim);
 
-                    string xmlTagOpening = "opening_" + std::to_string(o);
+            if (!spec.waveformFile.empty())
+                opening->loadScaleFunction(resolvePath(spec.waveformFile));
 
-                    // Get the direction of the opening
-                    int s = openingNormal.shape[1];
-                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
+            if (opening->isVelocityType())
+                opening->createPoiseuilleProfile();   // Peak velocity 1 (lattice units)
+            else if (spec.type == OPENING_PRESSURE)
+                opening->createConstantPressureProfile();
 
-                    // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_velocity), orData[o] / sim.C_l, dir);
-
-                    opening->setName("Velocity inlet");
-                    opening->setBCType(lattice);
-
-                    string parameterStr;
-                    double parameter = 0;
-                    xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
-                    if (!parameterStr.empty())
-                        parameter = std::stod(parameterStr);
-                    
-                    //*2 because we are putting in avg velo not parabolic
-                    opening->setBCParameter(parameter*2, sim);
-
-                    // Load scale function (fileName from XML)
-                    string flowrateFunc;
-                    xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
-                    if (!flowrateFunc.empty())
-                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
-                    // Set profile
-                    opening->createPoiseauilleProfile();
-                    opening->printOpeningDetails(sim);
-                    openings.push_back(opening);
-                }
-                //TODO: be consistent in opening labeling (area descending?->smallest is pressure)
-                else if (o == numOpenings - 1)
-                {
-                    int label = oiData[o];
-                    int type_pressure = 3;
-                    int s = openingNormal.shape[1];
-                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
-                    // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_pressure), orData[o] / sim.C_l, dir);
-
-                    opening->setName("Pressure outlet");
-                    opening->setBCType(lattice);
-                    opening->setBCParameter(0, sim);
-                    opening->createConstantPressureProfile();
-                    opening->printOpeningDetails(sim);
-                    openings.push_back(opening);
-                }
-                else
-                {
-                    int label = oiData[o];
-                    int type_murray = 2;
-                    string xmlTagOpening = "opening_" + std::to_string(o);
-
-                    pcout << "Processing opening: " << o << std::endl;
-                    // Get the direction of the opening
-                    int s = openingNormal.shape[1];
-                    vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
-
-                    // Create the opening
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type_murray), orData[o] / sim.C_l, dir);
-
-                    opening->setName("Murray outlet");
-                    opening->setBCType(lattice);
-                    opening->setBCParameter(0, sim);
-                    opening->createPoiseauilleProfile();
-                    opening->printOpeningDetails(sim);
-                    openings.push_back(opening);
-                }
-            }
-        }
-        else if (mode == "pzero")
-        {
-            // Label 10 is the velocity inlet (parameters from the opening_0 xml tag),
-            // every other opening is a zero-pressure outlet.
-            pcout << "pzero boundary condition mode activated" << std::endl;
-            const int inletLabel = 10;
-            if (findIndex(oiData, numOpenings, inletLabel) == -1)
-                pcout << "ERROR: Inlet label " << inletLabel << " was not found in the geometry file!" << endl;
-
-            for (unsigned int o = 0; o < numOpenings; o++)
-            {
-                int label = oiData[o];
-                int s = openingNormal.shape[1];
-                vec3d dir(onData[gT2D(s, o, 0)], onData[gT2D(s, o, 1)], onData[gT2D(s, o, 2)]);
-                pcout << "Processing opening: " << o << " (label " << label << ")" << std::endl;
-
-                if (label == inletLabel)
-                {
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(1), orData[o] / sim.C_l, dir);
-                    opening->setName("Velocity inlet");
-                    opening->setBCType(lattice);
-
-                    string parameterStr;
-                    double parameter = 0;
-                    xml["geometry"]["opening_0"]["parameter"].read(parameterStr);
-                    if (!parameterStr.empty())
-                        parameter = std::stod(parameterStr);
-                    opening->setBCParameter(parameter * 2, sim); //*2 because we are putting in avg velo not parabolic
-
-                    string flowrateFunc;
-                    xml["geometry"]["opening_0"]["timeScaleFunction"].read(flowrateFunc);
-                    if (!flowrateFunc.empty())
-                        opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
-                    opening->createPoiseauilleProfile();
-                    opening->printOpeningDetails(sim);
-                    openings.push_back(opening);
-                }
-                else
-                {
-                    auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(3), orData[o] / sim.C_l, dir);
-                    opening->setName("Pressure outlet " + std::to_string(label));
-                    opening->setBCType(lattice);
-                    opening->setBCParameter(0, sim);
-                    opening->createConstantPressureProfile();
-                    opening->printOpeningDetails(sim);
-                    openings.push_back(opening);
-                }
-            }
-        }
-        else
-        {
-            for (unsigned int o = 0; o < numOpenings; o++)
-            {
-                pcout << "Processing opening: " << o << std::endl;
-
-                string xmlTagOpening = "opening_" + std::to_string(o);
-
-                string name;
-                xml["geometry"][xmlTagOpening]["name"].read(name);
-                int type;
-                xml["geometry"][xmlTagOpening]["type"].read(type);
-                int label;
-                xml["geometry"][xmlTagOpening]["label"].read(label);
-
-                int openingIdx = findIndex(oiData, numOpenings, label);
-                if (openingIdx == -1)
-                    pcout << "ERROR: Opening label " << label << " was found in the config xml, but not in the geometry file!" << endl;
-
-                // Get the direction of the opening
-                int s = openingNormal.shape[1];
-                vec3d dir(onData[gT2D(s, openingIdx, 0)], onData[gT2D(s, openingIdx, 1)], onData[gT2D(s, openingIdx, 2)]);
-
-                // Create the opening
-                auto *opening = new OpeningHandler(gfData, static_cast<GeometryLabel>(label), static_cast<OpeningType>(type), orData[openingIdx] / sim.C_l, dir);
-
-                opening->setName(name);
-                opening->setBCType(lattice);
-
-                string parameterStr;
-                double parameter = 0;
-                xml["geometry"][xmlTagOpening]["parameter"].read(parameterStr);
-                if (!parameterStr.empty())
-                    parameter = std::stod(parameterStr);
-
-                opening->setBCParameter(parameter, sim);
-
-                // Load scale function (fileName from XML)
-                string flowrateFunc;
-                xml["geometry"][xmlTagOpening]["timeScaleFunction"].read(flowrateFunc);
-                if (!flowrateFunc.empty())
-                    opening->loadScaleFunction(workingFolder + "/" + flowrateFunc);
-
-                // Set profile
-                if (type == OPENING_VELOCITY || type == OPENING_MURRAY || type == OUTLET_FREEFLOW)
-                {
-                    opening->setBCParameter(parameter*2, sim); //*2 because we are putting in avg velo not parabolic
-                    opening->createPoiseauilleProfile(); // Normalized to max_vel = 1.0 (LBM units)
-                    // opening->normalizeFlowRate();           // Normalize to Q=1 (LBM units)
-                }
-                else if (type == OPENING_PRESSURE)
-                {
-                    opening->createConstantPressureProfile(); // Contant pressure = 1.0 (LBM density)
-                }
-
-                opening->printOpeningDetails(sim);
-
-                openings.push_back(opening);
-            }
-    }
-
-        // Sanity check
-        if(numOpenings != openings.size()) {
-            pcout << "**WARNING** The number of opening definitions don't match between the config and the geometry file! So how many openings do we actually have?" << endl;
+            opening->printOpeningDetails(sim);
+            openings.push_back(opening);
         }
 
-        // Derive the cardiac cycle period from the first opening with a loaded waveform
+        // Boundary conditions are instantiated on the bounding rectangle of each opening.
+        // Overlapping rectangles on the same face would interfere, so refuse them.
+        for (size_t a = 0; a < openings.size(); a++)
+            for (size_t b = a + 1; b < openings.size(); b++)
+                if (openings[a]->overlapsOnFace(*openings[b]))
+                    throw std::runtime_error("Openings " + std::to_string(openings[a]->getLabel()) + " and " +
+                                             std::to_string(openings[b]->getLabel()) +
+                                             " lie on the same domain face and their bounding rectangles overlap. "
+                                             "This is not supported: clip the geometry so that the openings are further apart "
+                                             "or lie on different faces.");
+
+        // Derive the cardiac cycle period from the first opening with a waveform
         cyclePeriod = -1.0;
         for (auto &o : openings) {
             if (o->getHasScaleFunction()) {
-                cyclePeriod = o->getPeriod();
-                break;
+                if (cyclePeriod < 0.0)
+                    cyclePeriod = o->getPeriod();
+                else if (std::fabs(o->getPeriod() - cyclePeriod) > 1e-12)
+                    pcout << "WARNING: the waveform of opening " << o->getLabel() << " has a period of " << o->getPeriod()
+                          << " s; the cycle length is taken from the first waveform (" << cyclePeriod << " s)." << std::endl;
             }
         }
-        if (cyclePeriod <= 0.0) {
-            pcout << "ERROR: No opening with a timeScaleFunction was found; cannot derive a cardiac cycle period for <cycle>. Exiting..." << std::endl;
-            return -1;
-        }
+        if (cyclePeriod <= 0.0)
+            throw std::runtime_error("No opening has a <timeScaleFunction>, so the cardiac cycle period for <cycle> is undefined. "
+                                     "Give the inlet a waveform file (a two-point constant file for steady inflow).");
         simLength = numCycles * cyclePeriod;
         pcout << "Cardiac cycle period: " << cyclePeriod << " s. Running " << numCycles << " cycles -> simLength = " << simLength << " s." << std::endl;
-
     }
     catch (PlbIOException& exception) {
-        pcout << "Error while processing input file " << paramXmlFileName
-              << ": " << exception.what() << std::endl;
+        pcout << "ERROR while processing input file " << paramXmlFileName << ": " << exception.what() << std::endl;
         return -1;
     }
-    
+    catch (std::exception& exception) {
+        pcout << "ERROR: " << exception.what() << std::endl;
+        return -1;
+    }
+
     pcout   << "*********** Simulation parameters *********** " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
             << "dx [m]:  " << sim.C_l << endl
             << "dt [s]:  " << sim.C_t << endl
             << "dm [kg]:  " << sim.C_m << endl
+            << "nu [m^2/s]: " << fluidKinematicViscosity << endl
+            << "rho [kg/m^3]: " << fluidDensity << endl
             << "omega:  " << sim.omega << endl
-            << "nu:     " << 1./3. * (1./sim.omega - 0.5) << endl
-            << "U_max [lbm]: " << sim.U_max_lb << endl 
+            << "nu [lb]: " << 1./3. * (1./sim.omega - 0.5) << endl
+            << "U_max [lbm]: " << sim.U_max_lb << endl
             << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
 
-    int saveFrequency;
-    saveFrequency = (int)round(saveFreqTime/sim.C_t);
+    const int totalSteps = (int)std::llround(simLength / sim.C_t);
+    const int saveFrequency = (int)std::llround(saveFreqTime / sim.C_t);
+    if (saveFrequency < 1) {
+        pcout << "ERROR: <saveFrequency> (" << saveFreqTime << " s) is smaller than the time step (" << sim.C_t << " s)." << endl;
+        return -1;
+    }
     pcout << "Saving frequency set to every " << saveFreqTime << " s (" << saveFrequency << " steps)." << endl;
 
-    int checkpointFrequency = (int)round(checkpointFreqTime/sim.C_t);
+    int checkpointFrequency = 0;
+    if (useCheckpoint) {
+        checkpointFrequency = (int)std::llround(checkpointFreqTime / sim.C_t);
+        if (checkpointFrequency < 1) {
+            pcout << "ERROR: <checkpointFrequency> (" << checkpointFreqTime << " s) is smaller than the time step (" << sim.C_t << " s)." << endl;
+            return -1;
+        }
+        pcout << "Checkpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
+    }
 
-    int lastCycleStartIter = (int)round((numCycles - 1) * cyclePeriod / sim.C_t);
+    const int lastCycleStartIter = (int)std::llround((numCycles - 1) * cyclePeriod / sim.C_t);
     pcout << "Writing output only from iteration " << lastCycleStartIter << " onward (last cycle)." << endl;
+    pcout << "Output fields:" << (outputOptions.velocity ? " velocity" : "") << (outputOptions.pressure ? " pressure" : "")
+          << (outputOptions.stress ? " stress" : "") << endl;
 
-    if(useCheckpoint)
-        pcout << "Chekpointing will happen every " << checkpointFreqTime << " s (" << checkpointFrequency << " steps)." << endl;
-    
     // Checkpoint file names relative to the output folder
     string chkParamFile = outDir+"/checkpoint_parameters.dat";
     string chkDataFile = outDir+"/checkpoint_lattice.dat";
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-    // If there is data on porosity, set up porous layer in the simulation   
+    // If there is data on porosity, set up porous layer in the simulation
     if(sfData != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
         porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
-        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData), porosityField->getBoundingBox(), *porosityField);
+        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData, gfData), porosityField->getBoundingBox(), *porosityField);
         integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
     }
 
+    // Walls and outside voxels. This also overrides the boundary dynamics that the openings
+    // instantiated on wall/outside voxels of their bounding rectangles.
     pcout << "Defining walls..." << std::endl;
-    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 0), new NoDynamics<T, DESCRIPTOR>);
-    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, 1), new BounceBack<T, DESCRIPTOR>(1.0));
+    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, UNUSED), new NoDynamics<T, DESCRIPTOR>(1.0));  // Reference density, so outside cells report 0 Pa
+    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, WALL), new BounceBack<T, DESCRIPTOR>(1.0));
 
-    // TODO: add some reparallelize here, check if it plays nice with checkpointing
-    
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
 
@@ -677,60 +748,63 @@ int main(int argc, char *argv[])
     lattice->initialize();
 
     // Set all the boundaries in the initialized lattice
-    imposeOpenings(0.0,sim);
+    imposeOpenings(0.0);
 
     // iteration counter
     int stat_cycle = 0;
-    
-    // Check if the simulation was checkpointed
+
+    // Restart from a checkpoint
     if(CHECKPOINTING) {
         pcout << endl << "*********** Restoring checkpoint ***********" << endl;
-        
-        // Load in the iteration counter
-        string chkParamFile = outDir+"/checkpoint_parameters.dat";
+
         plb_ifstream ifile(chkParamFile.c_str());
         if(ifile.is_open()) {
             ifile >> stat_cycle;
             global::mpi().bCast(&stat_cycle, 1); // Broadcast the iteration counter
         }
         else {
-            pcout << "ERROR reading from the checkpoint parameter file: checkpoint_parameters.dat! Exiting..." << std::endl;
+            pcout << "ERROR reading from the checkpoint parameter file: " << chkParamFile << "! Exiting..." << std::endl;
             return -1;
         }
-        
-        // Load the lattice
-        loadBinaryBlock(*lattice, outDir+"/checkpoint_lattice.dat");
-        
-        pcout << "Checkpoint at iteration " << stat_cycle << " loaded succesfully." << std::endl;
+
+        loadBinaryBlock(*lattice, chkDataFile);
+
+        // Bring the boundary waveforms to the time of the checkpoint
+        imposeOpenings(stat_cycle * sim.C_t);
+
+        pcout << "Checkpoint at iteration " << stat_cycle << " (" << stat_cycle * sim.C_t << " s) loaded successfully." << std::endl;
     }
 
     pcout << "Starting computation..." << endl;
 
-    while(stat_cycle*sim.C_t <= simLength + sim.C_t)
+    while(stat_cycle < totalSteps)
     {
-        
         if(stat_cycle % 200 == 0) {
             T cE = computeAverageEnergy(*lattice);
-            pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << std::round(simLength/sim.C_t) << "] " << " - Energy: " << cE << endl;
-            
+            pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << totalSteps << "] " << " - Energy: " << cE << endl;
+
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
-                writeVTK(*lattice, sim, stat_cycle);
-                //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);
-                return 0;
+                writeVTK(*lattice, sim, stat_cycle, outputOptions);
+                return 1;
             }
-            for (auto &o : openings)
-            {
-                if (DEBUG)
-                {
-                    pcout << o->getName() << " flow rate SI: " << o->getFlowRate(sim) << " scaledVFR:" << o->getScaledFlowRate(sim) << " with D^3:" << pow(o->getRadius() * 2, 3) << std::endl;
+            if (DEBUG) {
+                T sumMeasured = 0.0;
+                for (auto &o : openings) {
+                    T measured = o->measureFlowRate(*lattice, sim);
+                    sumMeasured += measured;
+                    pcout << "  label " << o->getLabel() << " (" << o->getName() << "): measured flow rate " << measured << " m^3/s";
+                    if (o->isVelocityType())
+                        pcout << ", imposed " << o->getImposedFlowRate(sim) << " m^3/s";
+                    pcout << ", d^3 " << pow(o->getRadius() * 2 * sim.C_l, 3) << " m^3" << std::endl;
                 }
+                pcout << "  net inflow (mass balance): " << sumMeasured << " m^3/s" << std::endl;
             }
         }
 
         // Impose boundary conditions with dt progress in time
-        imposeOpenings(sim.C_t,sim);
+        imposeOpenings(sim.C_t);
 
         // Calculate next step
         lattice->collideAndStream();
@@ -741,28 +815,24 @@ int main(int argc, char *argv[])
         // Save output
         if(stat_cycle >= lastCycleStartIter && stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
-            writeVTK(*lattice, sim, stat_cycle);
-            // writeNPZ(*lattice, sim, stat_cycle);
-            //writeHDF5(*lattice, sim, stat_cycle, outDir, porosityField);   
+            writeVTK(*lattice, sim, stat_cycle, outputOptions);
         }
-        
+
         if(useCheckpoint && (stat_cycle % checkpointFrequency == 0)) {
-            // Overwriting previous checkpoint. Note: if failure happens during saving the checkpoint we cannot recover: TODO two step checkpoint
+            // Keep the previous checkpoint as *_old in case writing the new one fails
             if(global::mpi().isMainProcessor()) {
                 if(fileExists(chkDataFile)){
-                    // Remove prev-previous checkpoint            
                     if(fileExists(chkDataFileOld)){
                         if( ( std::remove( chkDataFileOld.c_str() ) + std::remove( chkParamFileOld.c_str() ) ) != 0 )
-                            pcout << "WARNING: cannot remove old chekpoint file!" << std::endl;
+                            pcout << "WARNING: cannot remove old checkpoint file!" << std::endl;
                     }
-                    // Rename previous checkpoint
-                    if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() )) 
-                        pcout << "WARNING: cannot rename old chekpoint file!" << std::endl;
+                    if (std::rename(chkParamFile.c_str(), chkParamFileOld.c_str()) || std::rename(chkDataFile.c_str(), chkDataFileOld.c_str() ))
+                        pcout << "WARNING: cannot rename old checkpoint file!" << std::endl;
                 }
             }
 
             global::mpi().barrier();
-            
+
             plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
             saveBinaryBlock(*lattice, chkDataFile);
         }

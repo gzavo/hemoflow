@@ -6,12 +6,12 @@ import os
 import scipy.interpolate as scpinter
 from scipy.optimize import linear_sum_assignment
 import vtk
-import slice
 
 from readCL import getOpeningsFromCenterline, convertToVoxelspace
 from voxelizeStl import voxelize
 from createFluidSolid import createWalls
 from detectOpenings import detectOpenings, paint_inlets_outlets
+from constants import const
 from vtk.numpy_interface import dataset_adapter as dsa
 from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
 from vtk.util import numpy_support
@@ -29,10 +29,17 @@ SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
 # spuriously flagging a face that isn't a real opening at all.
 DISTANCE_RADIUS_FACTOR = 0.9
 
+# Position of the voxel centre relative to its index, in voxel units, per axis. The scan-line
+# voxelizer samples x and z at integer coordinates; along y (the scan direction) voxel i
+# covers [i, i+1), so its centre is at i + 0.5.
+VOXEL_SAMPLE_OFFSET = (0.0, 0.5, 0.0)
+
 DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
 INHOMOGEN = False
 #############################
 import nrrd
+
+CONSTANTS = const()
 
 
 def inRange(value, rangeValue, distance):
@@ -70,6 +77,40 @@ def generateCutList(voxelDomainSize, radiusTangentVoxelList, perOpeningDistance)
                 sidesToCut[j*2+1]=1
 
     return np.where(sidesToCut == 1)[0]
+
+def cropLikeGeometry(array, sliced, cutList, cutWidth):
+    """Apply the cropping of createWalls() (removed empty layers and cut opening layers)
+    to an array defined on the uncropped voxel grid."""
+    array = array[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
+    for axis in range(3):
+        index = [slice(None)] * 3
+        if 2 * axis in cutList:
+            index[axis] = slice(cutWidth, None)
+            array = array[tuple(index)]
+            index[axis] = slice(None)
+        if 2 * axis + 1 in cutList:
+            index[axis] = slice(None, -cutWidth)
+            array = array[tuple(index)]
+    return array
+
+def computeGridOffset(sliced, cutList, cutWidth):
+    """Offset (in voxels, per axis) from an index of the final geometry to the corresponding
+    index of the voxelization grid: the one-voxel padding of the voxelizer, the removed
+    empty layers and the cut opening layers."""
+    return np.array([sliced[2 * axis] + (cutWidth if 2 * axis in cutList else 0) - 1 for axis in range(3)], dtype=float)
+
+def computeOrigin(domainData, sliced, cutList, cutWidth):
+    """Physical position [m] of voxel (0,0,0) of the final geometry.
+
+    Voxel i of the voxelization samples the scaled and shifted STL at coordinate i
+    (x_mm = i / scale - shift). The final array is offset from that grid by the one-voxel
+    padding of the voxelizer, the removed empty layers and the cut opening layers."""
+    scale, shift = domainData[0], domainData[1]
+    gridOffset = computeGridOffset(sliced, cutList, cutWidth)
+    origin = np.zeros(3)
+    for axis in range(3):
+        origin[axis] = ((gridOffset[axis] + VOXEL_SAMPLE_OFFSET[axis]) / scale[axis] - shift[axis]) * SI_FACTOR
+    return origin
 
 def scaleAndShiftData(points, scale, shift):
     for i in range(len(points)):
@@ -188,6 +229,10 @@ if __name__ == "__main__":
         print("\n-> (DEBUG) Saving nrrd wall geometry ###")
         nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
 
+    gridOffset = computeGridOffset(sliced, cutList, cutWidth)
+    origin = computeOrigin(domainData, sliced, cutList, cutWidth)
+    print("Origin of the voxel grid [m]:", origin)
+
     print("Size after cutting layers for openings:", volWithWalls.shape)
     volume = np.prod(volWithWalls.shape)
     fluids = np.count_nonzero(volWithWalls == 2)
@@ -204,7 +249,7 @@ if __name__ == "__main__":
         oC = np.zeros(3)
         for (x,y,z) in io:
             oC += np.array((z,x,y))
-        openingCenters.append(oC/len(io))
+        openingCenters.append(oC/len(io) - 1)  # Remove the one-voxel padding added by detectOpenings()
 
     # TODO: Assign tangents and radii to voxelized openings
 
@@ -235,7 +280,8 @@ if __name__ == "__main__":
         cCL = radiusTangentVoxelList[ccCL][1]
         for ccVox in range(len(openingCenters)):
             cVox = openingCenters[ccVox]
-            costMatrix[ccCL, ccVox] = np.linalg.norm(np.array(cVox) - np.array((cCL[0], cCL[1], cCL[2])))
+            # Compare in the voxelization frame (the centerline points are not cropped)
+            costMatrix[ccCL, ccVox] = np.linalg.norm(np.array(cVox) + gridOffset - np.array((cCL[0], cCL[1], cCL[2])))
 
     clMatchIdx, voxMatchIdx = linear_sum_assignment(costMatrix)
 
@@ -304,40 +350,26 @@ if __name__ == "__main__":
         linear = stentVoxelLinearInterpolate*sdomain_full
         quadratic = stentVoxelQuadraticInterpolate*sdomain_full
 
-        sdomain_full = sdomain_full[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
-        linear_full = linear[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
-        quadratic_full = quadratic[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
+        # Apply the same cropping as createWalls() applied to the vessel geometry
+        voxel_stent_final = cropLikeGeometry(sdomain_full, sliced, cutList, cutWidth)
+        voxel_linear_final = cropLikeGeometry(linear, sliced, cutList, cutWidth).astype(np.double)
+        voxel_quadratic_final = cropLikeGeometry(quadratic, sliced, cutList, cutWidth).astype(np.double)
 
-        if 0 in cutList:
-            sdomain_full = sdomain_full[cutWidth:,:,:]
-            linear_full = linear_full[cutWidth:, :, :]
-            quadratic_full = quadratic_full[cutWidth:, :, :]
-        if 1 in cutList:
-            sdomain_full = sdomain_full[:-cutWidth,:,:]
-            linear_full = sdomain_full[:-cutWidth, :, :]
-            quadratic_full = sdomain_full[:-cutWidth, :, :]
-        if 2 in cutList:
-            sdomain_full = sdomain_full[:,cutWidth:,:]
-            linear_full = linear_full[:, cutWidth:, :]
-            quadratic_full = quadratic_full[:, cutWidth:, :]
-        if 3 in cutList:
-            sdomain_full = sdomain_full[:,:-cutWidth,:]
-            linear_full = linear_full[:, :-cutWidth, :]
-            quadratic_full = quadratic_full[:, :-cutWidth, :]
-        if 4 in cutList:
-            sdomain_full = sdomain_full[:,:,cutWidth:]
-            linear_full = linear_full[:, :, cutWidth:]
-            quadratic_full = quadratic_full[:, :, cutWidth:]
-        if 5 in cutList:
-            sdomain_full = sdomain_full[:,:,:-cutWidth]
-            linear_full = linear_full[:, :, :-cutWidth]
-            quadratic_full = quadratic_full[:, :, :-cutWidth]
+        if voxel_stent_final.shape != paintedOpenings.shape:
+            print("!!! ERROR: flow diverter grid", voxel_stent_final.shape, "does not match the geometry", paintedOpenings.shape)
+            sys.exit(-1)
 
-        # TODO: why would this be needed, some old bug?
-        # voxel_stent_final = sdomain_full[1:-1, 1:-1, 1:-1]
-        voxel_stent_final = sdomain_full
-        voxel_linear_final = linear_full
-        voxel_quadratic_final = quadratic_full
+        # Porous voxels are only allowed inside the lumen. The device voxelization also touches
+        # wall and outside voxels; those must stay walls / outside.
+        stentVoxels = voxel_stent_final.astype(bool)
+        inLumen = stentVoxels & (paintedOpenings == CONSTANTS.FLUID_VOXEL)
+        print("Flow diverter voxels:", int(stentVoxels.sum()), "of which in the lumen:", int(inLumen.sum()),
+              "(discarded: wall", int((stentVoxels & (paintedOpenings == CONSTANTS.WALL_VOXEL)).sum()),
+              ", outside", int((stentVoxels & (paintedOpenings == CONSTANTS.UNUSED_VOXEL)).sum()),
+              ", openings", int((stentVoxels & (paintedOpenings >= CONSTANTS.INLET_VOXEL)).sum()), ")")
+        voxel_stent_final = inLumen
+        voxel_linear_final[~inLumen] = 0.0
+        voxel_quadratic_final[~inLumen] = 0.0
 
         print("Min and max of linear coefficients:", np.nanmin(voxel_linear_final), np.nanmax(voxel_linear_final))
         print("Min and max of quadratic coefficients:", np.nanmin(voxel_quadratic_final), np.nanmax(voxel_quadratic_final))
@@ -350,10 +382,14 @@ if __name__ == "__main__":
             nrrd.write(outputBaseName + "stent_linear.nrrd", voxel_linear_final.astype(np.single, copy=False))
             nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
 
-    if haveStent:
-        stentLabel = 20  # Hardcoded, visualization-only.
-        print("Marking stent voxels in geometry flag with label", stentLabel)
-        paintedOpenings[voxel_stent_final.astype(bool)] = stentLabel
+        # Label the flow diverter voxels for visualization. They are fluid voxels in the lumen,
+        # so the solver treats them as fluid; the porous forcing comes from the 'stent' array.
+        if max(openingIndex) >= CONSTANTS.FLOW_DIVERTER_VOXEL:
+            print("!!! ERROR: opening labels reach the flow diverter label", CONSTANTS.FLOW_DIVERTER_VOXEL,
+                  "(too many openings):", openingIndex)
+            sys.exit(-1)
+        print("Marking flow diverter voxels in geometry flag with label", CONSTANTS.FLOW_DIVERTER_VOXEL)
+        paintedOpenings[voxel_stent_final] = CONSTANTS.FLOW_DIVERTER_VOXEL
 
     print("Saving nrrd geometry flag")
     nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
@@ -361,35 +397,23 @@ if __name__ == "__main__":
     print("\n### Saving final output ###")
     print("File:", outputBaseName + "c.npz")
 
-    # np.savez(sys.argv[2]+".npz", geometryFlag=paintedOpenings, openingDescr=openingDescr, stent=voxel_stent_final.astype(np.short, copy=False))
+    arrays = dict(
+        geometryFlag=paintedOpenings.astype(np.short, copy=False),
+        dx=np.array([DX]).astype(np.double, copy=False),
+        origin=origin.astype(np.double, copy=False),
+        openingIndex=np.array(openingIndex).astype(np.short, copy=False),
+        openingRadius=np.array(openingRadius).astype(np.double, copy=False),
+        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False),
+        openingCenter=np.array(openingCenter).astype(np.double, copy=False),
+        openingNormal=np.array(openingNormal).astype(np.double, copy=False),
+    )
     if haveStent:
-        np.savez_compressed(
-            outputBaseName + "c.npz",
-            geometryFlag=paintedOpenings,
-            dx=np.array([DX]).astype(np.double, copy=False),
-            openingIndex=np.array(openingIndex).astype(np.short, copy=False),
-            openingRadius=np.array(openingRadius).astype(np.double, copy=False),
-            openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(
-                np.double, copy=False
-            ),
-            openingCenter=np.array(openingCenter).astype(np.double, copy=False),
-            openingNormal=np.array(openingNormal).astype(np.double, copy=False),
+        arrays.update(
             stent=voxel_stent_final.astype(np.short, copy=False),
-            linear=voxel_linear_final.astype(np.int32, copy=False),
-            quadratic=voxel_quadratic_final.astype(np.int32, copy=False),
+            linear=voxel_linear_final,
+            quadratic=voxel_quadratic_final,
         )
-    else:
-        np.savez_compressed(
-            outputBaseName + "c.npz",
-            geometryFlag=paintedOpenings,
-            dx=np.array([DX]).astype(np.double, copy=False),
-            openingIndex=np.array(openingIndex).astype(np.short, copy=False),
-            openingRadius=np.array(openingRadius).astype(np.double, copy=False),
-            openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(
-                np.double, copy=False
-            ),
-            openingCenter=np.array(openingCenter).astype(np.double, copy=False),
-            openingNormal=np.array(openingNormal).astype(np.double, copy=False))
+    np.savez_compressed(outputBaseName + "c.npz", **arrays)
 
     endTime = time.time()
     timeElapsed = int(round((endTime - startTime)))

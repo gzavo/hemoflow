@@ -37,7 +37,10 @@ def getOpeningsFromCenterline(fileName):
 
     Returns
     -------
-    We'll see. But we assume all centerline runs from source (inlet) to target.
+    List of (radius, position, direction) tuples, one per opening. All centerlines must
+    run from the source (inlet) to a target (outlet). The first entry is the inlet (the
+    start point of the first centerline); the outlets follow, sorted by decreasing radius.
+    All directions point into the domain.
 
     """
     
@@ -82,17 +85,15 @@ def getOpeningsFromCenterline(fileName):
             v1 = pArray[0]-pArray[1]
             rTanData.append((r1, pArray[0], -v1))  # The inlet should point inwards
         
-        # All other tangents are pointing outwards
+        # Outlets: the tangent points out of the domain, so it is negated to point inwards
         v2 = pArray[-1]-pArray[-3] # Note, the last 2 points are sometimes the same for some reason
         rTanData.append((r2, pArray[-1], -v2))
-    
-        # print("Line: ", ll)
-        # print(r1, pArray[0], v1)
-        # print(r2, pArray[-1], v2)
-        
-    rTanData.sort(key=lambda rTanData: rTanData[0],reverse=True)
 
-    return rTanData
+    # Keep the inlet first, sort the outlets by decreasing radius
+    inlet, outlets = rTanData[0], rTanData[1:]
+    outlets.sort(key=lambda opening: opening[0], reverse=True)
+
+    return [inlet] + outlets
 
 
 def convertToVoxelspace(r_tan_data, scale, shift):

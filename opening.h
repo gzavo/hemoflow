@@ -4,111 +4,181 @@
 #include "globals.h"
 #include "helper.h"
 
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-// Define the opening handler
+// Unit-peak velocity profile of an opening, keyed by the linear voxel index gT(x,y,z).
+typedef std::unordered_map<long long, vec3d> VelocityProfileMap;
 
+// Handles one inlet/outlet ("opening") of the domain: its lattice nodes, the
+// boundary-condition type, the velocity/pressure profile and the optional
+// time-dependent scale function (waveform).
+//
+// Conventions:
+//  - All openings lie on a face of the domain bounding box.
+//  - 'direction' (from the centerline) and 'faceNormal' both point INTO the domain.
+//  - Positive flow rates are inflows, negative flow rates are outflows.
 class OpeningHandler
 {
 public:
-    OpeningHandler(const unsigned short* flagAray, GeometryLabel flag_, OpeningType type_, T radius_lb, vec3d direction);
-    ~OpeningHandler();
+    OpeningHandler(const unsigned short* flagArray, int label, OpeningType type, T radius_lb, vec3d direction);
 
-    void printOpeningDetails(SimPar s);
-    void loadScaleFunction(const string& fileName);    // Load in the scale function form a text file and MPI boradcast it
-    void setBCParameter(T parameter_, SimPar s);  // Set Q or p or other BC parameter, convert it to LBM units.
-    void setBCType(MultiBlockLattice3D<T, DESCRIPTOR> *lattice);    // Sets the BC type for LBM
-    void progressTime(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T dt);     // Progress time by dt and impose time-dependent values on the opening
-    void setExternalVelocityProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, field3D &velocityArr);     // Overwrites profile with external array
-    void setExternalPressureProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, scalar3D &pressureArr);    // Overwrites profile with external array
-    void setScaledBoundaryProfile(MultiBlockLattice3D<T, DESCRIPTOR> *lattice, T scale);
-    void createConstantPressureProfile(T density = 1.0);
-    void createPoiseauilleProfile();    // norm(v_max) = 1.0
-    void createBluntVelocityProfile();  // norm(v) = 1.0
-    void normalizeFlowRate();           // Set Q = 1.0
-    void scaleFlowRate(T scale_);       // Scale velocity
-    void scalePressure(T scale_);       // Scale pressure
-    void setBCParameter (T bcParameter_) { bcParameter = bcParameter_; }
+    void printOpeningDetails(const SimPar& s) const;
+    void loadScaleFunction(const std::string& fileName);  // Load the waveform from a text file (read on the main process, broadcast)
+    void setBCParameter(T parameter, const SimPar& s);    // SI value (velocity [m/s] or gauge pressure [Pa]) -> lattice units
+    void setBCParameterLB(T parameter_lb) { bcParameter = parameter_lb; }
+    void setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice);   // Instantiates the boundary condition on the lattice
+    void progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T dt);  // Advance time by dt and impose the boundary values
+    void createConstantPressureProfile();
+    void createPoiseuilleProfile();     // Peak velocity 1 (lattice units), zero on the fitted ellipse
+    void createBluntVelocityProfile();  // Velocity 1 (lattice units) on every node
 
-    int getGeometryLabel() { return flag; }
-    int getOpeningType() { return type; }
-    int getSurfaceSize() { return nodes.size(); }
-    bool getIsMurrayOpening() { return type==OPENING_MURRAY; }
-    T getProfileVelSum();
-    T getFlowRate(SimPar s);
-    T getScaledFlowRate(SimPar s);
+    int getLabel() const { return label; }
+    OpeningType getOpeningType() const { return type; }
+    bool isVelocityType() const { return type == OPENING_VELOCITY || type == OPENING_MURRAY; }
+    size_t getNumNodes() const { return nodes.size(); }
+    T getRadius() const { return R; }
+    vec3d getCenter() const { return center; }
+    Box3D const& getBoundingBox() const { return boundingBox; }
+    int getFaceAxis() const { return faceAxis; }
+    int getFaceSign() const { return faceSign; }
+
+    // Flow rate (lattice units, inflow positive) of the profile with unit peak velocity.
+    T getProfileFlux() const { return profileFlux; }
+    // Flow rate currently imposed on a velocity or Murray opening (lattice units, inflow positive).
+    T getImposedFluxLB() const { return isVelocityType() ? profileFlux * bcParameter * cScale : 0.0; }
+    T getImposedFlowRate(const SimPar& s) const;    // [m^3/s], inflow positive
+    // Flow rate measured on the lattice nodes of the opening [m^3/s], inflow positive. Collective (all MPI ranks).
+    T measureFlowRate(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, const SimPar& s) const;
+
     bool getHasScaleFunction() const { return hasScaleFunction; }
     T getPeriod() const { return hasScaleFunction ? scaleTime.back() : -1.0; }
-    T getRadius() const { return R; }
-    T getArea() const { return nodes.size(); }
-    vec3d getCenter() { return center; }
-    Box3D *getBoundingBox() { return boundingBox; }
 
-    void setName(string name_) {name = name_;}
-    string getName () {return name;}
+    // True if both openings lie on the same domain face and their bounding rectangles intersect.
+    bool overlapsOnFace(const OpeningHandler& other) const;
+
+    void setName(const std::string& name_) { name = name_; }
+    std::string getName() const { return name; }
 
 private:
-    string name;
-    GeometryLabel flag;
+    const unsigned short* flags;
+    std::string name;
+    int label;
     OpeningType type;
-    
-    vector<Index3D> nodes;  // List of LBM nodes on the opening
-    vec3d center;           // LBM units
-    vec3d direction;        // Normal vector
-    T R;                    // LBM units (area-derived hydrodynamic radius)
-    Box3D *boundingBox;     // BB for functionals
 
-    // Boundary condition profiles
-    field3D velArr;
-    scalar3D presArr;
-    T bcParameter;    // Normal velocity magnitude max (for Q) or absolute pressure (p). These multiply the scale functions.
+    std::vector<Index3D> nodes;  // LBM nodes of the opening
+    vec3d center;                // Geometric centre [lattice units]
+    vec3d direction;             // Unit vector along the centerline, pointing into the domain
+    T R;                         // Radius from the centerline [lattice units]
+    Box3D boundingBox;
+    int faceAxis;                // 0, 1, 2: the domain face (x, y, z) the opening lies on
+    int faceSign;                // +1 on the min face, -1 on the max face (direction of the inward face normal)
 
-    // Scale signal
+    // Boundary condition profile
+    VelocityProfileMap profile;
+    T profileFlux;   // Flux of the unit-peak profile through the face [lattice units]
+    T bcParameter;   // Velocity openings: peak velocity [lb]. Pressure openings: density deviation rho-1 [lb]. Scaled by the waveform.
+
+    // Scale function (waveform)
     bool hasScaleFunction;
-    vector<T> scaleSignal;
-    vector<T> scaleTime;
-    T cScale; // The current scale value of the function
-
-    // Keeping track of the scale function (and looping it)
-    int cTimePos;
-    T cTimeVal;
-
+    std::vector<T> scaleSignal;
+    std::vector<T> scaleTime;
+    T cScale;      // Current value of the scale function
+    int cTimePos;  // Current segment of the waveform
+    T cTimeVal;    // Current time within the period
 };
 
-// 3D functor to get velocity
+
+// Imposes the boundary value on the cells of ONE opening (cells whose label matches),
+// so that openings whose bounding boxes overlap cannot overwrite each other.
 template<typename T_, template<typename U> class Descriptor>
-class VelocityProfile3D {
-    public:
-        VelocityProfile3D (field3D *velocityValues, T_ scaleVelocity) : velocity ( velocityValues ), scale ( scaleVelocity)
-        { }
+class ImposeOpeningValues3D : public BoxProcessingFunctional3D_L<T_, Descriptor> {
+public:
+    // Velocity opening: u = profile * velocityScale
+    ImposeOpeningValues3D(const unsigned short* flags_, int label_, const VelocityProfileMap* profile_, T_ velocityScale_)
+        : flags(flags_), label(label_), profile(profile_), velocityScale(velocityScale_), isVelocity(true), density(1.0)
+    { }
+    // Pressure opening: rho = density
+    ImposeOpeningValues3D(const unsigned short* flags_, int label_, T_ density_)
+        : flags(flags_), label(label_), profile(nullptr), velocityScale(0.0), isVelocity(false), density(density_)
+    { }
 
-        void operator() (plint iX, plint iY, plint iZ, Array<T, 3>& u) const {
-            u[0] = (*velocity)[iX][iY][iZ].x * scale;
-            u[1] = (*velocity)[iX][iY][iZ].y * scale;
-            u[2] = (*velocity)[iX][iY][iZ].z * scale;
-        }
+    virtual void process(Box3D domain, BlockLattice3D<T_, Descriptor>& lattice)
+    {
+        Dot3D offset = lattice.getLocation();
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                    plint x = iX + offset.x, y = iY + offset.y, z = iZ + offset.z;
+                    if (x < 0 || y < 0 || z < 0 || x >= Nx || y >= Ny || z >= Nz)
+                        continue;
+                    long long id = gT(x, y, z);
+                    if (flags[id] != label)
+                        continue;
+                    Cell<T_, Descriptor>& cell = lattice.get(iX, iY, iZ);
+                    if (isVelocity) {
+                        typename VelocityProfileMap::const_iterator it = profile->find(id);
+                        if (it == profile->end())
+                            continue;
+                        Array<T_, 3> u(it->second.x * velocityScale, it->second.y * velocityScale, it->second.z * velocityScale);
+                        cell.defineVelocity(u);
+                    }
+                    else {
+                        cell.defineDensity(density);
+                    }
+                }
+    }
 
-    private:
-        field3D *velocity;
-        T_ scale;
+    virtual ImposeOpeningValues3D<T_, Descriptor>* clone() const { return new ImposeOpeningValues3D<T_, Descriptor>(*this); }
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const { modified[0] = modif::staticVariables; }
+    virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulkAndEnvelope; }
+
+private:
+    const unsigned short* flags;
+    int label;
+    const VelocityProfileMap* profile;
+    T_ velocityScale;
+    bool isVelocity;
+    T_ density;
 };
 
-// 3D functor to extract pressure
+
+// Sums the velocity component normal to the face (inflow positive) over the cells of one opening.
 template<typename T_, template<typename U> class Descriptor>
-class PressureProfile3D {
-    public:
-        PressureProfile3D (scalar3D *pressureValues, T_ scalePressure) : pressure ( pressureValues ), scale (scalePressure)
-        { }
+class OpeningFluxFunctional3D : public ReductiveBoxProcessingFunctional3D_L<T_, Descriptor> {
+public:
+    OpeningFluxFunctional3D(const unsigned short* flags_, int label_, int axis_, int sign_)
+        : flags(flags_), label(label_), axis(axis_), sign(sign_), sumId(this->getStatistics().subscribeSum())
+    { }
 
-        T_ operator() (plint iX, plint iY, plint iZ) const {       
-            T_ prescPressure = (*pressure)[iX][iY][iZ];
-            if(prescPressure <= 0)
-                prescPressure = (T_)1.0;
-            return prescPressure*scale;
-        }
+    virtual void process(Box3D domain, BlockLattice3D<T_, Descriptor>& lattice)
+    {
+        BlockStatistics& statistics = this->getStatistics();
+        Dot3D offset = lattice.getLocation();
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                    if (flags[gT(iX + offset.x, iY + offset.y, iZ + offset.z)] != label)
+                        continue;
+                    Array<T_, 3> u;
+                    lattice.get(iX, iY, iZ).computeVelocity(u);
+                    statistics.gatherSum(sumId, sign * u[axis]);
+                }
+    }
 
-    private:
-        scalar3D *pressure;
-        T_ scale;
+    virtual OpeningFluxFunctional3D<T_, Descriptor>* clone() const { return new OpeningFluxFunctional3D<T_, Descriptor>(*this); }
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const { modified[0] = modif::nothing; }
+    virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulk; }
+    T_ getFlux() const { return this->getStatistics().getSum(sumId); }
+
+private:
+    const unsigned short* flags;
+    int label;
+    int axis;
+    int sign;
+    plint sumId;
 };
 
 #endif

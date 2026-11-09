@@ -5,10 +5,14 @@
 #include "helper.h"
 
 
+// Initializes the porosity field from the 'stent' array of the geometry file.
+// Porosity is only assigned to fluid voxels (label >= FLUID); wall and outside
+// voxels never receive porous forcing.
 template<typename T, typename T_>
 class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
     public:
-        explicit InitializePorousField(T_ *porousGeometryData) : porousData(porousGeometryData)
+        InitializePorousField(T_ *porousGeometryData, const unsigned short *geometryFlags)
+            : porousData(porousGeometryData), flags(geometryFlags)
         { }
 
     virtual void process(Box3D domain, NTensorField3D<T>& field)
@@ -22,8 +26,13 @@ class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
                     plint absY = offset.y + iY;
                     plint absZ = offset.z + iZ;
 
-                    T porosity = porousData[gT(absX, absY, absZ)];
-                    if(porosity > 0.0) {
+                    if (absX < 0 || absY < 0 || absZ < 0 || absX >= Nx || absY >= Ny || absZ >= Nz) {
+                        *field.get(iX, iY, iZ) = 0;
+                        continue;
+                    }
+                    long long id = gT(absX, absY, absZ);
+                    T porosity = porousData[id];
+                    if(porosity > 0.0 && flags[id] >= FLUID) {
                         *field.get(iX, iY, iZ) = porosity;
                     }
                     else {
@@ -47,6 +56,7 @@ class InitializePorousField : public BoxProcessingFunctional3D_N<T> {
 
     private:
         T_ *porousData;
+        const unsigned short *flags;
 };
 
 
@@ -62,11 +72,14 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LN<T, Descriptor
     virtual void process(Box3D domain, BlockLattice3D<T,Descriptor>& lattice,
                                        NTensorField3D<T>& field)
     {
+        // The lattice and the porosity field blocks need not coincide (e.g. sparse decomposition)
+        Dot3D offset = computeRelativeDisplacement(lattice, field);
+
     	for (plint iX=domain.x0; iX<=domain.x1; ++iX) 
             for (plint iY=domain.y0; iY<=domain.y1; ++iY) 
                 for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
                 
-                T porosity = *field.get(iX, iY, iZ);
+                T porosity = *field.get(iX + offset.x, iY + offset.y, iZ + offset.z);
 
                 if(porosity == 0.0)
                 	continue;

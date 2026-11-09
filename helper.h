@@ -24,9 +24,9 @@ struct SimPar{
 
 // *** Function to convert array coordinates
 
-// Fortran ordering - numpy - long long enables large DNS 
+// Linear index into a C-ordered (row-major, numpy default) Nx x Ny x Nz array,
+// i.e. the layout of the arrays in the geometry .npz file. 64-bit to allow large domains.
 inline long long gT(int x, int y, int z) {
-    //return x*Nz*Ny + y*Nz + z;
     return (long long)x*(long long)Nz*(long long)Ny + (long long)y*(long long)Nz + (long long)z;
 }
 
@@ -35,15 +35,6 @@ inline long long gT2D(int size_y ,int x, int y){
     return (long long)x*(long long)size_y + (long long)y;
 }
 
-// C ordering
-inline int gTC(int x, int y, int z) {
-    return x + y*Nx + z*Nx*Ny;
-}
-
-// Fortran ordering - Array index conversion between 1D - 3+ D arrays
-inline int gT(int d, int x, int y, int z) {
-    return d*Nx*Ny*Nz + x*Nz*Ny + y*Nz + z;
-}
 
 // Simple linear interpolation
 inline T interpolate(T x1, T x2, T xi, T y1, T y2)
@@ -82,7 +73,7 @@ public:
     void set(vec3d v) {x=v.x; y=v.y; z=v.z;}
     double norm() const {return sqrt(x*x+y*y+z*z);}       // Length of the vector
     void normalize() {double n = norm(); if(n==0) return; x/=n; y/=n; z/=n;}   // Normalize the vector
-    vec3d getNormal() { vec3d t; double n = norm();  if(n==0) return t; t.set(x/=n, y/=n, z/=n); return t; }  // Return the normal of the vetor
+    vec3d getNormal() const { vec3d t; double n = norm();  if(n==0) return t; t.set(x/n, y/n, z/n); return t; }  // Return the normalized copy of the vector
     void negate() {x=-x;y=-y;z=-z;}
     double dot(vec3d v) const { return x*v.x + y*v.y + z*v.z; }
     vec3d cross(vec3d v) const { return vec3d(y*v.z-z*v.y, z*v.x - x*v.z, x*v.y - y*v.x);}

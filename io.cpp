@@ -85,24 +85,33 @@ int mkpath(const char *path, mode_t mode)
 // *** Data saving routines ***
 // ****************************
 
-// Write out data in vtk format
-void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, MultiNTensorField3D<T> *field1)
+// Write out data in VTK image format (.vti) in SI units
+void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, const OutputOptions &out)
 {
-    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), sim.C_l);
-    //vtkOut.writeData<float>(*computeDensity(lattice), "density [Pa]", 1./3. * sim.C_p );
-    vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", sim.C_l/sim.C_t);
-    //vtkOut.writeData<6,float>(*computeShearStress(lattice), "sigma [1/m2s]", 1./(sim.C_l*sim.C_t*sim.C_t));
-    //vtkOut.writeData<float>(*computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice)), "S_norm [1/s]", 1./sim.C_t );
-    // TODO - output viscosity?
-    
-    if (field1 != nullptr)
-       vtkOut.writeData<float>(*field1, "field1");
+    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), sim.C_l, out.origin);
+
+    if (out.velocity)
+        vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", sim.C_l/sim.C_t);
+
+    if (out.pressure) {
+        // Gauge pressure p = c_s^2 (rho - 1) C_p. Subtract the reference density in double
+        // precision before converting to float to avoid cancellation.
+        std::unique_ptr<MultiScalarField3D<T> > rhoDeviation = subtract(*computeDensity(lattice), (T)1.0);
+        vtkOut.writeData<float>(*rhoDeviation, "pressure [Pa]", (float)(sim.C_p / 3.0));
+    }
+
+    if (out.stress) {
+        // Viscous stress sigma = -(1 - omega/2) Pi^neq (lattice units), times C_p for [Pa].
+        vtkOut.writeData<6,float>(*computePiNeq(lattice), "stress [Pa]", (float)(-(1.0 - sim.omega / 2.0) * sim.C_p));
+    }
 }
 
+#ifdef HEMOFLOW_WITH_HDF5
 // TODO - too slow, optimize the arrays (MPI rank is now saved in every lattice?).
 // TODO - Optimize chunk size.
 // TODO - save as vectors and matrices instead of 3D scalar arrays (also modify xdmf) - https://github.com/BlueBrain/HighFive/blob/master/src/examples/create_dataset_double.cpp
-void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir, MultiNTensorField3D<T> *field1)
+void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir,
+               const Array<double, 3> &origin, MultiNTensorField3D<T> *field1)
 {
 
     T SaveTime = T();
@@ -112,7 +121,8 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
     // Note the velovities are distributed on every processor
     MultiTensorField3D<double,3> DistributedVelocity = *computeVelocity(lattice);
     MultiScalarField3D<double> DistributedDensity = *computeDensity(lattice);
-    MultiTensorField3D<double,6> DistributedShearStress = *computeShearStress(lattice);
+    // Viscous stress from the non-equilibrium momentum flux (computeShearStress is zero for the bulk dynamics used here)
+    MultiTensorField3D<double,6> DistributedShearStress = *computePiNeq(lattice);
     MultiScalarField3D<double> DistributedS_Norm = *computeSymmetricTensorNorm(*computeStrainRateFromStress(lattice));
     // MultiScalarField3D<double> DistributedField1 = *field1; // Used for additional fields, e.g. porosity, do any necessary calculations here. 
 
@@ -160,11 +170,11 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
                     VelocityX.push_back(float(foundVelocity[0])*vel_scale); VelocityY.push_back(float(foundVelocity[1])*vel_scale); VelocityZ.push_back(float(foundVelocity[2])*vel_scale);
                     // Density
                     double foundDensity = DistributedDensity.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    // Density.push_back(float(foundDensity)*1./3.*float(sim.C_p));
-                    Density.push_back(float(foundDensity));
+                    // Gauge pressure [Pa]
+                    Density.push_back(float((foundDensity - 1.0) * sim.C_p / 3.0));
                     // Shear Stress
                     Array<double,6> const& foundSS = DistributedShearStress.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    float SS_scale = sim.C_m / (sim.C_l*sim.C_t*sim.C_t);
+                    float SS_scale = float(-(1.0 - sim.omega / 2.0) * sim.C_p);  // Pi^neq -> viscous stress [Pa]
                     SS1.push_back(float(foundSS[0])*SS_scale); SS2.push_back(float(foundSS[1])*SS_scale); SS3.push_back(float(foundSS[2])*SS_scale);
                     SS4.push_back(float(foundSS[3])*SS_scale); SS5.push_back(float(foundSS[4])*SS_scale); SS6.push_back(float(foundSS[5])*SS_scale);
                     // S_Norm
@@ -299,7 +309,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
         fprintf(xmf, "     <Topology TopologyType=\"3DCoRectMesh\" NumberOfElements=\"%d %d %d\"/>\n", Nz, Ny, Nx);
         fprintf(xmf, "     <Geometry GeometryType=\"Origin_DxDyDz\">\n");
         fprintf(xmf, "       <DataItem Name=\"Origin\" Dimensions=\"%d\" NumberType=\"Float\" Precision=\"4\" Format=\"XML\">\n", 3);
-        fprintf(xmf, "          0 0 0\n");
+        fprintf(xmf, "          %g %g %g\n", origin[2], origin[1], origin[0]);
         fprintf(xmf, "       </DataItem>\n");
         // Discretization step size
         fprintf(xmf, "       <DataItem Name=\"Spacing\" Dimensions=\"%d\" NumberType=\"Float\" Precision=\"4\" Format=\"XML\">\n", 3);
@@ -308,7 +318,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
         fprintf(xmf, "     </Geometry>\n");
         fprintf(xmf, "     \n");
         // Density
-        fprintf(xmf, "     <Attribute Name=\"Density [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Pressure [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/density\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
@@ -332,33 +342,33 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
         fprintf(xmf, "     </Attribute>\n");
         fprintf(xmf, "     \n");
         // Shear Stress
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 1 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 1 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_1\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
         fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 2 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 2 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_2\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
         fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 3 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 3 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_3\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
         fprintf(xmf, "     </Attribute>\n");
         fprintf(xmf, "     \n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 4 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 4 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_4\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
         fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 5 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 5 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_5\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
         fprintf(xmf, "     </Attribute>\n");
-        fprintf(xmf, "     <Attribute Name=\"Shear Stress 6 [1/m2s]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
+        fprintf(xmf, "     <Attribute Name=\"Stress 6 [Pa]\" AttributeType=\"Scalar\" Center=\"Cell\">\n");
         fprintf(xmf, "       <DataItem Dimensions=\"%d %d %d\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">\n", Nz, Ny, Nx);
         fprintf(xmf, "          %s.h5:/sigma_6\n", h5_name.c_str());
         fprintf(xmf, "       </DataItem>\n");
@@ -403,30 +413,33 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
 
 }
 
-void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, plint iter)
+#endif  // HEMOFLOW_WITH_HDF5
+
+void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter)
 {
     Box3D bb = lattice.getBoundingBox();
-    long unsigned int nx = bb.getNx();
-    long unsigned int ny = bb.getNy();
-    long unsigned int nz = bb.getNz();
+    size_t nx = bb.getNx();
+    size_t ny = bb.getNy();
+    size_t nz = bb.getNz();
 
     TensorField3D<T,3> localVelocity(nx, ny, nz);
     copySerializedBlock(*computeVelocity(lattice), localVelocity);
 
     if(global::mpi().isMainProcessor()) {
-        double *data = new double[3*nx*ny*nz];
+        const double velScale = sim.C_l / sim.C_t;
+        std::vector<double> data(3 * nx * ny * nz);
 
-        for(unsigned int i = 0; i < nx; i++) 
-            for(unsigned int j = 0; j < ny; j++)
-                for(unsigned int k = 0; k < nz; k++) {
-                int idx = (i*nx*nz+j*nz+k)*3;
+        // C-ordered (Nx, Ny, Nz, 3) array, like the geometry arrays
+        for(size_t i = 0; i < nx; i++)
+            for(size_t j = 0; j < ny; j++)
+                for(size_t k = 0; k < nz; k++) {
+                    size_t idx = ((i * ny + j) * nz + k) * 3;
+                    for (int d = 0; d < 3; d++)
+                        data[idx + d] = localVelocity.get(i, j, k)[d] * velScale;
+                }
 
-                data[idx]   = localVelocity.get(i, j, k)[0];
-                data[idx+1] = localVelocity.get(i, j, k)[1];
-                data[idx+2] = localVelocity.get(i, j, k)[2];
-            }
-
-        cnpy::npz_save(createFileName("output_", iter, 6) + ".npz", "velocity",&data[0],{3,nz,ny,nx},"w"); 
+        std::string fileName = global::directories().getOutputDir() + createFileName("output_", iter, 6) + ".npz";
+        cnpy::npz_save(fileName, "velocity", data.data(), {nx, ny, nz, 3}, "w");
     }
 
     global::mpi().barrier();
