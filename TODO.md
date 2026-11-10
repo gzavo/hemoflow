@@ -19,7 +19,7 @@ Reference: 78.7 Pa pressure drop, inlet/outlet flow 1.483/1.485·10⁻⁵ m³/s 
 
 Phases agreed for sections 1, 3 and 4 (November 2026): 1 preprocessor rework (done),
 2 solver geometry distribution and per-node opening boundaries (done), 3 sparse
-decomposition bug (done), 4 boundary-condition features (Carreau), 5 full verification.
+decomposition bug (done), 4 non-Newtonian (Carreau–Yasuda) blood (done), 5 full verification.
 After phases 3 and 4: spatially varying flow diverter resistance (section 2).
 
 ## 0. Palabos upgrade
@@ -104,6 +104,9 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [ ] High-resistance devices will need a semi-implicit treatment of the porous force
       for stability.
 - [ ] With `LES 1` the Smagorinsky dynamics has no force term, so devices have no effect.
+- [ ] With the Carreau model the porous coefficients stay constant. A Darcy term that scales
+      with the local viscosity (a = μ / permeability) would follow the fluid; decide together
+      with the spatially varying resistance above.
 
 ## 3. Boundary conditions and openings
 
@@ -121,7 +124,22 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [ ] Optional warm-up ramp and a steady-run option (end time or convergence criterion)
       instead of a constant waveform file whose length defines a "cycle". Not needed
       for now (decided November 2026).
-- [ ] Non-Newtonian rheology (Carreau parameters exist only as literature references).
+- [x] **Non-Newtonian rheology** (phase 4, November 2026): `<fluid><model>carreau</model>`,
+      Carreau–Yasuda with blood defaults after Cho and Kensey (1991) and an optional Yasuda
+      exponent `a` (default 2 = Carreau). Every cell solves for its own shear rate and
+      viscosity at every step (`rheology.h`: Newton with a bisection fallback, round-off
+      accurate; `nonNewtonian.h`: the forced regularized BGK with the local ω). Palabos only
+      has plain Carreau, and its standalone Carreau collisions have no force term, so the
+      flow diverter would be ignored. Stress output uses the local viscosity; new output
+      field `viscosity`. Verified on the pipe (`tests/verification/0-pipe/carreau.xml`,
+      README test case 1); Newtonian runs are bit-identical to before.
+- [ ] Carreau: the finite-difference pressure boundary rebuilds the stress of its cells with
+      one ω (the one at μ∞), so the viscosity in the outlet layer is not the local one.
+      Fixing it needs a pressure boundary condition on the HemoFlow side that takes ω per
+      cell (Palabos' local pressure condition, which would, diverged in the pipe case).
+- [ ] Carreau: velocity openings impose a parabolic profile. A developed Carreau–Yasuda
+      profile (from the same semi-analytical solution as `carreau_profile.py`) would shorten
+      the entrance region.
 
 ## 4. Performance and scalability
 
@@ -135,6 +153,10 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       for flow diverters): NAP180 at 20 M voxels in ~4 s instead of ~53 s.
 - [x] Recursive opening detection replaced: openings come from the surface caps; the
       connectivity checks use `scipy.ndimage.label`.
+- [ ] Carreau: the shear-rate solve takes 3–4 Newton iterations per cell and step (+6 % per
+      step for NAP180 at 20 M voxels, about +60 % in small cases such as the pipe). Starting
+      from the previous step's ω (one stored scalar per cell, a change of the lattice
+      descriptor and the checkpoint format) would need 1–2.
 - [ ] The two-cell envelope needed by the finite-difference pressure condition costs
       20 % (dense) to 50 % (sparse) per time step (NAP180 20 M, 20 processes: sparse 29.8
       -> 44.5 s for 300 steps). Palabos' local pressure condition needs only one cell but
@@ -148,7 +170,8 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       loop) and replace the globals with a configuration/simulation struct.
 - [ ] Remove `using namespace std` from headers; use `std::` consistently.
 - [ ] Decide on the unused writers in `io.cpp` (`writeHDF5`, `writeNPZ`): wire them up as
-      output options or remove them.
+      output options or remove them. `writeHDF5` converts the stress with the Newtonian ω,
+      so it would need the Carreau path of `writeVTK`.
 - [ ] Bump the version string (still `v0.31`).
 
 ## 6. Preprocessor (Python)

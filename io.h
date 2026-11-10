@@ -31,6 +31,7 @@ struct OutputOptions {
     bool velocity = true;   // velocity [m/s]
     bool pressure = true;   // gauge pressure [Pa] (relative to the reference density)
     bool stress = false;    // viscous (deviatoric) stress tensor [Pa]: xx, xy, xz, yy, yz, zz
+    bool viscosity = false; // dynamic viscosity [Pa s] (constant for a Newtonian fluid)
     Array<double, 3> origin = Array<double, 3>(0.0, 0.0, 0.0);  // Physical position of lattice node (0,0,0) [m]
 };
 

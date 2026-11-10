@@ -10,6 +10,7 @@
 using namespace std;
 
 #include "globals.h"
+#include "rheology.h"
 
 // Simulation parameters
 struct SimPar{
@@ -20,6 +21,8 @@ struct SimPar{
     T C_m;  // Mass conversion factor (derived)
     T omega; // Inverse relaxation time of LBM (1/tau). Stablest when = 1.0
     T U_max_lb; // Maximum velocity in LB units. This will scale time-step size vs. stability. [Default=0.1]
+    bool nonNewtonian = false;  // Carreau-Yasuda fluid; omega is then the value at the infinite-shear viscosity
+    CarreauModel carreau;       // Carreau-Yasuda parameters in lattice units (if nonNewtonian)
 };
 
 // *** Function to convert array coordinates

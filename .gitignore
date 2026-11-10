@@ -51,6 +51,8 @@ __pycache__/
 
 # Output files
 output/
+# Plots written by the pipe verification scripts
+tests/verification/0-pipe/profile_*.png
 
 #IDEs
 *.idea/

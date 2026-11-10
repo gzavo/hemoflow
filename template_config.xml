@@ -4,16 +4,24 @@
 	<cycle>1</cycle> <!-- Number of cardiac cycles to run; output is only written during the last cycle. -->
 	<saveFrequency>0.016</saveFrequency> <!-- Output interval [s]. -->
 	<outputDir>output</outputDir> <!-- Output directory, created if missing. -->
-	<outputFields>velocity pressure</outputFields> <!-- Optional. Any of: velocity pressure stress (default: velocity pressure). -->
+	<outputFields>velocity pressure</outputFields> <!-- Optional. Any of: velocity pressure stress viscosity (default: velocity pressure). -->
 	<sparse>true</sparse> <!-- Optional. true: only allocate blocks that contain the vessel; false: allocate the whole bounding box (default: true). -->
 	<blockSize>24</blockSize>	<!-- Optional. Block size of the sparse decomposition [LB nodes] (default: 24). -->
 	<!-- <checkpointFrequency>0.1</checkpointFrequency> --> <!-- Optional. Checkpoint interval [s]; restart with -c. -->
 	<!-- <mode>murray</mode> --> <!-- Optional. murray | pzero. Without a mode, every opening needs an <opening_i> block. -->
 </simulation>
 
-<fluid> <!-- Optional. Newtonian fluid; the defaults are for blood. -->
-	<kinematicViscosity>3.22e-6</kinematicViscosity> <!-- [m^2/s] -->
-	<density>1055</density> <!-- [kg/m^3]; only scales the pressure and stress values. -->
+<fluid> <!-- Optional. The defaults are for blood. -->
+	<model>newtonian</model> <!-- Optional. newtonian (default) | carreau (Carreau-Yasuda, shear-thinning). -->
+	<kinematicViscosity>3.22e-6</kinematicViscosity> <!-- [m^2/s], newtonian only -->
+	<density>1055</density> <!-- [kg/m^3]. Scales pressure and stress; with carreau also nu = mu / density. -->
+	<!-- carreau only: mu = muInf + (mu0 - muInf) (1 + (lambda gamma)^a)^((n - 1) / a). Defaults: blood after Cho and Kensey (1991).
+	<mu0>0.056</mu0>         Zero-shear viscosity [Pa s]
+	<muInf>0.00345</muInf>   Infinite-shear viscosity [Pa s]; sets the time step when dt is omitted
+	<lambda>3.313</lambda>   Relaxation time [s]
+	<n>0.3568</n>            Power-law index, 0 < n <= 1
+	<a>2</a>                 Yasuda exponent, a > 0 (2: Carreau)
+	-->
 </fluid>
 
 <geometry>

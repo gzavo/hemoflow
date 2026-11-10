@@ -19,7 +19,7 @@ typedef GuoExternalForceCompleteRegularizedBGKdynamics<T,DESCRIPTOR> BackgroundD
 //GuoExternalForceCompleteRegularizedBGKdynamics
 //GuoExternalForceMRTdynamics
 //GuoExternalForceBGKdynamics
-//ForcedCarreauDynamics
+// Non-Newtonian (Carreau-Yasuda) bulk dynamics: CarreauBackgroundDynamics in nonNewtonian.h
 
 // TODO: scalar field for rheModel implementation
 #define CELLDESCRIPTOR descriptors::D3Q7Descriptor
@@ -56,5 +56,10 @@ extern int Nz;
 // Default physical properties of blood (can be overridden in the <fluid> section of the config)
 const double DEFAULT_BLOOD_DENSITY = 1055;                // [kg/m3]
 const double DEFAULT_BLOOD_KINEMATIC_VISCOSITY = 3.22e-6; // [m2/s]
+// Carreau model of blood (Cho and Kensey, Biorheology 28, 241, 1991), used with <model>carreau</model>
+const double DEFAULT_CARREAU_MU0 = 0.056;       // Zero-shear viscosity [Pa s]
+const double DEFAULT_CARREAU_MU_INF = 0.00345;  // Infinite-shear viscosity [Pa s]
+const double DEFAULT_CARREAU_LAMBDA = 3.313;    // Relaxation time [s]
+const double DEFAULT_CARREAU_N = 0.3568;        // Power-law index
 
 #endif

@@ -1,4 +1,5 @@
 #include "io.h"
+#include "nonNewtonian.h"
 
 // ***********************************
 // *** Directory handling routines ***
@@ -102,7 +103,25 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pli
 
     if (out.stress) {
         // Viscous stress sigma = -(1 - omega/2) Pi^neq (lattice units), times C_p for [Pa].
-        vtkOut.writeData<6,float>(*computePiNeq(lattice), "stress [Pa]", (float)(-(1.0 - sim.omega / 2.0) * sim.C_p));
+        if (sim.nonNewtonian) {
+            // With the relaxation rate of every cell
+            std::unique_ptr<MultiTensorField3D<T,6> > stress = generateMultiTensorField<T,6>(lattice, 1);
+            applyProcessingFunctional(new CarreauStressFunctional3D<T,DESCRIPTOR>(sim.carreau), lattice.getBoundingBox(), lattice, *stress);
+            vtkOut.writeData<6,float>(*stress, "stress [Pa]", (float)sim.C_p);
+        }
+        else {
+            vtkOut.writeData<6,float>(*computePiNeq(lattice), "stress [Pa]", (float)(-(1.0 - sim.omega / 2.0) * sim.C_p));
+        }
+    }
+
+    if (out.viscosity) {
+        // Dynamic viscosity mu = rho nu: kinematic viscosity cs^2 (1/omega - 1/2) in lattice units, times C_r C_l^2 / C_t
+        std::unique_ptr<MultiScalarField3D<T> > nu = generateMultiScalarField<T>(lattice, 1);
+        if (sim.nonNewtonian)
+            applyProcessingFunctional(new CarreauViscosityFunctional3D<T,DESCRIPTOR>(sim.carreau), lattice.getBoundingBox(), lattice, *nu);
+        else
+            setToConstant(*nu, nu->getBoundingBox(), (T)(DESCRIPTOR<T>::cs2 * (1.0 / sim.omega - 0.5)));
+        vtkOut.writeData<float>(*nu, "viscosity [Pa s]", (float)(sim.C_r * sim.C_l * sim.C_l / sim.C_t));
     }
 }
 
@@ -174,7 +193,7 @@ void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pl
                     Density.push_back(float((foundDensity - 1.0) * sim.C_p / 3.0));
                     // Shear Stress
                     Array<double,6> const& foundSS = DistributedShearStress.getComponent(blockId).get(LocalX, LocalY, LocalZ);
-                    float SS_scale = float(-(1.0 - sim.omega / 2.0) * sim.C_p);  // Pi^neq -> viscous stress [Pa]
+                    float SS_scale = float(-(1.0 - sim.omega / 2.0) * sim.C_p);  // Pi^neq -> viscous stress [Pa] (Newtonian fluid only)
                     SS1.push_back(float(foundSS[0])*SS_scale); SS2.push_back(float(foundSS[1])*SS_scale); SS3.push_back(float(foundSS[2])*SS_scale);
                     SS4.push_back(float(foundSS[3])*SS_scale); SS5.push_back(float(foundSS[4])*SS_scale); SS6.push_back(float(foundSS[5])*SS_scale);
                     // S_Norm

@@ -15,6 +15,7 @@ using namespace std;
 #include "helper.h"
 #include "opening.h"
 #include "porous.h"
+#include "nonNewtonian.h"
 #include "io.h"
 #include "geometry.h"
 
@@ -37,9 +38,18 @@ T quadCoeff_lb = 0.0;
 // Simulation parameters structure
 SimPar sim;
 
-// Fluid properties (Newtonian)
-T fluidKinematicViscosity = DEFAULT_BLOOD_KINEMATIC_VISCOSITY;  // [m^2/s]
+// Fluid properties
+T fluidKinematicViscosity = DEFAULT_BLOOD_KINEMATIC_VISCOSITY;  // [m^2/s], Newtonian model
 T fluidDensity = DEFAULT_BLOOD_DENSITY;                          // [kg/m^3]
+string fluidModel = "newtonian";                                 // newtonian | carreau
+// Carreau-Yasuda parameters (SI), defaults: blood after Cho and Kensey (Carreau, a = 2)
+struct CarreauParametersSI {
+    T mu0 = DEFAULT_CARREAU_MU0;        // [Pa s]
+    T muInf = DEFAULT_CARREAU_MU_INF;   // [Pa s]
+    T lambda = DEFAULT_CARREAU_LAMBDA;  // [s]
+    T n = DEFAULT_CARREAU_N;
+    T a = 2.0;
+} carreauSI;
 
 // Technical simulation parameters
 bool useCheckpoint = false;
@@ -222,8 +232,19 @@ void calcSimulationParameters(SimPar &sim, T dx, T dt, T nu, T rho, T U_max_LB_ 
         pcout << "** Parameter sanity WARNING ** LBM omega seems high: " << sim.omega
               << " (tau = " << 1.0 / sim.omega << "). The simulation may become unstable; consider a smaller dt." << endl;
 
-    // Note: the fluid is Newtonian. Non-Newtonian (e.g. Carreau) rheology is not implemented.
-    //  B.M. Johnston et al., J. Biomech. 37, 709-720 (2004); Y.I. Cho and K.R. Kensey, Biorheology 28, 241 (1991)
+}
+
+// Carreau-Yasuda parameters in lattice units. sim.omega belongs to the infinite-shear
+// viscosity, which calcSimulationParameters() was given for the non-Newtonian model.
+//  Y.I. Cho and K.R. Kensey, Biorheology 28, 241 (1991); B.M. Johnston et al., J. Biomech. 37, 709 (2004)
+void setCarreauModel(SimPar &sim, CarreauParametersSI const& p, T rho)
+{
+    sim.nonNewtonian = true;
+    sim.carreau.nu0 = p.mu0 / rho * sim.C_t / sim.C_l / sim.C_l;
+    sim.carreau.nuInf = p.muInf / rho * sim.C_t / sim.C_l / sim.C_l;
+    sim.carreau.lambda = p.lambda / sim.C_t;
+    sim.carreau.n = p.n;
+    sim.carreau.a = p.a;
 }
 
 // Advance the openings by dt and impose their boundary values.
@@ -451,25 +472,54 @@ int main(int argc, char *argv[])
         // Output fields
         string fieldList;
         if (readOptional(simXml, "simulation", "outputFields", fieldList)) {
-            outputOptions.velocity = outputOptions.pressure = outputOptions.stress = false;
+            outputOptions.velocity = outputOptions.pressure = outputOptions.stress = outputOptions.viscosity = false;
             std::istringstream fields(fieldList);
             string field;
             while (fields >> field) {
                 if (field == "velocity") outputOptions.velocity = true;
                 else if (field == "pressure") outputOptions.pressure = true;
                 else if (field == "stress") outputOptions.stress = true;
-                else throw std::runtime_error("Unknown output field '" + field + "' in <simulation><outputFields> (valid: velocity pressure stress).");
+                else if (field == "viscosity") outputOptions.viscosity = true;
+                else throw std::runtime_error("Unknown output field '" + field + "' in <simulation><outputFields> (valid: velocity pressure stress viscosity).");
             }
         }
 
         // Fluid properties (optional)
         if (hasSection(xml, "fluid")) {
             XMLreaderProxy fluidXml = xml["fluid"];
-            readOptional(fluidXml, "fluid", "kinematicViscosity", fluidKinematicViscosity);
+            readOptional(fluidXml, "fluid", "model", fluidModel);
             readOptional(fluidXml, "fluid", "density", fluidDensity);
+            bool hasNu = readOptional(fluidXml, "fluid", "kinematicViscosity", fluidKinematicViscosity);
+            bool hasCarreau = false;
+            hasCarreau |= readOptional(fluidXml, "fluid", "mu0", carreauSI.mu0);
+            hasCarreau |= readOptional(fluidXml, "fluid", "muInf", carreauSI.muInf);
+            hasCarreau |= readOptional(fluidXml, "fluid", "lambda", carreauSI.lambda);
+            hasCarreau |= readOptional(fluidXml, "fluid", "n", carreauSI.n);
+            hasCarreau |= readOptional(fluidXml, "fluid", "a", carreauSI.a);
+            if (fluidModel == "carreau" && hasNu)
+                throw std::runtime_error("<fluid><kinematicViscosity> is not used by the carreau model; set mu0 and muInf [Pa s] instead.");
+            if (fluidModel == "newtonian" && hasCarreau)
+                throw std::runtime_error("<fluid> has Carreau parameters (mu0, muInf, lambda, n, a), but <model> is not 'carreau'.");
         }
+        if (fluidModel != "newtonian" && fluidModel != "carreau")
+            throw std::runtime_error("Unknown <fluid><model> '" + fluidModel + "' (valid: newtonian, carreau).");
         if (fluidKinematicViscosity <= 0.0 || fluidDensity <= 0.0)
             throw std::runtime_error("The fluid viscosity and density must be positive.");
+        if (fluidModel == "carreau") {
+            if (!(carreauSI.muInf > 0.0 && carreauSI.mu0 >= carreauSI.muInf))
+                throw std::runtime_error("Carreau model: 0 < muInf <= mu0 is required.");
+            if (!(carreauSI.lambda >= 0.0))
+                throw std::runtime_error("Carreau model: lambda must not be negative.");
+            if (!(carreauSI.n > 0.0 && carreauSI.n <= 1.0))
+                throw std::runtime_error("Carreau model: 0 < n <= 1 is required (shear-thinning).");
+            if (!(carreauSI.a > 0.0))
+                throw std::runtime_error("Carreau model: the Yasuda exponent a must be positive.");
+        #if LES
+            throw std::runtime_error("The carreau fluid model cannot be combined with LES (LES 1 in globals.h).");
+        #endif
+            // The time step and the stability checks use the lowest viscosity
+            fluidKinematicViscosity = carreauSI.muInf / fluidDensity;
+        }
 
         // Output directory, created by the main process
         outDir = resolvePath(outputFolder);
@@ -527,6 +577,8 @@ int main(int argc, char *argv[])
 
         pcout << "Setting LBM parameters..." << std::endl;
         calcSimulationParameters(sim, sim_dx, sim_dt, fluidKinematicViscosity, fluidDensity);
+        if (fluidModel == "carreau")
+            setCarreauModel(sim, carreauSI, fluidDensity);
 
         // **** Openings in the geometry file ****
         pcout << "Processing openings..." << std::endl;
@@ -553,11 +605,14 @@ int main(int argc, char *argv[])
         envelopeWidth = hasPressureOpening ? 2 : 1;
         pcout << "Envelope width: " << envelopeWidth << endl;
 
-        Dynamics<T, DESCRIPTOR>* bulkDynamics =
+        Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
         #if LES
-            new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
+            bulkDynamics = new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
         #else
-            new BackgroundDynamics(sim.omega);
+            if (sim.nonNewtonian)
+                bulkDynamics = new CarreauBackgroundDynamics(sim.omega, sim.carreau);
+            else
+                bulkDynamics = new BackgroundDynamics(sim.omega);
         #endif
 
         if (useSparse) {
@@ -662,10 +717,21 @@ int main(int argc, char *argv[])
             << "dx [m]:  " << sim.C_l << endl
             << "dt [s]:  " << sim.C_t << endl
             << "dm [kg]:  " << sim.C_m << endl
-            << "nu [m^2/s]: " << fluidKinematicViscosity << endl
-            << "rho [kg/m^3]: " << fluidDensity << endl
-            << "omega:  " << sim.omega << endl
-            << "nu [lb]: " << 1./3. * (1./sim.omega - 0.5) << endl
+            << "fluid model: " << fluidModel << endl;
+    if (sim.nonNewtonian) {
+        // omega lies between its values at the zero-shear and the infinite-shear viscosity
+        T omega0 = 1.0 / (3.0 * sim.carreau.nu0 + 0.5);
+        pcout   << "Carreau-Yasuda: mu0 = " << carreauSI.mu0 << " Pa s, muInf = " << carreauSI.muInf << " Pa s, lambda = "
+                << carreauSI.lambda << " s, n = " << carreauSI.n << ", a = " << carreauSI.a << endl
+                << "omega range: " << omega0 << " (zero shear, tau = " << 1.0 / omega0 << ") to "
+                << sim.omega << " (infinite shear, tau = " << 1.0 / sim.omega << ")" << endl;
+    }
+    else {
+        pcout   << "nu [m^2/s]: " << fluidKinematicViscosity << endl
+                << "omega:  " << sim.omega << endl
+                << "nu [lb]: " << 1./3. * (1./sim.omega - 0.5) << endl;
+    }
+    pcout   << "rho [kg/m^3]: " << fluidDensity << endl
             << "U_max [lbm]: " << sim.U_max_lb << endl
             << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
 
@@ -690,7 +756,7 @@ int main(int argc, char *argv[])
     const int lastCycleStartIter = (int)std::llround((numCycles - 1) * cyclePeriod / sim.C_t);
     pcout << "Writing output only from iteration " << lastCycleStartIter << " onward (last cycle)." << endl;
     pcout << "Output fields:" << (outputOptions.velocity ? " velocity" : "") << (outputOptions.pressure ? " pressure" : "")
-          << (outputOptions.stress ? " stress" : "") << endl;
+          << (outputOptions.stress ? " stress" : "") << (outputOptions.viscosity ? " viscosity" : "") << endl;
 
     // Checkpoint file names relative to the output folder
     string chkParamFile = outDir+"/checkpoint_parameters.dat";

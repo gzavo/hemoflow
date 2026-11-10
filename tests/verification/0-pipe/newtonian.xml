@@ -1,0 +1,37 @@
+<!-- Steady pipe flow at low velocity (fully developed): Newtonian twin of carreau.xml (viscosity = muInf), measures the discretization error.
+     Evaluate with: python carreau_profile.py newtonian.xml -->
+    <simulation>
+        <dt>1e-4</dt>  <!-- [s]; tau = 0.51 at muInf, 0.68 at mu0 -->
+        <blockSize>24</blockSize>
+        <outputDir>output_newtonian</outputDir>
+        <cycle>6</cycle>  <!-- 6 x 0.8 s (stationary.txt) = 4.8 s, 8.6 decay times of the slowest viscous mode at muInf -->
+        <saveFrequency>0.4</saveFrequency>  <!-- [s]; the last two outputs show whether the flow is steady -->
+        <outputFields>velocity pressure stress viscosity</outputFields>
+    </simulation>
+
+    <fluid>
+        <density>1055</density>  <!-- [kg/m^3] -->
+        <kinematicViscosity>3.27014e-6</kinematicViscosity>  <!-- muInf / density of carreau.xml [m^2/s] -->
+    </fluid>
+
+    <geometry>
+        <file>input/vox_pipe_c.npz</file>
+        <opening_0>
+            <name>Inlet</name>
+            <type>1</type>
+            <label>11</label>
+            <timeScaleFunction>input/stationary.txt</timeScaleFunction>
+            <parameter>0.05</parameter>  <!-- Mean velocity [m/s] (Re = 100 at muInf) -->
+        </opening_0>
+        <opening_1>
+            <name>Outlet</name>
+            <type>3</type>
+            <label>10</label>
+            <parameter>0</parameter>  <!-- [Pa] -->
+        </opening_1>
+    </geometry>
+
+    <flowdiverter>  <!-- The pipe geometry contains a device; zero resistance here -->
+        <linCoeff>0</linCoeff>
+        <quadCoeff>0</quadCoeff>
+    </flowdiverter>

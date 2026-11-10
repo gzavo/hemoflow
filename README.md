@@ -70,13 +70,14 @@ it is not developed here.
 | `geometry.h/.cpp` | Reads the geometry file on the main process and distributes it to the other processes |
 | `opening.h/.cpp` | `OpeningHandler`: inlet/outlet boundary conditions, velocity/pressure profiles, time-scale (waveform) functions |
 | `porous.h` | Porous (flow diverter) momentum sink as Palabos data processors |
+| `rheology.h`, `nonNewtonian.h` | Carreau–Yasuda model and its shear-rate solver (plain C++); the Palabos dynamics and output functionals that use it |
 | `io.h/.cpp` | VTK output (and unused HDF5/NPZ writers), directory helpers |
 | `globals.h`, `helper.h` | Lattice/dynamics typedefs, compile-time switches, geometry labels, small vector types |
 | `CMakeLists.txt` | Build script (builds Palabos as a static library and links `hemoFlow`) |
 | `template_config.xml` | Annotated solver configuration template (also in `testcase/`) |
 | `preprocessor/` | Python voxelization and opening-detection tools (`main.py` is the entry point) |
 | `testcase/` | Example aneurysm geometries (NAP126, NAP180) with a PED 5×20 flow diverter and example configs |
-| `tests/verification/` | Verification cases: straight pipe (Poiseuille), bifurcation flow split (Murray), Aneurisk C0002 |
+| `tests/verification/` | Verification cases: straight pipe (Poiseuille, Carreau–Yasuda), bifurcation flow split (Murray), Aneurisk C0002 |
 | `tests/sensitivity/`, `tests/uncertainty/` | [EasyVVUQ](https://github.com/UCL-CCS/EasyVVUQ) sensitivity and uncertainty campaigns |
 | `doc/VV/` | Verification and validation notebook (`hemoflow_VV.ipynb`) and its data |
 | `doc/paraview_wss_calc.txt` | How to compute wall shear stress in ParaView from the stress output |
@@ -139,7 +140,7 @@ Compile-time switches in `globals.h`:
 
 | Macro | Default | Meaning |
 |---|---|---|
-| `LES` | `0` | Smagorinsky LES. The Smagorinsky dynamics has no force term, so flow diverters have no effect with `LES 1`. |
+| `LES` | `0` | Smagorinsky LES. The Smagorinsky dynamics has no force term, so flow diverters have no effect with `LES 1`. Cannot be combined with the Carreau fluid model. |
 | `DESCRIPTOR`, `BackgroundDynamics` | D3Q19, `GuoExternalForceCompleteRegularizedBGKdynamics` | Lattice and collision model |
 
 ---
@@ -320,13 +321,23 @@ arbitrarily close to each other.
 
 * All solver inputs are in SI units (m, s, Pa). (The preprocessor's
   `target_dx` and the STL are in mm.)
-* The fluid is Newtonian. The defaults are blood, ν = 3.22·10⁻⁶ m²/s and
-  ρ = 1055 kg/m³, and can be changed in the `<fluid>` section. ρ only scales
-  the pressure and stress values.
+* The fluid is Newtonian by default: blood with ν = 3.22·10⁻⁶ m²/s and
+  ρ = 1055 kg/m³. With `<model>carreau</model>` in the `<fluid>` section it is
+  shear-thinning, following the Carreau–Yasuda law
+
+  μ(γ̇) = μ∞ + (μ0 − μ∞) (1 + (λ γ̇)^a)^((n − 1)/a),
+
+  by default blood after Cho and Kensey (1991): μ0 = 0.056 Pa·s,
+  μ∞ = 0.00345 Pa·s, λ = 3.313 s, n = 0.3568 and a = 2 (the Carreau model).
+  Every cell takes its viscosity from its own shear rate at every time step.
+  The shear rate itself depends on the viscosity, and the solver solves this
+  relation to round-off (`rheology.h`). ρ scales the pressure and stress
+  values and, for the Carreau model, converts μ to ν.
 * If `<dt>` is given, the relaxation rate follows from dx, dt and ν. If it is
-  omitted, ω = 1 and dt = dx²/(6ν). The solver warns when ω > 1.9 or when
-  the peak inlet velocity exceeds 0.1 in lattice units. Both warnings mean
-  dt should be reduced.
+  omitted, ω = 1 and dt = dx²/(6ν). For the Carreau model ν is the lowest
+  viscosity, μ∞/ρ, which sets the stability limit; the log shows the range
+  of ω. The solver warns when ω > 1.9 or when the peak inlet velocity
+  exceeds 0.1 in lattice units. Both warnings mean dt should be reduced.
 
 ### Configuration file (XML)
 
@@ -342,7 +353,7 @@ An annotated template is in `template_config.xml` (same as
 | `cycle` | yes | Number of cardiac cycles to simulate. Output is written only during the last cycle. |
 | `saveFrequency` | yes | Output interval [s], ≥ `dt` |
 | `outputDir` | yes | Output directory, created if missing |
-| `outputFields` | no | Space-separated list of `velocity`, `pressure`, `stress`. Default: `velocity pressure`. |
+| `outputFields` | no | Space-separated list of `velocity`, `pressure`, `stress`, `viscosity`. Default: `velocity pressure`. |
 | `checkpointFrequency` | no | Checkpoint interval [s]. Without it, checkpointing is disabled. |
 | `mode` | no | Boundary-condition mode: none (default), `murray` or `pzero`, see below |
 | `sparse` | no | `true` (default): only allocate the blocks that contain the vessel. `false`: allocate the whole bounding box. Both give identical results. |
@@ -353,7 +364,20 @@ entry of the first waveform file found among the openings. At least one
 opening must have a `timeScaleFunction`; for steady inflow use a two-point
 constant file, whose last time sets the length of a "cycle".
 
-**`<fluid>`** (optional): `kinematicViscosity` [m²/s], `density` [kg/m³].
+**`<fluid>`** (optional):
+
+| Tag | Model | Meaning |
+|---|---|---|
+| `model` | | `newtonian` (default) or `carreau` (Carreau–Yasuda, see above) |
+| `density` | both | [kg/m³], default 1055 |
+| `kinematicViscosity` | newtonian | [m²/s], default 3.22·10⁻⁶ |
+| `mu0`, `muInf` | carreau | Zero- and infinite-shear viscosity [Pa·s], default 0.056 and 0.00345 (0 < `muInf` ≤ `mu0`) |
+| `lambda` | carreau | Relaxation time [s], default 3.313 |
+| `n` | carreau | Power-law index, 0 < `n` ≤ 1, default 0.3568 |
+| `a` | carreau | Yasuda exponent, > 0, default 2 (Carreau) |
+
+A parameter of the other model (e.g. `kinematicViscosity` with `carreau`) stops
+the solver with an error.
 
 **`<geometry>`**
 
@@ -425,7 +449,11 @@ match (the solver warns otherwise). Example
   * `velocity [m/s]`
   * `pressure [Pa]`: gauge pressure, 0 at the reference density
   * `stress [Pa]`: viscous stress tensor (components xx, xy, xz, yy, yz, zz),
-    for wall shear stress; see `doc/paraview_wss_calc.txt`
+    for wall shear stress; see `doc/paraview_wss_calc.txt`. With the Carreau
+    model it uses the local viscosity of every cell.
+  * `viscosity [Pa s]`: dynamic viscosity (constant for a Newtonian fluid)
+* Stress and viscosity are only meaningful in fluid voxels; wall and outside
+  voxels carry placeholder values.
 * The grid has spacing dx and the `origin` of the geometry file, so it
   overlays the input STL once the STL is scaled from mm to m. (Geometry files
   from older preprocessor versions have no origin; the output then starts at
@@ -476,6 +504,44 @@ expected. With geometry from the previous (scan-line) preprocessor the same
 run gave 80.6 Pa at a 3.6 % higher flow rate (mean inlet velocity 0.464 m/s).
 The earlier V&V result (`doc/VV`, 90.7 Pa at 0.5 m/s) was obtained with that
 older geometry.
+
+**Carreau–Yasuda blood** (`carreau.xml`, default blood parameters) and its
+Newtonian twin (`newtonian.xml`, viscosity μ∞): steady flow at a mean velocity
+of 0.05 m/s (Re = 100 at μ∞), so that the flow is fully developed in the middle
+of the pipe; dt = 10⁻⁴ s, 4.8 s (48 k steps).
+
+```bash
+mpirun -np 10 ../../../build/hemoFlow carreau.xml      # ~5 min on 10 cores
+mpirun -np 10 ../../../build/hemoFlow newtonian.xml    # ~3.5 min
+conda run -n hemoflow-post python carreau_profile.py carreau.xml --calibrate newtonian.xml
+conda run -n hemoflow-post python carreau_profile.py newtonian.xml
+```
+
+`carreau_profile.py` compares the flow between 45 % and 80 % of the length
+with the semi-analytical solution of fully developed flow at the same flow
+rate. The shear stress is G r/2 (G = −dp/dx), the shear rate follows from
+μ(γ̇) γ̇ = G r/2, and the velocity is the integral of the shear rate from the
+wall. The staircase wall makes the pipe act slightly narrower than the radius
+of its lumen area: the Newtonian twin needs 7.7 % more pressure gradient than
+Hagen–Poiseuille for that radius. `--calibrate` instead uses the radius for
+which Hagen–Poiseuille reproduces the Newtonian twin (3.192 instead of
+3.252 mm), which removes this grid effect from the Carreau comparison. The
+script also writes `profile_<config>.png`.
+
+**Reference result** (November 2026):
+
+| Quantity | Carreau | Newtonian twin |
+|---|---|---|
+| Pressure gradient, simulated | 220.2 Pa/m | 139.8 Pa/m |
+| Analytical, lumen-area radius | 206.9 Pa/m (sim. +6.5 %) | 129.8 Pa/m (sim. +7.7 %) |
+| Analytical, calibrated radius | 219.9 Pa/m (sim. +0.1 %) | 139.8 Pa/m (by construction) |
+| Velocity profile, RMS error (calibrated) | 0.7 % of the peak | 0.7 % of the peak |
+| Viscosity output against μ(γ̇(r)), median (calibrated) | 0.7 % (0.0052–0.011 Pa·s) | – |
+| Shear stress output against G r/2, median | 1.5 % | 2.0 % |
+| Change between the last two outputs | 2·10⁻⁵ of the peak velocity | 2·10⁻⁵ of the peak velocity |
+
+Shear thinning raises the pressure gradient by 57 % over Newtonian blood at μ∞
+and flattens the profile (peak / mean velocity 1.89 instead of 2.05).
 
 ### 2. Aneurysm with flow diverter (`testcase/`)
 
@@ -552,7 +618,18 @@ The full list of open tasks is in [TODO.md](TODO.md).
 * The porous coefficients act per voxel layer, so the resistance of a device
   depends on its voxelized thickness and therefore on dx. The per-voxel
   coefficients (`linear`, `quadratic`) are written but not used by the solver.
-* The fluid is Newtonian; non-Newtonian rheology is not implemented.
+* Carreau model:
+  * At a pressure opening, Palabos' finite-difference boundary condition
+    rebuilds the stress of the opening cells from the velocity gradient with
+    a single ω for all of them, the one at μ∞. The viscosity in that one layer
+    of cells is therefore not the local one.
+  * Velocity openings impose a parabolic (Newtonian) profile; the flow
+    develops the blunter non-Newtonian profile downstream of the inlet.
+  * The flow diverter coefficients do not scale with the local viscosity.
+  * A time step costs about 6 % more than with a Newtonian fluid for NAP180
+    at 20 M voxels, and about 60 % more in small cases such as the pipe, where
+    the collision dominates. Each cell solves for its shear rate with 3–4
+    Newton iterations per step.
 
 ---
 
