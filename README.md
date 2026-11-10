@@ -12,7 +12,7 @@ haemodynamic effect of a device can be compared against the untreated case.
 The solver is built on the [Palabos](https://palabos.unige.ch) library
 (D3Q19 lattice, regularized BGK collision with Guo forcing). Palabos is an
 external dependency that ships with this repository in `palabos/` (upstream
-master after release 2.3.0, with one local patch listed in [TODO.md](TODO.md));
+master after release 2.3.0, with one local patch listed in [doc/dev/TODO.md](doc/dev/TODO.md));
 it is not developed here.
 
 * Language: C++ (solver), Python (preprocessing and post-processing scripts)
@@ -240,7 +240,7 @@ see below; without it every device voxel gets the multiplier 1).
    `linearMultiplier` and `quadraticMultiplier`, dimensionless, ≥ 0). The
    shipped `PED_5x20_values.vtp` holds the deployment descriptors `Density`
    and `Expansion` instead; their mapping to multipliers is still open
-   ([TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md)).
+   ([doc/dev/TODO-FD-INHOMOGEN.md](doc/dev/TODO-FD-INHOMOGEN.md)).
 6. Every run checks that the fluid meets the outside only through the openings
    (leak check) and that the fluid is one connected region.
 
@@ -635,7 +635,7 @@ public. Results are summarised in `doc/VV/hemoflow_VV.ipynb`.
 
 ## Known issues and limitations
 
-The full list of open tasks is in [TODO.md](TODO.md).
+The full list of open tasks is in [doc/dev/TODO.md](doc/dev/TODO.md).
 
 * Pressure openings use Palabos' finite-difference pressure condition, which
   reads two cells deep. Blocks therefore exchange two layers of cells instead
@@ -652,7 +652,7 @@ The full list of open tasks is in [TODO.md](TODO.md).
   thick along its normal, 15–19 % two voxels (double resistance) and 3–7 % has
   gaps (no resistance). Geometry files made before November 2026 have about
   40 % at two voxels. A device-level, area-weighted model is planned in
-  [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md).
+  [doc/dev/TODO-FD-INHOMOGEN.md](doc/dev/TODO-FD-INHOMOGEN.md).
 * Carreau model:
   * At a pressure opening, Palabos' finite-difference boundary condition
     rebuilds the stress of the opening cells from the velocity gradient with
