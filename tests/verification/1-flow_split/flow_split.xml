@@ -3,7 +3,7 @@
 
         <dt>2e-5</dt>	<!-- Desired stime step size [s]. This defines the balance between accuracy and computational cost. -->
 
-        <blockSize>50</blockSize>	<!-- Target atomic block size for domain decomposition. (Side length, LB nodes) -->
+        <blockSize>24</blockSize>	<!-- Block size of the sparse decomposition (side length, LB nodes). -->
 
         <outputDir>output</outputDir> <!-- Where to put the output files. Relative to this config file.-->
 

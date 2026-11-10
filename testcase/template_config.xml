@@ -5,8 +5,8 @@
 	<saveFrequency>0.016</saveFrequency> <!-- Output interval [s]. -->
 	<outputDir>output</outputDir> <!-- Output directory, created if missing. -->
 	<outputFields>velocity pressure</outputFields> <!-- Optional. Any of: velocity pressure stress (default: velocity pressure). -->
-	<sparse>false</sparse> <!-- Optional. true: only allocate blocks that contain the vessel (default: false, experimental). -->
-	<blockSize>50</blockSize>	<!-- Optional. Block size of the sparse decomposition [LB nodes] (default: 50). -->
+	<sparse>true</sparse> <!-- Optional. true: only allocate blocks that contain the vessel; false: allocate the whole bounding box (default: true). -->
+	<blockSize>24</blockSize>	<!-- Optional. Block size of the sparse decomposition [LB nodes] (default: 24). -->
 	<!-- <checkpointFrequency>0.1</checkpointFrequency> --> <!-- Optional. Checkpoint interval [s]; restart with -c. -->
 	<!-- <mode>murray</mode> --> <!-- Optional. murray | pzero. Without a mode, every opening needs an <opening_i> block. -->
 </simulation>

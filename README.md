@@ -291,7 +291,7 @@ mpirun -np 8 ./build/hemoFlow path/to/case.xml [-d] [-c]
 | Flag | Meaning |
 |---|---|
 | `-d`, `--debug` | Every 200 steps, print the imposed and the measured flow rate of every opening and the net mass balance |
-| `-c`, `--checkpoint` | Restart from the checkpoint in `<outputDir>` (use the same number of MPI processes) |
+| `-c`, `--checkpoint` | Restart from the checkpoint in `<outputDir>` (use the same number of MPI processes and the same `sparse` and `blockSize` settings) |
 | `-h`, `--help` | Usage |
 
 Paths inside the XML file (geometry, waveforms, output directory) are
@@ -299,12 +299,22 @@ relative to the directory of the XML file, or absolute. Configuration errors
 (missing or unknown tags, labels that are not in the geometry, unreadable
 waveforms, …) stop the solver with a message before the simulation starts.
 
+By default the domain is split into cubes of `blockSize` lattice nodes and
+only the cubes that contain the vessel are allocated (sparse decomposition).
+For NAP180 at 20 M voxels this keeps 18.6 % of the bounding box at block size
+24 and runs 2.6× faster than allocating the whole box (`<sparse>false</sparse>`)
+on 20 processes. Block sizes of 16–32 work best; at 50 the run is 30 % slower.
+Small cases may have fewer blocks than processes (the pipe of test case 1 has
+18); the solver then prints a note, and a smaller `blockSize` helps.
+Results do not depend on the decomposition or on the number of processes:
+sparse and dense runs are bit-identical.
+
 Only the main MPI process reads the geometry file; every other process
 receives just the part of the voxel data it simulates. Memory per process
-therefore scales with its share of the domain (with the sparse decomposition,
-NAP180 at 20 M voxels on 8 processes needs ~230 MB per process instead of
-~570 MB). Boundary conditions are set on the opening voxels only, so openings
-on the same face can be arbitrarily close to each other.
+therefore scales with its share of the domain (NAP180 at 20 M voxels on 8
+processes needs ~230 MB per process instead of ~570 MB). Boundary conditions
+are set on the opening voxels only, so openings on the same face can be
+arbitrarily close to each other.
 
 ### Physical model and units
 
@@ -335,8 +345,8 @@ An annotated template is in `template_config.xml` (same as
 | `outputFields` | no | Space-separated list of `velocity`, `pressure`, `stress`. Default: `velocity pressure`. |
 | `checkpointFrequency` | no | Checkpoint interval [s]. Without it, checkpointing is disabled. |
 | `mode` | no | Boundary-condition mode: none (default), `murray` or `pzero`, see below |
-| `sparse` | no | `true`: only allocate the blocks that contain the vessel. Default `false`; see [Known issues](#known-issues-and-limitations). |
-| `blockSize` | no | Block size of the sparse decomposition [lattice nodes], default 50 |
+| `sparse` | no | `true` (default): only allocate the blocks that contain the vessel. `false`: allocate the whole bounding box. Both give identical results. |
+| `blockSize` | no | Block size of the sparse decomposition [lattice nodes], default 24 |
 
 The **simulated time is `cycle` × period**, where the period is the last time
 entry of the first waveform file found among the openings. At least one
@@ -530,13 +540,11 @@ public. Results are summarised in `doc/VV/hemoflow_VV.ipynb`.
 
 The full list of open tasks is in [TODO.md](TODO.md).
 
-* **Sparse decomposition is experimental** (`<sparse>true</sparse>`). It
-  gave results bit-identical to the dense decomposition for Aneurisk C0002
-  (block size 16, 29 % of the cells, 1.8× faster) and for NAP180 at block
-  size 24. For NAP180 at block size 16, the two runs diverged from a
-  round-off-level difference next to the 0 Pa outlet, reaching 0.06 m/s
-  after 400 steps. Until this is understood, compare against a dense run
-  before relying on it.
+* Pressure openings use Palabos' finite-difference pressure condition, which
+  reads two cells deep. Blocks therefore exchange two layers of cells instead
+  of one when the case has a pressure opening, which makes a time step 20 %
+  (dense) to 50 % (sparse) slower. Palabos' cheaper local pressure condition
+  diverged in the pipe test, so it is not used.
 * Openings must be flat cuts on bounding-box faces.
 * The velocity `parameter` is the mean velocity of an ideal paraboloid
   (peak = 2 × `parameter`). On the discrete opening the actual mean differs

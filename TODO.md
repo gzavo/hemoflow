@@ -13,13 +13,14 @@ conda create -n hemoflow-post -c conda-forge python=3.12 pyvista pandas matplotl
 ```
 
 Quick regression check: `tests/verification/0-pipe` (README, test case 1).
-Reference: 80.6 Pa pressure drop, inlet/outlet flow 1.537/1.539·10⁻⁵ m³/s.
+Reference: 78.7 Pa pressure drop, inlet/outlet flow 1.483/1.485·10⁻⁵ m³/s (unchanged by phases 2–3).
 
 ## Progress
 
 Phases agreed for sections 1, 3 and 4 (November 2026): 1 preprocessor rework (done),
 2 solver geometry distribution and per-node opening boundaries (done), 3 sparse
-decomposition bug, 4 boundary-condition features (Carreau), 5 full verification.
+decomposition bug (done), 4 boundary-condition features (Carreau), 5 full verification.
+After phases 3 and 4: spatially varying flow diverter resistance (section 2).
 
 ## 0. Palabos upgrade
 
@@ -48,15 +49,20 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 ## 1. Correctness and verification
 
-- [ ] **Sparse decomposition differs from dense in one case.** `<sparse>true</sparse>`
-      is bit-identical to dense for C0002 (block size 16) and NAP180 (block size 24),
-      but for NAP180 (`testcase/`, 1 M elements, `test_Aneurysm.xml`) at block size 16
-      a round-off-level difference appears at step 70 on fluid nodes next to the 0 Pa
-      outlet (label 11, y = 0 face), and grows to 0.06 m/s by step 400. Dense runs on
-      2 and 8 processes are identical, so the cause is the dropped blocks. Suspect the
-      finite-difference pressure boundary (`createInterpBoundaryCondition3D`) reading
-      envelope cells of a dropped neighbour block. Once fixed, make sparse the default
-      (it saves 40–70 % of the cells in aneurysm geometries).
+- [x] **Results depended on the block decomposition near pressure outlets** (phase 3,
+      November 2026). Seen first as sparse ≠ dense for NAP180 at block size 16 (0.06 m/s
+      after 400 steps next to the 0 Pa outlet), but not sparse-specific: a dense run with
+      16-node blocks gave the same result as the sparse one, and a dense run of a small
+      case on 1 vs 4 processes differed by 7·10⁻³ m/s (peak 0.66 m/s) once a block
+      boundary cut the outlet. Cause: the finite-difference pressure condition
+      (`createInterpBoundaryCondition3D`) reads two cells deep, but the lattice had a
+      one-cell envelope. Fix: envelope width 2 when the case has a pressure opening. Now
+      sparse and dense are bit-identical (15 configs: NAP180, branch and C0002 at block
+      sizes 12–32), and process counts 1–24 agree to ≤ 3·10⁻¹¹ m/s. Sparse is now the
+      default, block size 24 (NAP180 20 M: 18.6 % of the cells, 2.6× faster than dense
+      on 20 processes). The pipe validation on 10 processes had its outlet cut at z = 12:
+      the fix removes an artefact of up to 0.03 m/s and 27 Pa in the last three cells
+      before the outlet; the pressure drop stays 78.7 Pa.
 - [x] **Voxelizer dropped the partial top layer in y and z.** Fixed by the new VTK
       voxelizer, which covers the whole bounding box (phase 1, November 2026).
 - [ ] Full-length verification runs not yet done with the current code:
@@ -81,13 +87,18 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [ ] Ray-crossing voxelization along the axes can let diagonal (D3Q19) lattice links
       cross the device without touching a porous voxel; consider a conservative
       (triangle–voxel overlap) voxelization.
-- [ ] Make per-voxel coefficients the main path for deployment-simulation results: the
-      preprocessor writes `linear`/`quadratic` (from `<stent_mesh_base>values.vtp` when
-      `INHOMOGEN = True`), but the solver ignores them. Read them in `hemoFlow.cpp` and
-      use them in `PorousForceFunctional`. The shipped `PED_5x20_values.vtp` carries the
-      deployment descriptors `Density`, `Expansion` and `Force`, not `linearCoeff` /
-      `quadraticCoeff`; a mapping from descriptors to coefficients is still needed (the
-      interpolation itself was tested with test arrays).
+- [ ] **Spatially varying resistance (planned after phases 3 and 4).** Different parts of a
+      deployed device have different braid densities, so the resistance must vary per voxel.
+      Plan: the per-voxel `linear`/`quadratic` arrays of the geometry file become dimensionless
+      multipliers of the `<flowdiverter>` `linCoeff`/`quadCoeff` (the uniform case stays 1.0);
+      the main process reads them and distributes them like the other fields (geometry.cpp,
+      `scatterToField`) into a two-component field that replaces the 0/1 porosity field, and
+      `PorousForceFunctional` uses a(x), b(x). Check that the uniform case stays bit-identical.
+      Needs from the physics side: the mapping from the deployment descriptors to the
+      multipliers, normalized by the voxelized device thickness (see the first item above).
+      The shipped `PED_5x20_values.vtp` carries the descriptors `Density`, `Expansion` and
+      `Force`; the preprocessor's `INHOMOGEN` interpolation expects `linearCoeff` /
+      `quadraticCoeff` (tested with test arrays).
 - [ ] Coils: volumetric porous regions (e.g. Kozeny–Carman from the packing density)
       instead of shells; needs a solid (not shell) voxelization of the coil region.
 - [ ] High-resistance devices will need a semi-implicit treatment of the porous force
@@ -124,6 +135,12 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       for flow diverters): NAP180 at 20 M voxels in ~4 s instead of ~53 s.
 - [x] Recursive opening detection replaced: openings come from the surface caps; the
       connectivity checks use `scipy.ndimage.label`.
+- [ ] The two-cell envelope needed by the finite-difference pressure condition costs
+      20 % (dense) to 50 % (sparse) per time step (NAP180 20 M, 20 processes: sparse 29.8
+      -> 44.5 s for 300 steps). Palabos' local pressure condition needs only one cell but
+      diverged in the pipe case (NaN at step 1400) and changes NAP180 by 0.7 m/s, so it is
+      not an option. Possible: a pressure condition that reads only one cell deep
+      (e.g. Zou/He or an anti-bounce-back outlet) and re-verify against the pipe.
 
 ## 5. Code structure (C++)
 

@@ -43,9 +43,9 @@ T fluidDensity = DEFAULT_BLOOD_DENSITY;                          // [kg/m^3]
 
 // Technical simulation parameters
 bool useCheckpoint = false;
-bool useSparse = false;   // Sparse block decomposition (opt-in, see README)
-int blockSize = 50;
-int envelopeWidth = 1;
+bool useSparse = true;    // Sparse block decomposition: only blocks that contain the vessel are allocated
+int blockSize = 24;       // Side length of the blocks of the sparse decomposition [LB nodes]
+int envelopeWidth = 1;    // Set before the lattice is created (2 with pressure openings)
 string outputFolder;
 string workingFolder;
 T simLength;
@@ -545,6 +545,14 @@ int main(int argc, char *argv[])
         vector<OpeningSpec> specs = buildOpeningSpecs(xml, openingLabels);
 
         // **** Lattice ****
+        // The finite-difference ("interp") pressure boundary reads data two cells deep across
+        // block boundaries. With a one-cell envelope the result would depend on how the domain
+        // is split into blocks wherever a block boundary cuts a pressure opening.
+        bool hasPressureOpening = std::any_of(specs.begin(), specs.end(),
+                                              [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
+        envelopeWidth = hasPressureOpening ? 2 : 1;
+        pcout << "Envelope width: " << envelopeWidth << endl;
+
         Dynamics<T, DESCRIPTOR>* bulkDynamics =
         #if LES
             new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
@@ -569,7 +577,12 @@ int main(int argc, char *argv[])
                                                         bulkDynamics);
         }
         else {
-            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(Nx, Ny, Nz, bulkDynamics);
+            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(
+                defaultMultiBlockPolicy3D().getMultiBlockManagement(Box3D(0, Nx - 1, 0, Ny - 1, 0, Nz - 1), envelopeWidth),
+                defaultMultiBlockPolicy3D().getBlockCommunicator(),
+                defaultMultiBlockPolicy3D().getCombinedStatistics(),
+                defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+                bulkDynamics);
         }
 
         #if LES
@@ -577,6 +590,10 @@ int main(int argc, char *argv[])
         #endif
 
         pcout << getMultiBlockInfo(*lattice) << endl;
+        plint numBlocks = lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
+        if (useSparse && numBlocks < global::mpi().getSize())
+            pcout << "Note: " << numBlocks << " blocks for " << global::mpi().getSize()
+                  << " processes, so some processes have no work. Use a smaller <blockSize>." << endl;
 
         // Voxel labels and porosity as distributed fields with the block structure of the lattice
         labelField = generateMultiScalarField<int>(*lattice, envelopeWidth).release();
