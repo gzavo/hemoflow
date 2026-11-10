@@ -433,13 +433,19 @@ the solver with an error.
 | `linCoeff` | Linear (Darcy) coefficient *a* [Pa·s/m] |
 | `quadCoeff` | Quadratic (Forchheimer) coefficient *b* [Pa·s²/m²] |
 
-In every porous voxel the force density −(*m*<sub>lin</sub>·*a*·**u** + *m*<sub>quad</sub>·*b*·**u**|**u**|)/dx
+In every porous voxel the force density −(*m*<sub>lin</sub>·*a* + *m*<sub>quad</sub>·*b*·|**u**|)·**u**/dx
 is applied, with the voxel's resistance multipliers *m*<sub>lin</sub> and *m*<sub>quad</sub> from the
-geometry file (1 for a uniform device) and the quadratic term taken per
-velocity component (*b*·u<sub>i</sub>|u<sub>i</sub>|). The coefficients therefore describe the
-pressure drop across **one voxel-thick layer**, Δp = *a*·u + *b*·u²; the total
-resistance of a device scales with its thickness in voxels. The start-up log
-gives the number of porous voxels and the range of the multipliers.
+geometry file (1 for a uniform device). The force opposes the local velocity and
+does not depend on the flow direction relative to the grid. The coefficients
+therefore describe the pressure drop across **one voxel-thick layer**,
+Δp = *a*·u + *b*·u²; the total resistance of a device scales with its thickness
+in voxels. The start-up log gives the number of porous voxels and the range of
+the multipliers.
+
+Before November 2026 the quadratic term was taken per velocity component
+(*b*·u<sub>i</sub>|u<sub>i</sub>|), which is weaker for flow oblique to the grid axes (by up to
+1.73 times). Runs with `quadCoeff` ≠ 0 therefore differ from older results;
+runs with `quadCoeff` = 0 are unchanged.
 
 ### Waveform (time-scale function) files
 
@@ -647,8 +653,6 @@ The full list of open tasks is in [TODO.md](TODO.md).
   gaps (no resistance). Geometry files made before November 2026 have about
   40 % at two voxels. A device-level, area-weighted model is planned in
   [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md).
-* The quadratic porous term acts per velocity component, so for flow at 45°
-  to the grid axes it is 0.71 times that for axis-aligned flow.
 * Carreau model:
   * At a pressure opening, Palabos' finite-difference boundary condition
     rebuilds the stress of the opening cells from the velocity gradient with

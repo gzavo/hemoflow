@@ -10,7 +10,8 @@
 // (1 in every porous voxel for a uniform device or an older geometry file).
 
 /// Apply macroscopic porous material forcing: in each porous cell the force density
-/// -(mLin a u + mQuad b u|u|) / dx, with a = linCoeff and b = quadCoeff (lattice units)
+/// -(mLin a + mQuad b |u|) u / dx, with a = linCoeff and b = quadCoeff (lattice units).
+/// The force is antiparallel to u and does not depend on the flow direction relative to the grid.
 template<typename T, template<typename U> class Descriptor>
 struct PorousForceFunctional : public BoxProcessingFunctional3D_LT<T, Descriptor, T, 2> {
 
@@ -43,11 +44,11 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LT<T, Descriptor
             	T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
 
             	// Calculate the force (momentum loss)
-            	T lin = m[0] * linCoeff;
-            	T quad = m[1] * quadCoeff;
+            	T speed = std::sqrt(VectorTemplate<T, Descriptor>::normSqr(vel));
+            	T resistance = m[0] * linCoeff + m[1] * quadCoeff * speed;
             	for (pluint iD = 0; iD < Descriptor<T>::d; ++iD) 
             	{
-                	force[iD] = -(lin * vel[iD] + quad * copysign(vel[iD] * vel[iD], vel[iD]) );
+                	force[iD] = -resistance * vel[iD];
             	}
             }
         

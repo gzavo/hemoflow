@@ -9,7 +9,7 @@ dominated by how the device happens to be voxelized.
 
 In every porous voxel the solver applies the force density
 
-    f = -(m_lin a u + m_quad b u_i|u_i|) / dx
+    f = -(m_lin a + m_quad b |u|) u / dx
 
 so `linCoeff` (a) and `quadCoeff` (b) are the pressure drop across **one voxel layer**,
 and the resistance of the device is proportional to the number of layers a fluid
@@ -35,8 +35,6 @@ particle crosses.
   had 50–52 % at one voxel and 35–40 % at two.
 - **Gaps.** On 3–7 % of the device area no device voxel lies along the normal, so flow
   crosses there without resistance: the axis-aligned rays miss parts of the surface.
-- **The quadratic term is per velocity component** (b u_i|u_i|). For flow at 45° to the
-  grid axes the force is 0.71 times that of axis-aligned flow.
 - **Interpolation.** Each device voxel takes the values of the nearest of the 812 points
   of `<stent_mesh_base>values.vtp` (about one per braid cell, ~0.5 mm), which gives a
   patchwork at the voxel scale.
@@ -53,7 +51,7 @@ particle crosses.
   so the force summed over the voxels of a device patch of area A is
   Σ f dx³ = (a u + b |u| u) Σ A_v = (a u + b |u| u) A, whatever the orientation of the
   device to the grid and whatever dx is.
-- The quadratic term is b |u| u (rotation invariant).
+- The quadratic term stays b |u| u (rotation invariant since November 2026).
 - Optionally the resistance acts mainly on the flow **through** the device: a per-voxel
   normal n (area-weighted mean of the triangle normals in the voxel), the full
   resistance for the normal velocity u_n and a factor κ_t (0 ≤ κ_t ≤ 1) for the

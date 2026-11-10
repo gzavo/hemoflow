@@ -94,7 +94,8 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [x] **Spatially varying resistance: per-voxel multipliers** (November 2026). The geometry
       file carries `linearMultiplier`/`quadraticMultiplier` (float32, dimensionless) that
       scale `<flowdiverter>` `linCoeff`/`quadCoeff` per voxel; 1 for a uniform device, so
-      uniform runs are bit-identical to before. The main process reads them and distributes
+      uniform runs are bit-identical to before (apart from the change of the quadratic term
+      in the next item). The main process reads them and distributes
       them into a two-component field that replaced the 0/1 porosity field; the porous force
       is applied only over the bounding box of the device voxels. Older geometry files (with
       the unused absolute `linear`/`quadratic` arrays) still give a uniform device. With
@@ -103,6 +104,12 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       case identical to the committed solver; multipliers (2, 4) identical to coefficients
       (2a, 4b); multipliers 0 on half the device identical to a device file with only the
       other half; sparse 8 processes = dense 4; same cost per step at 20 M voxels.
+- [x] Rotation-invariant quadratic porous term (November 2026): b |u| u instead of the
+      per-component b u_i|u_i|, which was up to 1.73 times weaker for flow oblique to the
+      grid axes (1.41 at 45° in a plane). Unit test of the force for five flow directions:
+      same magnitude, antiparallel to u, exact to 1e-16. Runs with `quadCoeff` 0 stay
+      bit-identical; NAP180 (a = 100, b = 200, 0.02 s start-up): mean speed in the device
+      voxels −1.2 % (the whole quadratic term: −3.2 %).
 - [ ] Mapping from the deployment descriptors to the multipliers (physics input). The
       shipped `PED_5x20_values.vtp` carries `Density`, `Expansion` and `Force` (one value
       per braid cell, 812 points); the preprocessor needs `linearMultiplier` and
