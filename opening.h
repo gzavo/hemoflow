@@ -7,10 +7,13 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Unit-peak velocity profile of an opening, keyed by the linear voxel index gT(x,y,z).
 typedef std::unordered_map<long long, vec3d> VelocityProfileMap;
+// Voxels of an opening, as linear indices gT(x,y,z).
+typedef std::unordered_set<long long> NodeSet;
 
 // Handles one inlet/outlet ("opening") of the domain: its lattice nodes, the
 // boundary-condition type, the velocity/pressure profile and the optional
@@ -23,7 +26,7 @@ typedef std::unordered_map<long long, vec3d> VelocityProfileMap;
 class OpeningHandler
 {
 public:
-    OpeningHandler(const unsigned short* flagArray, int label, OpeningType type, T radius_lb, vec3d direction);
+    OpeningHandler(const std::vector<Index3D>& nodes, int label, OpeningType type, T radius_lb, vec3d direction);
 
     void printOpeningDetails(const SimPar& s) const;
     void loadScaleFunction(const std::string& fileName);  // Load the waveform from a text file (read on the main process, broadcast)
@@ -56,19 +59,17 @@ public:
     bool getHasScaleFunction() const { return hasScaleFunction; }
     T getPeriod() const { return hasScaleFunction ? scaleTime.back() : -1.0; }
 
-    // True if both openings lie on the same domain face and their bounding rectangles intersect.
-    bool overlapsOnFace(const OpeningHandler& other) const;
-
     void setName(const std::string& name_) { name = name_; }
     std::string getName() const { return name; }
 
 private:
-    const unsigned short* flags;
     std::string name;
     int label;
     OpeningType type;
 
     std::vector<Index3D> nodes;  // LBM nodes of the opening
+    NodeSet nodeSet;             // The same nodes as linear indices
+    std::vector<Box3D> runs;     // Boxes (rows of adjacent nodes) that cover exactly the nodes
     vec3d center;                // Geometric centre [lattice units]
     vec3d direction;             // Unit vector along the centerline, pointing into the domain
     T R;                         // Radius from the centerline [lattice units]
@@ -91,18 +92,18 @@ private:
 };
 
 
-// Imposes the boundary value on the cells of ONE opening (cells whose label matches),
+// Imposes the boundary value on the cells of ONE opening (cells in its node set),
 // so that openings whose bounding boxes overlap cannot overwrite each other.
 template<typename T_, template<typename U> class Descriptor>
 class ImposeOpeningValues3D : public BoxProcessingFunctional3D_L<T_, Descriptor> {
 public:
     // Velocity opening: u = profile * velocityScale
-    ImposeOpeningValues3D(const unsigned short* flags_, int label_, const VelocityProfileMap* profile_, T_ velocityScale_)
-        : flags(flags_), label(label_), profile(profile_), velocityScale(velocityScale_), isVelocity(true), density(1.0)
+    ImposeOpeningValues3D(const NodeSet* nodes_, const VelocityProfileMap* profile_, T_ velocityScale_)
+        : nodes(nodes_), profile(profile_), velocityScale(velocityScale_), isVelocity(true), density(1.0)
     { }
     // Pressure opening: rho = density
-    ImposeOpeningValues3D(const unsigned short* flags_, int label_, T_ density_)
-        : flags(flags_), label(label_), profile(nullptr), velocityScale(0.0), isVelocity(false), density(density_)
+    ImposeOpeningValues3D(const NodeSet* nodes_, T_ density_)
+        : nodes(nodes_), profile(nullptr), velocityScale(0.0), isVelocity(false), density(density_)
     { }
 
     virtual void process(Box3D domain, BlockLattice3D<T_, Descriptor>& lattice)
@@ -115,7 +116,7 @@ public:
                     if (x < 0 || y < 0 || z < 0 || x >= Nx || y >= Ny || z >= Nz)
                         continue;
                     long long id = gT(x, y, z);
-                    if (flags[id] != label)
+                    if (nodes->find(id) == nodes->end())
                         continue;
                     Cell<T_, Descriptor>& cell = lattice.get(iX, iY, iZ);
                     if (isVelocity) {
@@ -136,8 +137,7 @@ public:
     virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulkAndEnvelope; }
 
 private:
-    const unsigned short* flags;
-    int label;
+    const NodeSet* nodes;
     const VelocityProfileMap* profile;
     T_ velocityScale;
     bool isVelocity;
@@ -149,8 +149,8 @@ private:
 template<typename T_, template<typename U> class Descriptor>
 class OpeningFluxFunctional3D : public ReductiveBoxProcessingFunctional3D_L<T_, Descriptor> {
 public:
-    OpeningFluxFunctional3D(const unsigned short* flags_, int label_, int axis_, int sign_)
-        : flags(flags_), label(label_), axis(axis_), sign(sign_), sumId(this->getStatistics().subscribeSum())
+    OpeningFluxFunctional3D(const NodeSet* nodes_, int axis_, int sign_)
+        : nodes(nodes_), axis(axis_), sign(sign_), sumId(this->getStatistics().subscribeSum())
     { }
 
     virtual void process(Box3D domain, BlockLattice3D<T_, Descriptor>& lattice)
@@ -160,7 +160,8 @@ public:
         for (plint iX = domain.x0; iX <= domain.x1; ++iX)
             for (plint iY = domain.y0; iY <= domain.y1; ++iY)
                 for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
-                    if (flags[gT(iX + offset.x, iY + offset.y, iZ + offset.z)] != label)
+                    plint x = iX + offset.x, y = iY + offset.y, z = iZ + offset.z;
+                    if (x < 0 || y < 0 || z < 0 || x >= Nx || y >= Ny || z >= Nz || nodes->find(gT(x, y, z)) == nodes->end())
                         continue;
                     Array<T_, 3> u;
                     lattice.get(iX, iY, iZ).computeVelocity(u);
@@ -174,8 +175,7 @@ public:
     T_ getFlux() const { return this->getStatistics().getSum(sumId); }
 
 private:
-    const unsigned short* flags;
-    int label;
+    const NodeSet* nodes;
     int axis;
     int sign;
     plint sumId;

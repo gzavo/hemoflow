@@ -67,6 +67,7 @@ it is not developed here.
 | Path | Content |
 |---|---|
 | `hemoFlow.cpp` | Main program: reads config and geometry, sets up the lattice, boundary conditions and the time loop |
+| `geometry.h/.cpp` | Reads the geometry file on the main process and distributes it to the other processes |
 | `opening.h/.cpp` | `OpeningHandler`: inlet/outlet boundary conditions, velocity/pressure profiles, time-scale (waveform) functions |
 | `porous.h` | Porous (flow diverter) momentum sink as Palabos data processors |
 | `io.h/.cpp` | VTK output (and unused HDF5/NPZ writers), directory helpers |
@@ -297,6 +298,13 @@ Paths inside the XML file (geometry, waveforms, output directory) are
 relative to the directory of the XML file, or absolute. Configuration errors
 (missing or unknown tags, labels that are not in the geometry, unreadable
 waveforms, …) stop the solver with a message before the simulation starts.
+
+Only the main MPI process reads the geometry file; every other process
+receives just the part of the voxel data it simulates. Memory per process
+therefore scales with its share of the domain (with the sparse decomposition,
+NAP180 at 20 M voxels on 8 processes needs ~230 MB per process instead of
+~570 MB). Boundary conditions are set on the opening voxels only, so openings
+on the same face can be arbitrarily close to each other.
 
 ### Physical model and units
 
@@ -529,17 +537,13 @@ The full list of open tasks is in [TODO.md](TODO.md).
   round-off-level difference next to the 0 Pa outlet, reaching 0.06 m/s
   after 400 steps. Until this is understood, compare against a dense run
   before relying on it.
-* Openings must be flat cuts on bounding-box faces. The solver instantiates
-  boundary conditions on the bounding rectangle of each opening, so it refuses
-  two openings on the same face whose rectangles overlap.
+* Openings must be flat cuts on bounding-box faces.
 * The velocity `parameter` is the mean velocity of an ideal paraboloid
   (peak = 2 × `parameter`). On the discrete opening the actual mean differs
   slightly (0.445 instead of 0.45 m/s in the pipe case); the log reports it.
 * The porous coefficients act per voxel layer, so the resistance of a device
   depends on its voxelized thickness and therefore on dx. The per-voxel
   coefficients (`linear`, `quadratic`) are written but not used by the solver.
-* The whole geometry file is loaded on every MPI process, which limits the
-  domain size per node.
 * The fluid is Newtonian; non-Newtonian rheology is not implemented.
 
 ---

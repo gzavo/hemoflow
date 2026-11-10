@@ -1,6 +1,8 @@
 #include "opening.h"
 
+#include <algorithm>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 namespace {
@@ -29,32 +31,26 @@ std::string labelStr(int label)
 }  // namespace
 
 
-OpeningHandler::OpeningHandler(const unsigned short* flagArray, int label_, OpeningType type_, T radius_lb, vec3d dirVec)
-    : flags(flagArray), label(label_), type(type_), R(radius_lb), faceAxis(-1), faceSign(0),
+OpeningHandler::OpeningHandler(const std::vector<Index3D>& nodes_, int label_, OpeningType type_, T radius_lb, vec3d dirVec)
+    : label(label_), type(type_), nodes(nodes_), R(radius_lb), faceAxis(-1), faceSign(0),
       profileFlux(0.0), bcParameter(0.0),
       hasScaleFunction(false), cScale(1.0), cTimePos(0), cTimeVal(0.0)
 {
     if (type < OPENING_VELOCITY || type > OUTLET_FREEFLOW)
         throw std::runtime_error(labelStr(label) + ": unknown opening type " + std::to_string((int)type) + " (valid types: 1-4).");
 
-    pcout << "-> Configuring LBM nodes on the opening... " << std::endl;
-
     int lo[3] = {Nx, Ny, Nz};
     int hi[3] = {-1, -1, -1};
     double sum[3] = {0.0, 0.0, 0.0};
-
-    for (int i = 0; i < Nx; i++)
-        for (int j = 0; j < Ny; j++)
-            for (int k = 0; k < Nz; k++)
-                if (flags[gT(i, j, k)] == label) {
-                    nodes.push_back({i, j, k});
-                    int c[3] = {i, j, k};
-                    for (int a = 0; a < 3; a++) {
-                        lo[a] = std::min(lo[a], c[a]);
-                        hi[a] = std::max(hi[a], c[a]);
-                        sum[a] += c[a];
-                    }
-                }
+    for (auto const& node : nodes) {
+        int c[3] = {node.x, node.y, node.z};
+        for (int a = 0; a < 3; a++) {
+            lo[a] = std::min(lo[a], c[a]);
+            hi[a] = std::max(hi[a], c[a]);
+            sum[a] += c[a];
+        }
+        nodeSet.insert(gT(node.x, node.y, node.z));
+    }
 
     if (nodes.empty())
         throw std::runtime_error(labelStr(label) + " has no voxels in the geometry file.");
@@ -76,6 +72,32 @@ OpeningHandler::OpeningHandler(const unsigned short* flagArray, int label_, Open
             << ", y " << lo[1] << "-" << hi[1] << ", z " << lo[2] << "-" << hi[2]
             << "). Openings must be planar cuts on a face of the bounding box.";
         throw std::runtime_error(msg.str());
+    }
+
+    // Rows of adjacent nodes along one in-face axis; together they cover exactly the opening.
+    {
+        int a1 = (faceAxis + 1) % 3, a2 = (faceAxis + 2) % 3;
+        std::map<int, std::vector<int> > rows;
+        for (auto const& node : nodes) {
+            int c[3] = {node.x, node.y, node.z};
+            rows[c[a2]].push_back(c[a1]);
+        }
+        for (auto& row : rows) {
+            std::vector<int>& u = row.second;
+            std::sort(u.begin(), u.end());
+            size_t start = 0;
+            for (size_t k = 1; k <= u.size(); k++) {
+                if (k == u.size() || u[k] != u[k - 1] + 1) {
+                    plint b0[3], b1[3];
+                    b0[faceAxis] = b1[faceAxis] = lo[faceAxis];
+                    b0[a1] = u[start];
+                    b1[a1] = u[k - 1];
+                    b0[a2] = b1[a2] = row.first;
+                    runs.push_back(Box3D(b0[0], b1[0], b0[1], b1[1], b0[2], b1[2]));
+                    start = k;
+                }
+            }
+        }
     }
 
     // Direction of the opening (from the centerline). It must point into the domain.
@@ -106,7 +128,7 @@ void OpeningHandler::printOpeningDetails(const SimPar& s) const
     pcout << "-> Center [lb]: " << center.x << " " << center.y << " " << center.z << std::endl;
     pcout << "-> Direction (inward): " << direction.x << " " << direction.y << " " << direction.z
           << " (" << std::acos(std::min((T)1.0, cosAngle)) * 180.0 / std::acos(-1.0) << " deg from the face normal)" << std::endl;
-    pcout << "-> Nodes: " << nodes.size() << " (area " << nodes.size() * s.C_l * s.C_l << " m^2)" << std::endl;
+    pcout << "-> Nodes: " << nodes.size() << " in " << runs.size() << " rows (area " << nodes.size() * s.C_l * s.C_l << " m^2)" << std::endl;
     pcout << "-> Scale function: " << (hasScaleFunction ? "yes" : "no");
     if (hasScaleFunction)
         pcout << ", " << scaleTime.size() << " samples, period " << getPeriod() << " s";
@@ -159,17 +181,9 @@ T OpeningHandler::getImposedFlowRate(const SimPar& s) const
 
 T OpeningHandler::measureFlowRate(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, const SimPar& s) const
 {
-    OpeningFluxFunctional3D<T, DESCRIPTOR> functional(flags, label, faceAxis, faceSign);
+    OpeningFluxFunctional3D<T, DESCRIPTOR> functional(&nodeSet, faceAxis, faceSign);
     applyProcessingFunctional(functional, boundingBox, lattice);
     return functional.getFlux() * s.C_l * s.C_l * s.C_l / s.C_t;
-}
-
-bool OpeningHandler::overlapsOnFace(const OpeningHandler& other) const
-{
-    if (faceAxis != other.faceAxis || faceSign != other.faceSign)
-        return false;
-    Box3D intersection;
-    return intersect(boundingBox, other.boundingBox, intersection);
 }
 
 // Parabolic profile with peak 1 (lattice units) in the centerline direction. The opening is
@@ -335,16 +349,21 @@ void OpeningHandler::loadScaleFunction(const std::string& fileName)
     pcout << fileName << " loaded with " << scaleTime.size() << " data points, period " << scaleTime.back() << " s." << std::endl;
 }
 
+// The boundary condition is instantiated on the opening nodes only (row by row), so that
+// wall voxels next to the opening and other openings on the same face are not touched.
 void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice)
 {
+    Box3D domain = lattice.getBoundingBox();
     if (type == OPENING_VELOCITY || type == OPENING_MURRAY) {
         OnLatticeBoundaryCondition3D<T, DESCRIPTOR>* bc = createLocalBoundaryCondition3D<T, DESCRIPTOR>();
-        bc->setVelocityConditionOnBlockBoundaries(lattice, boundingBox, boundary::dirichlet);
+        for (Box3D const& run : runs)
+            bc->setVelocityConditionOnBlockBoundaries(lattice, domain, run, boundary::dirichlet);
         delete bc;
     }
     else if (type == OPENING_PRESSURE) {
         OnLatticeBoundaryCondition3D<T, DESCRIPTOR>* bc = createInterpBoundaryCondition3D<T, DESCRIPTOR>();
-        bc->setPressureConditionOnBlockBoundaries(lattice, boundingBox, boundary::dirichlet);
+        for (Box3D const& run : runs)
+            bc->setPressureConditionOnBlockBoundaries(lattice, domain, run, boundary::dirichlet);
         delete bc;
     }
     else if (type == OUTLET_FREEFLOW) {
@@ -360,8 +379,8 @@ void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice)
         bcargs.push_back(rhoBar);
         bcargs.push_back(j);
 
-        integrateProcessingFunctional(new VirtualOutlet<T, DESCRIPTOR>(1.0, lattice.getBoundingBox(), 1),
-                                      boundingBox, bcargs, 2);
+        for (Box3D const& run : runs)
+            integrateProcessingFunctional(new VirtualOutlet<T, DESCRIPTOR>(1.0, domain, 1), run, bcargs, 2);
     }
 }
 
@@ -384,11 +403,11 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T
 
     // Impose the profile scaled with the boundary parameter and the waveform
     if (isVelocityType()) {
-        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(flags, label, &profile, bcParameter * cScale),
+        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, &profile, bcParameter * cScale),
                                   boundingBox, lattice);
     }
     else if (type == OPENING_PRESSURE) {
-        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(flags, label, 1.0 + bcParameter * cScale),
+        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, 1.0 + bcParameter * cScale),
                                   boundingBox, lattice);
     }
     // Free outflow: nothing to impose.

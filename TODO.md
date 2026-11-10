@@ -15,6 +15,12 @@ conda create -n hemoflow-post -c conda-forge python=3.12 pyvista pandas matplotl
 Quick regression check: `tests/verification/0-pipe` (README, test case 1).
 Reference: 80.6 Pa pressure drop, inlet/outlet flow 1.537/1.539·10⁻⁵ m³/s.
 
+## Progress
+
+Phases agreed for sections 1, 3 and 4 (November 2026): 1 preprocessor rework (done),
+2 solver geometry distribution and per-node opening boundaries (done), 3 sparse
+decomposition bug, 4 boundary-condition features (Carreau), 5 full verification.
+
 ## 0. Palabos upgrade
 
 The vendored Palabos was moved from the 2024 snapshot to upstream master (after
@@ -90,10 +96,10 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 ## 3. Boundary conditions and openings
 
-- [ ] Openings with overlapping bounding rectangles on the same face are refused.
-      Supporting them needs per-node boundary instantiation (velocity BCs are
-      dynamics-based and could be set per node; the interp pressure BC is a data
-      processor per domain).
+- [x] Openings with overlapping bounding rectangles on the same face: boundary
+      conditions are now instantiated row by row on the opening voxels only (phase 2,
+      November 2026; tested with a synthetic case whose outlet rectangles overlap).
+      Results of existing cases are bit-identical.
 - [x] Openings on edges/corners of the bounding box: openings now come from the caps of
       the surface and only the wall in front of each cap is opened, so openings near
       edges and corners and vessels close to a face with an opening work (tested with
@@ -108,10 +114,12 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 ## 4. Performance and scalability
 
-- [ ] The whole geometry file (flags, stent, coefficients) is loaded on every MPI
-      process. Read the `.npz` on one rank and distribute it (decided November 2026:
-      keep the `.npz` format, no HDF5 input).
-- [ ] `OpeningHandler` scans the full domain once per opening at start-up.
+- [x] The geometry file is read on the main process only and each process receives
+      its own blocks (phase 2, `geometry.h/.cpp`); the unused `linear`/`quadratic` arrays
+      are not loaded. NAP180 20 M, sparse, 8 processes: 572 -> ~230 MB per process.
+      Results bit-identical.
+- [x] Opening voxels come from one scan of the label array on the main process
+      (instead of one full-domain scan per opening on every process).
 - [x] Voxelizer replaced by VTK (`vtkPolyDataToImageStencil` for the vessel, ray casting
       for flow diverters): NAP180 at 20 M voxels in ~4 s instead of ~53 s.
 - [x] Recursive opening detection replaced: openings come from the surface caps; the

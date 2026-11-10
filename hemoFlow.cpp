@@ -16,6 +16,7 @@ using namespace std;
 #include "opening.h"
 #include "porous.h"
 #include "io.h"
+#include "geometry.h"
 
 
 /* ********** GLOBAL VARIABLES ************/
@@ -27,13 +28,7 @@ int Nx=0;
 int Ny=0;
 int Nz=0;
 
-// Domain data
-cnpy::NpyArray geometryFlag;
-unsigned short* gfData = nullptr;
-
-// Flow diverter (stent) data
-cnpy::NpyArray stentFlag;
-unsigned short* sfData = nullptr;
+// Flow diverter coefficients
 T linCoeff = 0.0;
 T quadCoeff = 0.0;
 T linCoeff_lb = 0.0;
@@ -66,7 +61,8 @@ vector<OpeningHandler*> openings;
 
 // Simulation data structures
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
-MultiNTensorField3D<T> *porosityField = nullptr;
+MultiScalarField3D<int> *labelField = nullptr;   // Voxel labels (distributed)
+MultiScalarField3D<T> *porosityField = nullptr;   // 1 in porous (flow diverter) voxels (distributed)
 
 
 namespace {
@@ -176,25 +172,6 @@ std::string resolvePath(const std::string& path)
     return workingFolder + "/" + path;
 }
 
-// Simple find index of a value in an array (where indices are unique)
-int findIndex(const unsigned short *array, int arraySize, unsigned short itemToFind)
-{
-    for(int i = 0; i < arraySize; i++)
-        if(array[i] == itemToFind)
-            return i;
-    return -1;  // Not found
-}
-
-cnpy::NpyArray& requireArray(cnpy::npz_t& npz, const std::string& name, const std::string& fileName)
-{
-    if (npz.count(name) == 0)
-        throw std::runtime_error("The geometry file " + fileName + " has no '" + name + "' array. Re-run the preprocessor.");
-    cnpy::NpyArray& array = npz[name];
-    if (array.fortran_order)
-        throw std::runtime_error("The array '" + name + "' in " + fileName + " is stored in Fortran order; C order is expected.");
-    return array;
-}
-
 // One boundary condition to be created
 struct OpeningSpec {
     int label;
@@ -292,14 +269,16 @@ void print_help()
 }
 
 // Build the list of boundary conditions from the configuration and the openings in the geometry file.
-vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const unsigned short* oiData, int numOpenings)
+vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const vector<int>& labels)
 {
+    int numOpenings = (int)labels.size();
+    auto has = [&labels](int label) { return std::find(labels.begin(), labels.end(), label) != labels.end(); };
     vector<OpeningSpec> specs;
     XMLreaderProxy geometry = xml["geometry"];
 
     if (mode == "murray" || mode == "pzero") {
         // Inlet: label 10 (the centerline inlet), parameters from <opening_0>.
-        if (findIndex(oiData, numOpenings, FIRST_OPENING) == -1)
+        if (!has(FIRST_OPENING))
             throw std::runtime_error("Mode '" + mode + "' needs the inlet label 10, which is not in the geometry file.");
         if (!hasChild(geometry, "opening_0"))
             throw std::runtime_error("Mode '" + mode + "' needs <geometry><opening_0> with the inlet <parameter> and <timeScaleFunction>.");
@@ -316,11 +295,10 @@ vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const unsigned short
 
         // Smallest outlet (label 11) is the 0 Pa outlet in Murray mode.
         const int pressureLabel = FIRST_OPENING + 1;
-        if (mode == "murray" && numOpenings > 1 && findIndex(oiData, numOpenings, pressureLabel) == -1)
+        if (mode == "murray" && numOpenings > 1 && !has(pressureLabel))
             throw std::runtime_error("Mode 'murray' needs the pressure outlet label 11, which is not in the geometry file.");
 
-        for (int o = 0; o < numOpenings; o++) {
-            int label = oiData[o];
+        for (int label : labels) {
             if (label == FIRST_OPENING)
                 continue;
             OpeningSpec outlet;
@@ -368,7 +346,7 @@ vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const unsigned short
         spec.waveformFile = "";
         readOptional(openingXml, where, "timeScaleFunction", spec.waveformFile);
 
-        if (findIndex(oiData, numOpenings, spec.label) == -1)
+        if (!has(spec.label))
             throw std::runtime_error("<" + where + "> has label " + std::to_string(spec.label) + ", which is not in the geometry file.");
         if (!seenLabels.insert(spec.label).second)
             throw std::runtime_error("Label " + std::to_string(spec.label) + " is used by more than one <opening_i>.");
@@ -509,46 +487,32 @@ int main(int argc, char *argv[])
         pcout << "Output folder: " << outDir+"/" << std::endl;
         global::directories().setOutputDir(outDir+"/");
 
-        // Loading the geometry file
+        // Geometry file: read on the main process; the other processes get only the
+        // parts of the voxel fields they own (see geometry.h)
         pcout << "Loading in data file..." << std::endl;
         string npzFileName;
         readRequired(geomXml, "geometry", "file", npzFileName);
         npzFileName = resolvePath(npzFileName);
-        cnpy::npz_t geom_npz = cnpy::npz_load(npzFileName);
-        pcout << "Input data elements: " << geom_npz.size() << std::endl;
-        for (auto const& array : geom_npz)
-            pcout << "->" << array.first << std::endl;
-
-        geometryFlag = requireArray(geom_npz, "geometryFlag", npzFileName);
-        if (geometryFlag.shape.size() != 3 || geometryFlag.word_size != sizeof(unsigned short))
-            throw std::runtime_error("'geometryFlag' must be a 3D int16 array.");
-        gfData = geometryFlag.data<unsigned short>();
-        Nx = geometryFlag.shape[0];
-        Ny = geometryFlag.shape[1];
-        Nz = geometryFlag.shape[2];
+        GeometryFile geometry(npzFileName);
+        Nx = geometry.nx;
+        Ny = geometry.ny;
+        Nz = geometry.nz;
         pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
-
-        // Voxel size dx = C_l
-        double sim_dx = requireArray(geom_npz, "dx", npzFileName).data<double>()[0];
+        double sim_dx = geometry.dx;
         pcout << "Resolution [m]: " << sim_dx << std::endl;
 
         // Physical position of voxel (0,0,0), used for the output (older geometry files have none)
-        if (geom_npz.count("origin")) {
-            const double* originData = geom_npz["origin"].data<double>();
-            outputOptions.origin = Array<double, 3>(originData[0], originData[1], originData[2]);
-            pcout << "Origin [m]: " << originData[0] << " " << originData[1] << " " << originData[2] << std::endl;
+        if (geometry.hasOrigin) {
+            outputOptions.origin = geometry.origin;
+            pcout << "Origin [m]: " << geometry.origin[0] << " " << geometry.origin[1] << " " << geometry.origin[2] << std::endl;
         }
         else {
             pcout << "Note: the geometry file has no 'origin'; the output is written in the voxel frame (origin 0,0,0)." << std::endl;
         }
 
         // Flow diverter (if there is one)
-        if (geom_npz.count("stent")) {
-            stentFlag = requireArray(geom_npz, "stent", npzFileName);
-            if (stentFlag.shape != geometryFlag.shape || stentFlag.word_size != sizeof(unsigned short))
-                throw std::runtime_error("The 'stent' array must be an int16 array of the same shape as 'geometryFlag'.");
+        if (geometry.hasStent) {
             pcout << "Found flow diverter information to load." << std::endl;
-            sfData = stentFlag.data<unsigned short>();
             if (!hasSection(xml, "flowdiverter"))
                 throw std::runtime_error("The geometry contains a flow diverter, but the config has no <flowdiverter> section.");
             XMLreaderProxy fdXml = xml["flowdiverter"];
@@ -566,27 +530,19 @@ int main(int argc, char *argv[])
 
         // **** Openings in the geometry file ****
         pcout << "Processing openings..." << std::endl;
-        cnpy::NpyArray& openingIndex = requireArray(geom_npz, "openingIndex", npzFileName);
-        cnpy::NpyArray& openingRadius = requireArray(geom_npz, "openingRadius", npzFileName);
-        cnpy::NpyArray& openingNormal = requireArray(geom_npz, "openingNormal", npzFileName);
-        const unsigned short* oiData = openingIndex.data<unsigned short>();
-        const double* orData = openingRadius.data<double>();
-        const double* onData = openingNormal.data<double>();
-        int numOpenings = openingIndex.num_vals;
-        if ((int)openingRadius.num_vals != numOpenings || openingNormal.shape.size() != 2 ||
-            (int)openingNormal.shape[0] != numOpenings || openingNormal.shape[1] != 3)
-            throw std::runtime_error("The opening arrays in the geometry file have inconsistent sizes.");
+        const vector<int>& openingLabels = geometry.openingLabels;
+        int numOpenings = (int)openingLabels.size();
         if (numOpenings < 2)
             throw std::runtime_error("The geometry has fewer than 2 openings.");
 
         pcout << "Number of openings in geometry: " << numOpenings << std::endl;
         pcout << "Opening labels: ";
-        for (int o = 0; o < numOpenings; o++)
-            pcout << oiData[o] << " ";
+        for (int label : openingLabels)
+            pcout << label << " ";
         pcout << endl;
         pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
 
-        vector<OpeningSpec> specs = buildOpeningSpecs(xml, oiData, numOpenings);
+        vector<OpeningSpec> specs = buildOpeningSpecs(xml, openingLabels);
 
         // **** Lattice ****
         Dynamics<T, DESCRIPTOR>* bulkDynamics =
@@ -599,12 +555,12 @@ int main(int argc, char *argv[])
         if (useSparse) {
             pcout << "Setting simulation domain mask for sparse decomposition (block size " << blockSize << ")..." << endl;
             // Keep every block that contains a wall, fluid or opening voxel (label > UNUSED).
-            MultiScalarField3D<int> flagMatrix(Nx, Ny, Nz);
-            setToFunction(flagMatrix, flagMatrix.getBoundingBox(), FlagMaskDomain3D<unsigned short>(gfData, UNUSED));
+            MultiScalarField3D<int> occupancy(Nx, Ny, Nz);
+            geometry.fillOccupancy(occupancy);
 
             pcout << "Creating sparse representation ..." << endl;
             MultiBlockManagement3D sparseBlockManagement =
-                computeSparseManagement(*plb::reparallelize(flagMatrix, blockSize, blockSize, blockSize), envelopeWidth);
+                computeSparseManagement(*plb::reparallelize(occupancy, blockSize, blockSize, blockSize), envelopeWidth);
 
             lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(sparseBlockManagement,
                                                         defaultMultiBlockPolicy3D().getBlockCommunicator(),
@@ -622,13 +578,22 @@ int main(int argc, char *argv[])
 
         pcout << getMultiBlockInfo(*lattice) << endl;
 
+        // Voxel labels and porosity as distributed fields with the block structure of the lattice
+        labelField = generateMultiScalarField<int>(*lattice, envelopeWidth).release();
+        geometry.fillLabels(*labelField);
+        if (geometry.hasStent) {
+            porosityField = generateMultiScalarField<T>(*lattice, envelopeWidth).release();
+            geometry.fillPorosity(*porosityField);
+        }
+        geometry.release();
+
         // **** Boundary conditions ****
         for (auto const& spec : specs) {
-            int idx = findIndex(oiData, numOpenings, spec.label);
+            int idx = (int)(std::find(openingLabels.begin(), openingLabels.end(), spec.label) - openingLabels.begin());
             pcout << "Processing opening with label " << spec.label << std::endl;
 
-            vec3d dir(onData[gT2D(3, idx, 0)], onData[gT2D(3, idx, 1)], onData[gT2D(3, idx, 2)]);
-            auto *opening = new OpeningHandler(gfData, spec.label, spec.type, orData[idx] / sim.C_l, dir);
+            auto *opening = new OpeningHandler(geometry.openingNodes.at(spec.label), spec.label, spec.type,
+                                               geometry.openingRadius[idx] / sim.C_l, geometry.openingNormal[idx]);
             opening->setName(spec.name);
             opening->setBCType(*lattice);
 
@@ -648,17 +613,6 @@ int main(int argc, char *argv[])
             opening->printOpeningDetails(sim);
             openings.push_back(opening);
         }
-
-        // Boundary conditions are instantiated on the bounding rectangle of each opening.
-        // Overlapping rectangles on the same face would interfere, so refuse them.
-        for (size_t a = 0; a < openings.size(); a++)
-            for (size_t b = a + 1; b < openings.size(); b++)
-                if (openings[a]->overlapsOnFace(*openings[b]))
-                    throw std::runtime_error("Openings " + std::to_string(openings[a]->getLabel()) + " and " +
-                                             std::to_string(openings[b]->getLabel()) +
-                                             " lie on the same domain face and their bounding rectangles overlap. "
-                                             "This is not supported: clip the geometry so that the openings are further apart "
-                                             "or lie on different faces.");
 
         // Derive the cardiac cycle period from the first opening with a waveform
         cyclePeriod = -1.0;
@@ -727,19 +681,19 @@ int main(int argc, char *argv[])
     string chkParamFileOld = outDir+"/checkpoint_parameters_old.dat";
     string chkDataFileOld = outDir+"/checkpoint_lattice_old.dat";
 
-    // If there is data on porosity, set up porous layer in the simulation
-    if(sfData != nullptr) {
+    // If there is a flow diverter, set up the porous forcing
+    if(porosityField != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
-        porosityField = defaultGenerateMultiNTensorField3D<T>(lattice->getMultiBlockManagement(), 1).release();
-        applyProcessingFunctional(new InitializePorousField<T, unsigned short>(sfData, gfData), porosityField->getBoundingBox(), *porosityField);
         integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
     }
 
     // Walls and outside voxels. This also overrides the boundary dynamics that the openings
     // instantiated on wall/outside voxels of their bounding rectangles.
     pcout << "Defining walls..." << std::endl;
-    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, UNUSED), new NoDynamics<T, DESCRIPTOR>(1.0));  // Reference density, so outside cells report 0 Pa
-    defineDynamics(*lattice, lattice->getBoundingBox(), new FlagMaskSingleDomain3D<unsigned short>(gfData, WALL), new BounceBack<T, DESCRIPTOR>(1.0));
+    defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);  // Reference density, so outside cells report 0 Pa
+    defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new BounceBack<T, DESCRIPTOR>(1.0), (int)WALL);
+    delete labelField;   // Not needed any more
+    labelField = nullptr;
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );

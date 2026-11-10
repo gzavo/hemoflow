@@ -108,6 +108,7 @@ endif()
 
 add_executable(hemoFlow
     hemoFlow.cpp
+    geometry.cpp
     opening.cpp
     io.cpp
     external/cnpy/cnpy.cpp)
