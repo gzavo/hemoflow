@@ -20,7 +20,9 @@ Reference: 78.7 Pa pressure drop, inlet/outlet flow 1.483/1.485·10⁻⁵ m³/s 
 Phases agreed for sections 1, 3 and 4 (November 2026): 1 preprocessor rework (done),
 2 solver geometry distribution and per-node opening boundaries (done), 3 sparse
 decomposition bug (done), 4 non-Newtonian (Carreau–Yasuda) blood (done), 5 full verification.
-After phases 3 and 4: spatially varying flow diverter resistance (section 2).
+After phases 3 and 4: spatially varying flow diverter resistance (section 2). Per-voxel
+resistance multipliers are done (November 2026); the device-level, area-weighted model that
+removes the voxelization dependence is planned in [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md).
 
 ## 0. Palabos upgrade
 
@@ -79,26 +81,33 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 - [ ] The porous coefficients act per voxel layer (force −(a u + b u|u|)/dx), so the
       resistance of a device depends on its voxelized thickness and therefore on dx and
-      on the voxelization. Normalize by the physical device thickness, or specify
-      permeability (Darcy K, Forchheimer C) instead. Note: the new ray-cast shell
+      on the voxelization (measured on NAP180: two voxels along the normal on 15–19 % of
+      the device area, gaps on 3–7 %, at every dx). Plan: device-level coefficients with
+      area-in-voxel weights, [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md). Note: the new ray-cast shell
       voxelization (phase 1) gives ~25 % fewer device voxels than the old one, whose three
       projections were shifted against each other; coefficients tuned on old geometry
       files need re-checking.
 - [ ] Ray-crossing voxelization along the axes can let diagonal (D3Q19) lattice links
       cross the device without touching a porous voxel; consider a conservative
-      (triangle–voxel overlap) voxelization.
-- [ ] **Spatially varying resistance (planned after phases 3 and 4).** Different parts of a
-      deployed device have different braid densities, so the resistance must vary per voxel.
-      Plan: the per-voxel `linear`/`quadratic` arrays of the geometry file become dimensionless
-      multipliers of the `<flowdiverter>` `linCoeff`/`quadCoeff` (the uniform case stays 1.0);
-      the main process reads them and distributes them like the other fields (geometry.cpp,
-      `scatterToField`) into a two-component field that replaces the 0/1 porosity field, and
-      `PorousForceFunctional` uses a(x), b(x). Check that the uniform case stays bit-identical.
-      Needs from the physics side: the mapping from the deployment descriptors to the
-      multipliers, normalized by the voxelized device thickness (see the first item above).
-      The shipped `PED_5x20_values.vtp` carries the descriptors `Density`, `Expansion` and
-      `Force`; the preprocessor's `INHOMOGEN` interpolation expects `linearCoeff` /
-      `quadraticCoeff` (tested with test arrays).
+      (triangle–voxel overlap) voxelization. The area binning of
+      [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md) is one.
+- [x] **Spatially varying resistance: per-voxel multipliers** (November 2026). The geometry
+      file carries `linearMultiplier`/`quadraticMultiplier` (float32, dimensionless) that
+      scale `<flowdiverter>` `linCoeff`/`quadCoeff` per voxel; 1 for a uniform device, so
+      uniform runs are bit-identical to before. The main process reads them and distributes
+      them into a two-component field that replaced the 0/1 porosity field; the porous force
+      is applied only over the bounding box of the device voxels. Older geometry files (with
+      the unused absolute `linear`/`quadratic` arrays) still give a uniform device. With
+      `INHOMOGEN` the preprocessor takes the multipliers of the nearest point of
+      `<stent_mesh_base>values.vtp` and adds them to `geometry.vti`. Tested on NAP180: uniform
+      case identical to the committed solver; multipliers (2, 4) identical to coefficients
+      (2a, 4b); multipliers 0 on half the device identical to a device file with only the
+      other half; sparse 8 processes = dense 4; same cost per step at 20 M voxels.
+- [ ] Mapping from the deployment descriptors to the multipliers (physics input). The
+      shipped `PED_5x20_values.vtp` carries `Density`, `Expansion` and `Force` (one value
+      per braid cell, 812 points); the preprocessor needs `linearMultiplier` and
+      `quadraticMultiplier`. Until the device-level model exists, multipliers also inherit
+      the voxelization dependence of the item above.
 - [ ] Coils: volumetric porous regions (e.g. Kozeny–Carman from the packing density)
       instead of shells; needs a solid (not shell) voxelization of the coil region.
 - [ ] High-resistance devices will need a semi-implicit treatment of the porous force
@@ -106,7 +115,7 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [ ] With `LES 1` the Smagorinsky dynamics has no force term, so devices have no effect.
 - [ ] With the Carreau model the porous coefficients stay constant. A Darcy term that scales
       with the local viscosity (a = μ / permeability) would follow the fluid; decide together
-      with the spatially varying resistance above.
+      with the device-level model ([TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md)).
 
 ## 3. Boundary conditions and openings
 

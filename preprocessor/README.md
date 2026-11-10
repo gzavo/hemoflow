@@ -22,7 +22,8 @@ written next to it:
 
 * `<output_base_name>c.npz`: the solver input
 * `<output_base_name>geometry.vti`: the voxel labels as VTK image data in the
-  coordinates of the input STL; overlays the STL and the solver output in ParaView
+  coordinates of the input STL; overlays the STL and the solver output in ParaView.
+  With a flow diverter it also holds the per-voxel resistance multipliers.
 * `<output_base_name>geometry.nrrd`: the same label volume for 3D Slicer (spacing and
   origin in STL coordinates)
 
@@ -39,8 +40,10 @@ written next to it:
 4. `detectOpenings.py`: turns the wall voxels in front of each cap into opening
    voxels.
 5. `main.py`: reads the config, matches the caps to the centerline end points,
-   restricts the flow diverter to the lumen, computes the physical origin of the
-   grid and writes the outputs.
+   restricts the flow diverter to the lumen, assigns its resistance multipliers
+   (1, or with `INHOMOGEN` those of the nearest point of
+   `<stent_mesh_base>values.vtp`), computes the physical origin of the grid and
+   writes the outputs.
 
 A 20 M voxel geometry takes a few seconds.
 

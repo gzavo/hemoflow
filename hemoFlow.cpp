@@ -74,7 +74,8 @@ vector<OpeningHandler*> openings;
 // Simulation data structures
 MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
 MultiScalarField3D<int> *labelField = nullptr;   // Voxel labels (distributed)
-MultiScalarField3D<T> *porosityField = nullptr;   // 1 in porous (flow diverter) voxels (distributed)
+MultiTensorField3D<T, 2> *porosityField = nullptr;   // (linear, quadratic) resistance multipliers in porous voxels, 0 elsewhere (distributed)
+Box3D porousBox;   // Bounding box of the porous voxels
 
 
 namespace {
@@ -676,9 +677,19 @@ int main(int argc, char *argv[])
         // Voxel labels and porosity as distributed fields with the block structure of the lattice
         labelField = generateMultiScalarField<int>(*lattice, envelopeWidth).release();
         geometry.fillLabels(*labelField);
-        if (geometry.hasStent) {
-            porosityField = generateMultiScalarField<T>(*lattice, envelopeWidth).release();
+        if (geometry.hasStent && geometry.numPorous == 0) {
+            pcout << "Note: the flow diverter has no voxels in the lumen, so it has no effect." << std::endl;
+        } else if (geometry.hasStent) {
+            porosityField = generateMultiTensorField<T, 2>(*lattice, envelopeWidth).release();
             geometry.fillPorosity(*porosityField);
+            porousBox = geometry.porousBox;
+            pcout << "Flow diverter: " << geometry.numPorous << " porous voxels. Resistance multipliers ";
+            if (geometry.hasMultipliers)
+                pcout << "(min / mean / max): linear " << geometry.multiplierMin[0] << " / " << geometry.multiplierMean[0]
+                      << " / " << geometry.multiplierMax[0] << ", quadratic " << geometry.multiplierMin[1] << " / "
+                      << geometry.multiplierMean[1] << " / " << geometry.multiplierMax[1] << std::endl;
+            else
+                pcout << "1 (the geometry file has none: older preprocessor)." << std::endl;
         }
         geometry.release();
 
@@ -794,7 +805,8 @@ int main(int argc, char *argv[])
     // If there is a flow diverter, set up the porous forcing
     if(porosityField != nullptr) {
         pcout << "Setting up porous layer for flow diverter..." << std::endl;
-        integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), lattice->getBoundingBox(), *lattice, *porosityField);
+        // Only over the bounding box of the porous voxels: elsewhere all multipliers are 0
+        integrateProcessingFunctional( new PorousForceFunctional<T, DESCRIPTOR>(linCoeff_lb, quadCoeff_lb), porousBox, *lattice, *porosityField);
     }
 
     // Walls and outside voxels. This also overrides the boundary dynamics that the openings

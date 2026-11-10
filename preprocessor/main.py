@@ -12,8 +12,8 @@ import time
 
 import nrrd
 import numpy as np
-import scipy.interpolate as scpinter
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial import cKDTree
 from vtk.numpy_interface import dataset_adapter as dsa
 from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
 
@@ -27,7 +27,7 @@ from readCL import getOpeningsFromCenterline
 # Parameters to check before execution:
 SI_FACTOR = 0.001   # Ratio of the STL/centerline units to [m]. Most STL is in [mm]
 DEBUG_MODE = False  # Writes intermediate nrrd output to check with e.g. 3D Slicer
-INHOMOGEN = False   # Per-point porous coefficients from <stent_mesh_base>values.vtp
+INHOMOGEN = False   # Per-point resistance multipliers from <stent_mesh_base>values.vtp
 #############################
 
 CONSTANTS = const()
@@ -95,26 +95,40 @@ def match_caps(caps, clOpenings, dx):
     return order
 
 
-def interpolate_coefficients(stentBase, grid, shell):
-    """Per-voxel porous coefficients from <stentBase>values.vtp (INHOMOGEN mode)."""
+MULTIPLIER_ARRAYS = ("linearMultiplier", "quadraticMultiplier")
+
+
+def interpolate_multipliers(stentBase, grid, shell):
+    """Per-voxel resistance multipliers from <stentBase>values.vtp (INHOMOGEN mode).
+
+    The point arrays linearMultiplier and quadraticMultiplier (dimensionless, >= 0) scale the
+    <flowdiverter> linCoeff and quadCoeff of the solver. Every device voxel takes the values
+    of the nearest point of the file."""
     valuesFile = stentBase + "values.vtp"
     if not os.path.isfile(valuesFile):
-        print("INHOMOGEN resistance values not found:", valuesFile)
-        return shell.astype(np.double), shell.astype(np.double)
+        fail(f"INHOMOGEN is set, but the resistance multipliers {valuesFile} do not exist")
     reader = vtkXMLPolyDataReader()
     reader.SetFileName(valuesFile)
     reader.Update()
     data = dsa.WrapDataObject(reader.GetOutput())
     available = list(data.PointData.keys())
-    for name in ("linearCoeff", "quadraticCoeff"):
+    for name in MULTIPLIER_ARRAYS:
         if name not in available:
             fail(f"{valuesFile} has no point array '{name}' (available: {', '.join(available)})")
+    values = [np.asarray(data.PointData[name], dtype=np.double) for name in MULTIPLIER_ARRAYS]
+    for name, v in zip(MULTIPLIER_ARRAYS, values):
+        if v.ndim != 1 or not np.all(np.isfinite(v)) or np.any(v < 0):
+            fail(f"'{name}' in {valuesFile} must be one finite value >= 0 per point")
     points = (np.asarray(data.GetPoints()) - grid.corner) / grid.dx - 0.5   # voxel index coordinates
-    xg, yg, zg = np.mgrid[0:grid.shape[0], 0:grid.shape[1], 0:grid.shape[2]]
-    linear = scpinter.griddata(points, np.asarray(data.PointData["linearCoeff"]), (xg, yg, zg), method="nearest")
-    quadratic = scpinter.griddata(points, np.asarray(data.PointData["quadraticCoeff"]), (xg, yg, zg), method="nearest")
-    print("Linear and quadratic coefficients interpolated from", valuesFile)
-    return linear * shell, quadratic * shell
+    voxels = np.argwhere(shell)
+    _, nearest = cKDTree(points).query(voxels)
+    multipliers = []
+    for v in values:
+        m = np.zeros(shell.shape, dtype=np.float32)
+        m[tuple(voxels.T)] = v[nearest]
+        multipliers.append(m)
+    print("Resistance multipliers interpolated from", valuesFile)
+    return multipliers
 
 
 def main(confFile):
@@ -180,10 +194,11 @@ def main(confFile):
         print("\n### Voxelizing the flow diverter ###")
         stentSurface = vox.read_surface(config["stent"])
         shell = vox.voxelize_shell(stentSurface, grid)
+        # Multipliers of the solver's linCoeff and quadCoeff; 1 everywhere for a uniform device
         if INHOMOGEN:
-            linear, quadratic = interpolate_coefficients(config["stent"].replace("mesh.stl", ""), grid, shell)
+            linear, quadratic = interpolate_multipliers(config["stent"].replace("mesh.stl", ""), grid, shell)
         else:
-            linear, quadratic = shell.astype(np.double), shell.astype(np.double)
+            linear, quadratic = shell.astype(np.float32), shell.astype(np.float32)
         shellL = crop_like(shell, offset, painted.shape)
         linearL = crop_like(linear, offset, painted.shape)
         quadraticL = crop_like(quadratic, offset, painted.shape)
@@ -196,8 +211,11 @@ def main(confFile):
               ", openings", int((shellL & (painted >= CONSTANTS.INLET_VOXEL)).sum()), ")")
         linearL[~inLumen] = 0.0
         quadraticL[~inLumen] = 0.0
-        print("Min and max of linear coefficients:", np.nanmin(linearL), np.nanmax(linearL))
-        print("Min and max of quadratic coefficients:", np.nanmin(quadraticL), np.nanmax(quadraticL))
+        for name, m in (("linear", linearL), ("quadratic", quadraticL)):
+            v = m[inLumen]
+            if v.size:
+                print(f"Resistance multiplier ({name}) in the device voxels: min {v.min():.4g}, "
+                      f"max {v.max():.4g}, mean {v.mean():.4g}")
         if DEBUG_MODE:
             nrrd.write(out + "stent_final.nrrd", inLumen.astype(np.short))
             nrrd.write(out + "stent_linear.nrrd", linearL.astype(np.single))
@@ -227,7 +245,8 @@ def main(confFile):
     print("\n### Saving ###")
     # Label volumes in the coordinates of the input STL (points at the voxel centres), so
     # that they overlay the STL and the solver output in ParaView (.vti) or 3D Slicer (.nrrd).
-    vox.write_label_image(out + "geometry.vti", painted.astype(np.short, copy=False), originStl, grid.dx)
+    extra = dict(linearMultiplier=linearL, quadraticMultiplier=quadraticL) if haveStent else None
+    vox.write_label_image(out + "geometry.vti", painted.astype(np.short, copy=False), originStl, grid.dx, extra=extra)
     nrrd.write(out + "geometry.nrrd", painted, header={
         "space": "left-posterior-superior",   # Slicer reads STL files as LPS by default
         "space directions": np.diag([grid.dx] * 3),
@@ -246,7 +265,7 @@ def main(confFile):
         openingNormal=np.array([d for (_, _, d) in clOpenings], dtype=np.double),
     )
     if haveStent:
-        arrays.update(stent=inLumen.astype(np.short), linear=linearL, quadratic=quadraticL)
+        arrays.update(stent=inLumen.astype(np.short), linearMultiplier=linearL, quadraticMultiplier=quadraticL)
     np.savez_compressed(out + "c.npz", **arrays)
     print("Files:", out + "c.npz", "(solver input),", out + "geometry.vti", "and", out + "geometry.nrrd", "(labels)")
     print(f"\n### DONE :) -> Elapsed total time: {time.time() - startTime:.1f} [s]")

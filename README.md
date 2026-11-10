@@ -220,7 +220,8 @@ Example (`tests/verification/0-pipe/input/input_pipe_vox.config`):
 
 Further options are constants at the top of `preprocessor/main.py`:
 `SI_FACTOR`, `DEBUG_MODE` (writes intermediate `.nrrd` files) and
-`INHOMOGEN` (reads per-point porous coefficients from `<stent_mesh_base>values.vtp`).
+`INHOMOGEN` (per-voxel resistance multipliers from `<stent_mesh_base>values.vtp`,
+see below; without it every device voxel gets the multiplier 1).
 
 ### How it works
 
@@ -233,7 +234,13 @@ Further options are constants at the top of `preprocessor/main.py`:
    centerline end points (inlet, outlets). Only the wall voxels directly in
    front of each cap are turned into opening voxels; the rest of that layer
    stays wall.
-5. The flow diverter is voxelized and restricted to the lumen.
+5. The flow diverter is voxelized and restricted to the lumen. With
+   `INHOMOGEN`, every device voxel takes the resistance multipliers of the
+   nearest point of `<stent_mesh_base>values.vtp` (point arrays
+   `linearMultiplier` and `quadraticMultiplier`, dimensionless, ≥ 0). The
+   shipped `PED_5x20_values.vtp` holds the deployment descriptors `Density`
+   and `Expansion` instead; their mapping to multipliers is still open
+   ([TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md)).
 6. Every run checks that the fluid meets the outside only through the openings
    (leak check) and that the fluid is one connected region.
 
@@ -249,7 +256,9 @@ Simulation results therefore change slightly when a case is re-voxelized.
 * `<output_base_name>c.npz`: simulation input for `hemoFlow`
 * `<output_base_name>geometry.vti`: the voxel labels (point data `label`) as
   VTK image data in the coordinates of the input STL (points at the voxel
-  centres). It overlays the STL and the solver output in ParaView.
+  centres). It overlays the STL and the solver output in ParaView. With a
+  flow diverter it also holds the resistance multipliers
+  (`linearMultiplier`, `quadraticMultiplier`).
 * `<output_base_name>geometry.nrrd`: the same label volume for 3D Slicer, with
   spacing and origin in STL coordinates (space `left-posterior-superior`, the
   frame in which Slicer reads STL files by default)
@@ -268,7 +277,7 @@ Contents of the `.npz` archive (all arrays C-ordered):
 | `openingCenter` | float64, (N, 3) | Centre of each opening [voxel indices] |
 | `openingNormalizedQRatio` | float64, (N,) | r³ / Σ r³ over the outlets (diagnostics) |
 | `stent` | int16, (Nx, Ny, Nz) | 1 in the porous (flow diverter) voxels, only if a device was given |
-| `linear`, `quadratic` | float64, (Nx, Ny, Nz) | Per-voxel porous coefficients (`INHOMOGEN`); not read by the solver yet |
+| `linearMultiplier`, `quadraticMultiplier` | float32, (Nx, Ny, Nz) | Per-voxel multipliers of `linCoeff` and `quadCoeff` (1 in the device voxels of a uniform device, 0 elsewhere), only if a device was given. Geometry files made before November 2026 have unused `linear`/`quadratic` arrays instead; the solver then uses 1 in every device voxel. |
 
 ### Voxel labels
 
@@ -280,7 +289,7 @@ Contents of the `.npz` archive (all arrays C-ordered):
 | 10 | **Inlet**: the opening at the start of the centerline | Boundary condition from config |
 | 11 | The **smallest** outlet (by centerline radius) | Boundary condition from config |
 | 12, 13, … | The other outlets, by decreasing radius | Boundary condition from config |
-| 20 | Fluid voxels inside the flow diverter (for visualization) | Fluid; the porous forcing comes from the `stent` array |
+| 20 | Fluid voxels inside the flow diverter (for visualization) | Fluid; the porous forcing comes from the `stent` array and the multipliers |
 
 `openingIndex` lists the labels in the order 10, 12, 13, …, 11. The solver's
 start-up log prints the face, centre, direction and size of every opening,
@@ -424,10 +433,13 @@ the solver with an error.
 | `linCoeff` | Linear (Darcy) coefficient *a* [Pa·s/m] |
 | `quadCoeff` | Quadratic (Forchheimer) coefficient *b* [Pa·s²/m²] |
 
-In every porous voxel the force density −(*a*·**u** + *b*·**u**|**u**|)/dx is
-applied. The coefficients therefore describe the pressure drop across **one
-voxel-thick layer**, Δp = *a*·u + *b*·u²; the total resistance of a device
-scales with its thickness in voxels.
+In every porous voxel the force density −(*m*<sub>lin</sub>·*a*·**u** + *m*<sub>quad</sub>·*b*·**u**|**u**|)/dx
+is applied, with the voxel's resistance multipliers *m*<sub>lin</sub> and *m*<sub>quad</sub> from the
+geometry file (1 for a uniform device) and the quadratic term taken per
+velocity component (*b*·u<sub>i</sub>|u<sub>i</sub>|). The coefficients therefore describe the
+pressure drop across **one voxel-thick layer**, Δp = *a*·u + *b*·u²; the total
+resistance of a device scales with its thickness in voxels. The start-up log
+gives the number of porous voxels and the range of the multipliers.
 
 ### Waveform (time-scale function) files
 
@@ -629,8 +641,14 @@ The full list of open tasks is in [TODO.md](TODO.md).
   (peak = 2 × `parameter`). On the discrete opening the actual mean differs
   slightly (0.445 instead of 0.45 m/s in the pipe case); the log reports it.
 * The porous coefficients act per voxel layer, so the resistance of a device
-  depends on its voxelized thickness and therefore on dx. The per-voxel
-  coefficients (`linear`, `quadratic`) are written but not used by the solver.
+  depends on its voxelized thickness, which varies with its orientation to the
+  grid. On NAP180 (dx 0.13–0.36 mm), 76–78 % of the device area is one voxel
+  thick along its normal, 15–19 % two voxels (double resistance) and 3–7 % has
+  gaps (no resistance). Geometry files made before November 2026 have about
+  40 % at two voxels. A device-level, area-weighted model is planned in
+  [TODO-FD-INHOMOGEN.md](TODO-FD-INHOMOGEN.md).
+* The quadratic porous term acts per velocity component, so for flow at 45°
+  to the grid axes it is 0.71 times that for axis-aligned flow.
 * Carreau model:
   * At a pressure opening, Palabos' finite-difference boundary condition
     rebuilds the stress of the opening cells from the velocity gradient with

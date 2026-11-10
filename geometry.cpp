@@ -1,5 +1,7 @@
 #include "geometry.h"
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -30,10 +32,24 @@ cnpy::NpyArray loadRequired(const std::string& fileName, const std::string& name
     return array;
 }
 
-// Fill the locally owned blocks (bulk and envelope) of a distributed field with
-// valueAt(globalIndex), which is evaluated on the main process only.
-template <typename V, typename F>
-void scatterToField(MultiScalarField3D<V>& field, F valueAt)
+// Store the values of one cell in a scalar or tensor field
+template <typename V>
+void setCell(V& cell, const V* values)
+{
+    cell = values[0];
+}
+
+template <typename V, pluint N>
+void setCell(Array<V, N>& cell, const V* values)
+{
+    for (pluint k = 0; k < N; ++k)
+        cell[k] = values[k];
+}
+
+// Fill the locally owned blocks (bulk and envelope) of a distributed field with N values
+// per cell: valuesAt(globalIndex, values) writes them, on the main process only.
+template <typename V, int N, typename MultiField, typename F>
+void scatterComponents(MultiField& field, F valuesAt)
 {
     MultiBlockManagement3D const& management = field.getMultiBlockManagement();
     std::map<plint, Box3D> const& bulks = management.getSparseBlockStructure().getBulks();
@@ -49,14 +65,14 @@ void scatterToField(MultiScalarField3D<V>& field, F valueAt)
         if (rank != 0 && rank != owner)
             continue;
 
-        buffer.assign(box.nCells(), V());
+        buffer.assign(N * box.nCells(), V());
         if (rank == 0) {
             size_t i = 0;
             for (plint x = box.x0; x <= box.x1; ++x)
                 for (plint y = box.y0; y <= box.y1; ++y)
                     for (plint z = box.z0; z <= box.z1; ++z, ++i)
                         if (x >= 0 && y >= 0 && z >= 0 && x < Nx && y < Ny && z < Nz)
-                            buffer[i] = valueAt(gT(x, y, z));
+                            valuesAt(gT(x, y, z), &buffer[N * i]);
             if (owner != 0)
                 global::mpi().send(buffer.data(), (int)buffer.size(), owner, GEOMETRY_TAG);
         }
@@ -65,16 +81,29 @@ void scatterToField(MultiScalarField3D<V>& field, F valueAt)
         }
 
         if (rank == owner) {
-            ScalarField3D<V>& block = field.getComponent(blockId);
+            auto& block = field.getComponent(blockId);
             Dot3D location = block.getLocation();
             size_t i = 0;
             for (plint x = box.x0; x <= box.x1; ++x)
                 for (plint y = box.y0; y <= box.y1; ++y)
                     for (plint z = box.z0; z <= box.z1; ++z, ++i)
-                        block.get(x - location.x, y - location.y, z - location.z) = buffer[i];
+                        setCell(block.get(x - location.x, y - location.y, z - location.z), &buffer[N * i]);
         }
     }
     global::mpi().barrier();
+}
+
+// One value per cell: valueAt(globalIndex), evaluated on the main process only.
+template <typename V, typename F>
+void scatterToField(MultiScalarField3D<V>& field, F valueAt)
+{
+    scatterComponents<V, 1>(field, [&valueAt](long long id, V* values) { values[0] = valueAt(id); });
+}
+
+// Value of a float32 or float64 array
+double valueOf(const cnpy::NpyArray& array, size_t id)
+{
+    return array.word_size == sizeof(float) ? (double)array.data<float>()[id] : array.data<double>()[id];
 }
 
 }  // namespace
@@ -82,11 +111,13 @@ void scatterToField(MultiScalarField3D<V>& field, F valueAt)
 
 GeometryFile::GeometryFile(const std::string& fileName_)
     : nx(0), ny(0), nz(0), dx(0.0), hasOrigin(false), origin(0.0, 0.0, 0.0), hasLengthUnit(false), lengthUnit(1.0),
-      hasStent(false), fileName(fileName_)
+      hasStent(false), hasMultipliers(false), numPorous(0), porousBox(0, -1, 0, -1, 0, -1),
+      multiplierMin(0.0, 0.0), multiplierMax(0.0, 0.0), multiplierMean(0.0, 0.0), fileName(fileName_)
 {
     // Small arrays, read on the main process and broadcast: sizes, dx, origin, openings
     std::vector<double> header;      // nx, ny, nz, dx, hasOrigin, ox, oy, oz, hasStent, numOpenings, hasLengthUnit, lengthUnit
     std::vector<double> openingData; // per opening: label, radius, nx, ny, nz
+    std::vector<double> deviceData;  // hasMultipliers, numPorous, porousBox (6), min, max, mean (linear, quadratic)
     std::string error;
 
     if (global::mpi().isMainProcessor()) {
@@ -102,6 +133,15 @@ GeometryFile::GeometryFile(const std::string& fileName_)
             bool stentFound = loadOptional(fileName, "stent", stent);
             if (stentFound && (stent.shape != labels.shape || stent.word_size != sizeof(unsigned short)))
                 throw std::runtime_error("The 'stent' array must be an int16 array of the same shape as 'geometryFlag'.");
+            bool linearFound = loadOptional(fileName, "linearMultiplier", linearMultiplier);
+            bool quadraticFound = loadOptional(fileName, "quadraticMultiplier", quadraticMultiplier);
+            if (linearFound != quadraticFound || (linearFound && !stentFound))
+                throw std::runtime_error("The geometry file must contain 'linearMultiplier' and 'quadraticMultiplier' together, and only with a 'stent' array.");
+            for (cnpy::NpyArray const* m : {&linearMultiplier, &quadraticMultiplier})
+                if (linearFound && (m->shape != labels.shape || (m->word_size != sizeof(float) && m->word_size != sizeof(double))))
+                    throw std::runtime_error("The resistance multipliers must be float32 or float64 arrays of the same shape as 'geometryFlag'.");
+            if (stentFound)
+                deviceData = summarizeDevice(linearFound);
 
             cnpy::NpyArray index = loadRequired(fileName, "openingIndex");
             cnpy::NpyArray radius = loadRequired(fileName, "openingRadius");
@@ -144,6 +184,18 @@ GeometryFile::GeometryFile(const std::string& fileName_)
     int numOpenings = (int)header[9];
     hasLengthUnit = header[10] != 0.0;
     lengthUnit = header[11];
+
+    if (hasStent) {
+        deviceData.resize(14);
+        global::mpi().bCast(deviceData.data(), (int)deviceData.size());
+        hasMultipliers = deviceData[0] != 0.0;
+        numPorous = (long long)deviceData[1];
+        porousBox = Box3D((plint)deviceData[2], (plint)deviceData[3], (plint)deviceData[4],
+                          (plint)deviceData[5], (plint)deviceData[6], (plint)deviceData[7]);
+        multiplierMin = Array<double, 2>(deviceData[8], deviceData[9]);
+        multiplierMax = Array<double, 2>(deviceData[10], deviceData[11]);
+        multiplierMean = Array<double, 2>(deviceData[12], deviceData[13]);
+    }
 
     openingData.resize(5 * numOpenings);
     if (numOpenings > 0)
@@ -197,15 +249,52 @@ void GeometryFile::fillOccupancy(MultiScalarField3D<int>& field) const
     scatterToField(field, [data](long long id) { return data[id] > UNUSED ? 1 : 0; });
 }
 
-void GeometryFile::fillPorosity(MultiScalarField3D<T>& field) const
+// Porous voxels: flow diverter voxels in the fluid, never walls or outside voxels (the
+// force itself also skips boundary cells such as openings)
+bool GeometryFile::isPorous(size_t id) const
+{
+    return stent.data<unsigned short>()[id] > 0 && labels.data<unsigned short>()[id] >= FLUID;
+}
+
+// Main process: number, bounding box and multiplier range of the porous voxels
+std::vector<double> GeometryFile::summarizeDevice(bool withMultipliers)
+{
+    size_t n1 = labels.shape[1], n2 = labels.shape[2];
+    double count = 0.0;
+    double box[6] = {1e30, -1e30, 1e30, -1e30, 1e30, -1e30};
+    double lo[2] = {1e300, 1e300}, hi[2] = {-1e300, -1e300}, sum[2] = {0.0, 0.0};
+    for (size_t id = 0; id < labels.num_vals; ++id) {
+        if (!isPorous(id))
+            continue;
+        double c[3] = {(double)(id / (n1 * n2)), (double)((id / n2) % n1), (double)(id % n2)};
+        for (int d = 0; d < 3; ++d) {
+            box[2 * d] = std::min(box[2 * d], c[d]);
+            box[2 * d + 1] = std::max(box[2 * d + 1], c[d]);
+        }
+        for (int k = 0; k < 2; ++k) {
+            double m = withMultipliers ? valueOf(k == 0 ? linearMultiplier : quadraticMultiplier, id) : 1.0;
+            if (!(m >= 0.0) || !std::isfinite(m))
+                throw std::runtime_error("The resistance multipliers must be finite and >= 0 in every flow diverter voxel.");
+            lo[k] = std::min(lo[k], m);
+            hi[k] = std::max(hi[k], m);
+            sum[k] += m;
+        }
+        count += 1.0;
+    }
+    if (count == 0.0)
+        return {withMultipliers ? 1.0 : 0.0, 0.0, 0, -1, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0};
+    return {withMultipliers ? 1.0 : 0.0, count, box[0], box[1], box[2], box[3], box[4], box[5],
+            lo[0], lo[1], hi[0], hi[1], sum[0] / count, sum[1] / count};
+}
+
+void GeometryFile::fillPorosity(MultiTensorField3D<T, 2>& field) const
 {
     bool main = global::mpi().isMainProcessor();
-    const unsigned short* data = main ? labels.data<unsigned short>() : nullptr;
-    const unsigned short* device = (main && hasStent) ? stent.data<unsigned short>() : nullptr;
-    // Porous forcing only in fluid voxels, never in walls or outside voxels (the force
-    // itself also skips boundary cells such as openings)
-    scatterToField(field, [data, device](long long id) {
-        return (device && device[id] > 0 && data[id] >= FLUID) ? (T)1.0 : (T)0.0;
+    PLB_ASSERT(hasStent);
+    scatterComponents<T, 2>(field, [this, main](long long id, T* values) {
+        bool porous = main && isPorous(id);
+        values[0] = porous ? (hasMultipliers ? (T)valueOf(linearMultiplier, id) : (T)1.0) : (T)0.0;
+        values[1] = porous ? (hasMultipliers ? (T)valueOf(quadraticMultiplier, id) : (T)1.0) : (T)0.0;
     });
 }
 
@@ -213,4 +302,6 @@ void GeometryFile::release()
 {
     labels = cnpy::NpyArray();
     stent = cnpy::NpyArray();
+    linearMultiplier = cnpy::NpyArray();
+    quadraticMultiplier = cnpy::NpyArray();
 }

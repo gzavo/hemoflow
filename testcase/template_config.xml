@@ -57,6 +57,6 @@
 </geometry>
 
 <flowdiverter> <!-- Required if the geometry contains a flow diverter. -->
-	<linCoeff>0</linCoeff> <!-- Darcy coefficient a [Pa s/m] of one voxel-thick porous layer. -->
-	<quadCoeff>0</quadCoeff> <!-- Forchheimer coefficient b [Pa s^2/m^2] of one voxel-thick porous layer. -->
+	<linCoeff>0</linCoeff> <!-- Darcy coefficient a [Pa s/m] of one voxel-thick porous layer; scaled per voxel by linearMultiplier of the geometry file. -->
+	<quadCoeff>0</quadCoeff> <!-- Forchheimer coefficient b [Pa s^2/m^2] of one voxel-thick porous layer; scaled per voxel by quadraticMultiplier. -->
 </flowdiverter>

@@ -265,9 +265,10 @@ def voxelize_shell(polyData, grid):
     return mask
 
 
-def write_label_image(fileName, labels, origin, spacing, name="label"):
+def write_label_image(fileName, labels, origin, spacing, name="label", extra=None):
     """Write a 3D label array (indexed x, y, z) as VTK image data (.vti), with the points
-    at the voxel centres: origin = centre of voxel (0, 0, 0), in the units of the STL."""
+    at the voxel centres: origin = centre of voxel (0, 0, 0), in the units of the STL.
+    extra: further point arrays of the same shape, {name: array}."""
     image = vtk.vtkImageData()
     image.SetDimensions(*labels.shape)
     image.SetSpacing(spacing, spacing, spacing)
@@ -275,6 +276,12 @@ def write_label_image(fileName, labels, origin, spacing, name="label"):
     values = numpy_to_vtk(np.ascontiguousarray(labels.ravel(order="F")), deep=True)  # VTK: x fastest
     values.SetName(name)
     image.GetPointData().SetScalars(values)
+    for extraName, array in (extra or {}).items():
+        if array.shape != labels.shape:
+            raise ValueError(f"'{extraName}' has shape {array.shape}, the labels {labels.shape}")
+        values = numpy_to_vtk(np.ascontiguousarray(array.ravel(order="F")), deep=True)
+        values.SetName(extraName)
+        image.GetPointData().AddArray(values)
     writer = vtk.vtkXMLImageDataWriter()
     writer.SetFileName(fileName)
     writer.SetInputData(image)

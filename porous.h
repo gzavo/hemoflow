@@ -5,30 +5,32 @@
 #include "helper.h"
 
 
-// The porosity field (1 in porous voxels, 0 elsewhere) is filled from the geometry
-// file by GeometryFile::fillPorosity().
+// The multiplier field holds (linear, quadratic) resistance multipliers in the porous
+// voxels and 0 elsewhere. GeometryFile::fillPorosity() fills it from the geometry file
+// (1 in every porous voxel for a uniform device or an older geometry file).
 
-/// Apply macroscopic porous material forcing
+/// Apply macroscopic porous material forcing: in each porous cell the force density
+/// -(mLin a u + mQuad b u|u|) / dx, with a = linCoeff and b = quadCoeff (lattice units)
 template<typename T, template<typename U> class Descriptor>
-struct PorousForceFunctional : public BoxProcessingFunctional3D_LS<T, Descriptor, T> {
+struct PorousForceFunctional : public BoxProcessingFunctional3D_LT<T, Descriptor, T, 2> {
 
 	public:
         PorousForceFunctional(T linCoeff_, T quadCoeff_) : linCoeff(linCoeff_), quadCoeff(quadCoeff_)
         { }
 
     virtual void process(Box3D domain, BlockLattice3D<T,Descriptor>& lattice,
-                                       ScalarField3D<T>& field)
+                                       TensorField3D<T,2>& multipliers)
     {
-        // The lattice and the porosity field blocks need not coincide (e.g. sparse decomposition)
-        Dot3D offset = computeRelativeDisplacement(lattice, field);
+        // The lattice and the multiplier field blocks need not coincide (e.g. sparse decomposition)
+        Dot3D offset = computeRelativeDisplacement(lattice, multipliers);
 
     	for (plint iX=domain.x0; iX<=domain.x1; ++iX) 
             for (plint iY=domain.y0; iY<=domain.y1; ++iY) 
                 for (plint iZ=domain.z0; iZ<=domain.z1; ++iZ) {
                 
-                T porosity = field.get(iX + offset.x, iY + offset.y, iZ + offset.z);
+                Array<T,2> const& m = multipliers.get(iX + offset.x, iY + offset.y, iZ + offset.z);
 
-                if(porosity == 0.0)
+                if(m[0] == 0.0 && m[1] == 0.0)
                 	continue;
                 	
                 if(lattice.get(iX,iY,iZ).getDynamics().isBoundary())
@@ -41,9 +43,11 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LS<T, Descriptor
             	T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
 
             	// Calculate the force (momentum loss)
+            	T lin = m[0] * linCoeff;
+            	T quad = m[1] * quadCoeff;
             	for (pluint iD = 0; iD < Descriptor<T>::d; ++iD) 
             	{
-                	force[iD] = -porosity * (linCoeff * vel[iD] + quadCoeff * copysign(vel[iD] * vel[iD], vel[iD]) );
+                	force[iD] = -(lin * vel[iD] + quad * copysign(vel[iD] * vel[iD], vel[iD]) );
             	}
             }
         
@@ -56,6 +60,7 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LS<T, Descriptor
 
     virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const {
         modified[0] = modif::staticVariables;
+        modified[1] = modif::nothing;
     }
 
     virtual BlockDomain::DomainT appliesTo() const {
