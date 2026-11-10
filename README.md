@@ -145,8 +145,7 @@ Compile-time switches in `globals.h`:
 
 ## Setting up the preprocessor
 
-The preprocessor needs Python 3.12 with NumPy, SciPy, VTK, `numpy-stl` and
-`pynrrd`. The environment is in `preprocessor/environment.yml`:
+The preprocessor needs Python 3.12 with NumPy, SciPy, VTK and `pynrrd`. The environment is in `preprocessor/environment.yml`:
 
 ```bash
 conda env create -f preprocessor/environment.yml    # creates the env "lbmpre"
@@ -174,20 +173,22 @@ all outputs are written there.
 
 ### Input requirements
 
-* **Vessel surface** (`.stl`): watertight triangulated surface in
-  **millimetres** (the factor `SI_FACTOR = 0.001` is hard-coded in `main.py`).
-  The vessel must be clipped so that every inlet/outlet is a flat open cut
-  that lies on a face of the axis-aligned bounding box, and **not on an edge
-  or corner** of the bounding box. Triangles should not be much smaller than
-  a voxel.
+* **Vessel surface** (`.stl`): triangulated surface in **millimetres** (the
+  factor `SI_FACTOR = 0.001` is hard-coded in `main.py`). Every inlet/outlet
+  must be a flat cut that lies on a face of the axis-aligned bounding box of
+  the surface, either left open or closed with a flat cap. Openings may touch
+  edges and corners of the bounding box, and other parts of the vessel may run
+  close to a face that has an opening. Apart from the cuts the surface must
+  be closed.
 * **Centerline** (`.vtp`), e.g. from `vmtkcenterlines`: one polyline per
   outlet, each starting at the inlet and ending at that outlet, carrying the
   point array `MaximumInscribedSphereRadius`. The start point defines the
   inlet; every opening gets its radius and direction from the centerline.
 * **Flow diverter** (optional): a surface mesh of the deployed device in the
-  same coordinate frame as the vessel, as `<stent_mesh_base>mesh.stl`. It is
-  voxelized from three projections; the voxels it touches inside the lumen
-  become porous voxels.
+  same coordinate frame as the vessel, as `<stent_mesh_base>mesh.stl`. Rays
+  along the three axes through the voxel centres are intersected with it;
+  every voxel inside the lumen where a ray crosses the device becomes a porous
+  voxel.
 
 ### Configuration file (JSON)
 
@@ -216,9 +217,30 @@ Example (`tests/verification/0-pipe/input/input_pipe_vox.config`):
 | `cutWidth`, `distance` | – | Legacy keys, ignored (still present in several shipped configs) |
 
 Further options are constants at the top of `preprocessor/main.py`:
-`SI_FACTOR`, `DISTANCE_RADIUS_FACTOR` (opening matching tolerance relative to
-the opening radius), `DEBUG_MODE` (writes intermediate `.nrrd` files) and
+`SI_FACTOR`, `DEBUG_MODE` (writes intermediate `.nrrd` files) and
 `INHOMOGEN` (reads per-point porous coefficients from `<stent_mesh_base>values.vtp`).
+
+### How it works
+
+1. Open ends of the surface are closed with flat caps.
+2. The surface is voxelized with VTK (`vtkPolyDataToImageStencil`): a voxel is
+   fluid if its centre lies inside the surface. The grid covers the whole
+   bounding box.
+3. A one-voxel wall is added around the fluid.
+4. The caps on the bounding-box faces are the openings. They are matched to the
+   centerline end points (inlet, outlets). Only the wall voxels directly in
+   front of each cap are turned into opening voxels; the rest of that layer
+   stays wall.
+5. The flow diverter is voxelized and restricted to the lumen.
+6. Every run checks that the fluid meets the outside only through the openings
+   (leak check) and that the fluid is one connected region.
+
+Geometry files made before November 2026 used a pure-Python scan-line
+voxelizer. Compared with it, vessels are now about half a voxel narrower (the
+fluid volume matches the surface within ~0.5 % instead of being 6–8 % too
+large), flow diverter shells are about 25 % thinner (the old projections were
+shifted against each other), and openings are one voxel layer further out.
+Simulation results therefore change slightly when a case is re-voxelized.
 
 ### Outputs
 
@@ -406,13 +428,13 @@ directories are git-ignored. Timings below are from a 24-core workstation.
 
 ### 1. Straight pipe, Poiseuille flow (`tests/verification/0-pipe`), quick check
 
-220 k voxels (434 × 23 × 22, dx ≈ 0.3 mm). The pipe has a 6.5 mm diameter and
+251 k voxels (436 × 24 × 24, dx ≈ 0.3 mm). The pipe has a 6.5 mm diameter and
 a 0.45 m/s mean inflow, with a 0 Pa outlet and a flow diverter shell with zero
 resistance. The run covers 1.6 s (80 k steps).
 
 ```bash
 cd tests/verification/0-pipe/input
-conda run -n lbmpre python ../../../../preprocessor/main.py ./input_pipe_vox.config   # ~2 s
+conda run -n lbmpre python ../../../../preprocessor/main.py ./input_pipe_vox.config   # ~1 s
 cd ..
 mpirun -np 8 ../../../build/hemoFlow pipe.xml                                        # ~7 min on 10 cores
 conda run -n hemoflow-post python pressure_drop.py .
@@ -422,19 +444,20 @@ conda run -n hemoflow-post python pressure_drop.py .
 length with Hagen–Poiseuille for the simulated lumen, and writes
 `output.csv` and `profile_comp.png`.
 
-**Reference result** (November 2026):
+**Reference result** (November 2026, current preprocessor):
 
 | Quantity | Value |
 |---|---|
-| Inlet / outlet flow rate | 1.537·10⁻⁵ / 1.539·10⁻⁵ m³/s (0.1 % apart) |
-| Pressure drop over the central 65 mm | 80.6 Pa |
-| Hagen–Poiseuille for the simulated lumen (6.50 mm) | 77.7 Pa (+3.8 %) |
+| Inlet / outlet flow rate | 1.483·10⁻⁵ / 1.485·10⁻⁵ m³/s (0.1 % apart; mean inlet velocity 0.445 m/s) |
+| Pressure drop over the central 65 mm | 78.7 Pa |
+| Hagen–Poiseuille for the simulated lumen (6.51 mm) | 74.9 Pa (+5.1 %) |
 
 At Re ≈ 900 the laminar entrance length (≈ 0.05·Re·D ≈ 290 mm) is longer
 than the pipe (130 mm), so a pressure drop slightly above Poiseuille is
-expected. The earlier V&V result (`doc/VV`, 90.7 Pa at 0.5 m/s and 2.5 s)
-scales to 81.6 Pa at 0.45 m/s; the same 2.5 s run gives 81.4 Pa with the
-current code.
+expected. With geometry from the previous (scan-line) preprocessor the same
+run gave 80.6 Pa at a 3.6 % higher flow rate (mean inlet velocity 0.464 m/s).
+The earlier V&V result (`doc/VV`, 90.7 Pa at 0.5 m/s) was obtained with that
+older geometry.
 
 ### 2. Aneurysm with flow diverter (`testcase/`)
 
@@ -443,7 +466,7 @@ included). Three voxelization configs are provided in `testcase/input/`:
 
 | Config | Elements | Output | Used by |
 |---|---|---|---|
-| `voxel_input.config` | 1 M (80 × 69 × 181, dx ≈ 0.36 mm, ~15 s) | `vox_NAP180_ane_c.npz` | `test_Aneurysm.xml` |
+| `voxel_input.config` | 1 M (81 × 71 × 182, dx ≈ 0.36 mm, ~2 s) | `vox_NAP180_ane_c.npz` | `test_Aneurysm.xml` |
 | `voxel_input_5M.config` | 5 M | `vox_NAP180_ane_PED_5x20_5M_c.npz` | `test_Velocity/Pressure/Murray/Freeflow.xml` |
 | `voxel_input_20M.config` | 20 M | `vox_NAP180_ane_PED_5x20_20M_c.npz` | – |
 
@@ -465,7 +488,7 @@ waveform.
 
 ```bash
 cd tests/verification/1-flow_split/input
-conda run -n lbmpre python ../../../../preprocessor/main.py ./input_branch_vox.config   # 5 M elements, ~20 s
+conda run -n lbmpre python ../../../../preprocessor/main.py ./input_branch_vox.config   # 5 M elements, ~2 s
 cd ..
 mpirun -np 20 ../../../build/hemoFlow flow_split.xml      # 80 k steps on 5 M cells: ~1-2 h on 20 cores
 conda run -n hemoflow-post python Murray_check.py .
@@ -483,7 +506,7 @@ run with steady inflow (November 2026), the interior measurement gave
 Sidewall aneurysm from the
 [Aneurisk](https://ecm2.mathcs.emory.edu/aneuriskweb/about) database with a
 normalised ICA waveform and `murray` outlets. Voxelize with
-`input/voxelize.sh` (~5 s), then run `aneurisk.xml`.
+`input/voxelize.sh` (~2 s), then run `aneurisk.xml`.
 
 ### 5. Sensitivity and uncertainty campaigns (`tests/sensitivity`, `tests/uncertainty`)
 
@@ -506,20 +529,15 @@ The full list of open tasks is in [TODO.md](TODO.md).
   round-off-level difference next to the 0 Pa outlet, reaching 0.06 m/s
   after 400 steps. Until this is understood, compare against a dense run
   before relying on it.
-* Openings must lie on bounding-box faces, away from edges and corners.
-  Boundary conditions are instantiated on the bounding rectangle of each
-  opening, so the solver refuses two openings on the same face whose
-  rectangles overlap.
+* Openings must be flat cuts on bounding-box faces. The solver instantiates
+  boundary conditions on the bounding rectangle of each opening, so it refuses
+  two openings on the same face whose rectangles overlap.
 * The velocity `parameter` is the mean velocity of an ideal paraboloid
   (peak = 2 × `parameter`). On the discrete opening the actual mean differs
-  slightly (0.464 instead of 0.45 m/s in the pipe case); the log reports it.
+  slightly (0.445 instead of 0.45 m/s in the pipe case); the log reports it.
 * The porous coefficients act per voxel layer, so the resistance of a device
   depends on its voxelized thickness and therefore on dx. The per-voxel
   coefficients (`linear`, `quadratic`) are written but not used by the solver.
-* The scan-line voxelizer drops up to one partial voxel layer at the maximum
-  y and z sides of the vessel, is slow for large targets (tens of millions of
-  elements) and prints "is the geometry watertight?" messages for scan lines
-  through the open cuts.
 * The whole geometry file is loaded on every MPI process, which limits the
   domain size per node.
 * The fluid is Newtonian; non-Newtonian rheology is not implemented.
@@ -543,14 +561,19 @@ Then configure HemoFlow with `-DHDF5_ROOT=$HOME/opt/hdf5`.
 (normally the inlet) a waveform file; use a two-point constant file for
 steady inflow.
 
-**Walls appear inside the fluid.** The STL triangles are too small compared
-to the voxel size, or the surface is not closed. Increase the resolution or
-remesh the surface.
+**"the surface has N flat caps on its bounding-box faces, but the centerline
+has M end points".** An opening is not a flat cut on a bounding-box face, or
+the centerline does not end at every opening. Re-clip the geometry so that
+every cut lies on a face of the bounding box. Flat parts of the vessel wall
+that are flush with a face are recognized and ignored (a note is printed).
 
-**Wrong number of openings ("number of outlets found ... differ").** An
-opening lies on an edge or corner of the bounding box, or the centerline does
-not end at every opening. Re-clip the geometry so each cut lies cleanly on one
-face.
+**"fluid voxel(s) touch the outside of the vessel or the domain border".** The
+surface has a hole that is not one of the openings, or a cap is not flat.
+Check the mesh (and the warnings about closed holes) in ParaView or 3D Slicer.
+
+**"closing a hole that is not on a bounding-box face".** The surface has a hole
+apart from the openings, which is closed and treated as wall. Check whether it
+is a mesh defect or a misplaced cut.
 
 **The simulation diverges (NaN energy).** The solver writes the current state
 and exits with code 1. Reduce `dt` (check the ω and velocity warnings at

@@ -1,206 +1,68 @@
-import sys
+"""Opening voxels from the caps of the vessel surface.
+
+The vessel surface is closed with flat caps on faces of its bounding box. After the
+wall has been added (createFluidSolid.add_walls), every cap is covered by a layer of
+wall voxels on the outermost layer of the domain. Only the wall voxels in front of the
+cap (centre inside the cap, fluid behind it) are turned into opening voxels; the rest
+of that layer stays wall, so other vessels close to the same face keep their wall.
+"""
 import numpy as np
+from scipy import ndimage
+
 from constants import const
-# from operator import itemgetter
 
 CONSTANTS = const()
 
-def has_neighboring_unused_voxel(x, y, z, data):
-    if data[z - 1][x][y] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    elif data[z + 1][x][y] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    elif data[z][x - 1][y] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    elif data[z][x + 1][y] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    elif data[z][x][y - 1] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    elif data[z][x][y + 1] == CONSTANTS.UNUSED_VOXEL:
-        return True
-    return False
 
-def get_all_inlet_outlet_fluid_voxels(walls, data):
-    for z, x, y in walls: 
-        if data[z - 1][x][y] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x, y, z - 1, data):
-                yield (z - 1, x, y)
-        elif data[z + 1][x][y] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x, y, z + 1, data):
-                yield (z + 1, x, y)
-        elif data[z][x - 1][y] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x - 1, y, z, data):
-                yield (z, x - 1, y)
-        elif data[z][x + 1][y] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x + 1, y, z, data):
-                yield (z, x + 1, y)
-        elif data[z][x][y - 1] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x, y - 1, z, data):
-                yield (z, x, y - 1)
-        elif data[z][x][y + 1] == CONSTANTS.FLUID_VOXEL:
-            if has_neighboring_unused_voxel(x, y + 1, z, data):
-                yield (z, x, y + 1)
+def opening_voxels(labels, offset, grid, cap):
+    """Indices (k, 3) of the opening voxels of one cap on the labels grid."""
+    axis, side = cap.axis, cap.side
+    a1, a2 = [a for a in range(3) if a != axis]
+    layer = 0 if side == 0 else labels.shape[axis] - 1
+    inward = layer + 1 if side == 0 else layer - 1
 
-def get_neighbouring_unused_voxel_plane(x, y, z, data):
-    if data[z - 1][x][y] == CONSTANTS.UNUSED_VOXEL or data[z + 1][x][y] == CONSTANTS.UNUSED_VOXEL:
-        return "z"
-    elif data[z][x - 1][y] == CONSTANTS.UNUSED_VOXEL or data[z][x + 1][y] == CONSTANTS.UNUSED_VOXEL:
-        return "x"
-    elif data[z][x][y - 1] == CONSTANTS.UNUSED_VOXEL or data[z][x][y + 1] == CONSTANTS.UNUSED_VOXEL:
-        return "y"
+    # The outermost layer must lie just outside the cap plane
+    layerCenter = grid.centers(axis, layer + offset[axis])
+    capPlane = cap.triangles[0, 0, axis]
+    if abs(layerCenter - capPlane) > grid.dx:
+        raise RuntimeError(f"Cap on face {cap.face} is not on the outermost voxel layer "
+                           f"(layer centre {layerCenter:.4g}, cap plane {capPlane:.4g}).")
 
-def find_inlet_outlet(x, y, z, data, plane):
-    """ Returns a list of voxels (x, y, z) that make up the inlet/outlet for a voxel """
-    inlet_outlet = []
-    inlet_outlet += recur_find_inlet_outlet(x, y, z, None, None, None, [], data, plane)
-    
-    if len(inlet_outlet) > 1:
-        print(" -> Found opening of size:", len(inlet_outlet))
-        return inlet_outlet
+    i1 = np.arange(labels.shape[a1])
+    i2 = np.arange(labels.shape[a2])
+    u, v = np.meshgrid(grid.centers(a1, i1 + offset[a1]), grid.centers(a2, i2 + offset[a2]), indexing="ij")
+    inside = cap.contains(u, v)
 
-    return None
+    def plane(index):
+        s = [slice(None)] * 3
+        s[axis] = index
+        return labels[tuple(s)]
 
-def show_progress(progress, total):
-    sys.stdout.flush()
-    sys.stdout.write('\r[{0}] {1:.2f}%'.format('#' * int((progress * 10) / total), (progress * 100.) / total))
-    sys.stdout.flush()
-
-def voxel_is_not_yet_processed(x, y, z, inlets_outlets):
-    for l in inlets_outlets:
-        if (x, y, z) in l:
-            return False
-    return True
-
-def recur_find_inlet_outlet(x, y, z, prev_x, prev_y, prev_z, result, data, plane):
-    """ Recursive function for finding the inlet/outlet for a voxel """
-    result.append((x, y, z))
-
-    dz_list = [-1, 0, 1]
-    if plane == "z":
-        dz_list = [0]
-
-    dx_list = [-1, 0, 1]
-    if plane == "x":
-        dx_list = [0]
-
-    dy_list = [-1, 0, 1]
-    if plane == "y":
-        dy_list = [0]
-
-    for dz in dz_list:
-        for dx in dx_list:
-            for dy in dy_list:
-                if (dx, dy, dz) != (0, 0, 0):
-                    x_n = x + dx
-                    y_n = y + dy
-                    z_n = z + dz
-                    if ((x_n, y_n, z_n) != (prev_x, prev_y, prev_z) and
-                            data[z_n][x_n][y_n] == CONSTANTS.FLUID_VOXEL and
-                            has_neighboring_unused_voxel(x_n, y_n, z_n, data) and
-                            (x_n, y_n, z_n) not in result):
-                        result = recur_find_inlet_outlet(x_n, y_n, z_n, x, y, z, result, data, plane)
-    return result
-
-def detect_inlets_outlets(data):
-    """ Detects all inlets and outlets of the vessel model. Assumes the following:
-        - The vessel has only one inlet.
-        - All outlets are smaller in diameter than the inlets.
-        - The inlets and outlets are cut parallel to the x, y or z plane.
-    """
-    print("Detecting all fluid voxels surrounded by an unused voxel...")
-    #print(len(data) * len(data[0]) * len(data[0][0]))
-    wall_voxels = zip(*np.where(data == CONSTANTS.WALL_VOXEL))
-    found_fluid_voxels = list(get_all_inlet_outlet_fluid_voxels(wall_voxels, data))
-    # voxel_count = len(found_fluid_voxels)
-    inlets_outlets = []
-
-    z = 0
-    for z, x, y in found_fluid_voxels: 
-        if (voxel_is_not_yet_processed(x, y, z, inlets_outlets)):
-            plane = get_neighbouring_unused_voxel_plane(x, y, z, data)
-            inlet_outlet = find_inlet_outlet(x, y, z, data, plane)
-            # if(inlet_outlet is not None):
-            inlets_outlets.append(inlet_outlet)
-
-    return (inlets_outlets, data)
-
-def paint_inlets_outlets(inlets_outlets, data, findBoundaryByArea=True):
-    """ Determines the inlet by picking the inlet/outlet with the greatest area
-        Then paints the inlet with the value 6 and the outlets with 7
-    """
-
-    numOpenings = len(inlets_outlets)
-    openingIdx = [[]] * numOpenings # List of opening flags
-
-    data_result = np.copy(data)
-    
-    # Length of the opening lists
-    if findBoundaryByArea:
-        areas = np.array([len(x) for x in inlets_outlets])
-        
-        inletIdx = np.argmax(areas)
-        pressureOutletIdx = np.argmin(areas)
-    else:
-        inletIdx = 0
-        pressureOutletIdx = -1
-        
-    openingIdx[inletIdx] = CONSTANTS.INLET_VOXEL
-    openingIdx[pressureOutletIdx] = CONSTANTS.OUTLET_VOXEL
-
-    print("Number of inlets: 1")
-    print("Number of pressure outlets: 1")
-    print("Number of velocity outlet(s): ", numOpenings-2)
-    
-    outletCount = 0
-    for i in range(numOpenings):
-        if not openingIdx[i]:
-            openingIdx[i] = (CONSTANTS.OUTLET_REST_VOXEL + outletCount)
-            outletCount += 1
-    
-    openingCenter = []
-    openingC = np.zeros(3)
-    for ioID in range(numOpenings):
-        
-        openingC = np.zeros(3)
-        for (x, y, z) in inlets_outlets[ioID]:
-            data_result[z][x][y] = openingIdx[ioID]
-            openingC += np.array((z,x,y))
-            
-        openingCenter.append(openingC / len(inlets_outlets[ioID]))
-    
-    return (openingIdx, openingCenter, data_result[1:-1, 1:-1, 1:-1].astype(np.short, copy=False))
-
-def detectOpenings(inputArray):
-    sys.setrecursionlimit(100000)
-
-    # Append surrounding layer to avoid boundary checking (THIS SHOULD NOT BE NECESSARY! - > FLUID ON THE EDGE OF THE DOMAIN!)
-    data = np.pad(inputArray, 1, 'constant')
-
-    # Detect openings
-    inlets_outlets, data = detect_inlets_outlets(data)
-
-    # Return result without outer layer
-    return (inlets_outlets, data)
+    candidate = inside & (plane(layer) == CONSTANTS.WALL_VOXEL) & (plane(inward) == CONSTANTS.FLUID_VOXEL)
+    j1, j2 = np.nonzero(candidate)
+    voxels = np.zeros((len(j1), 3), dtype=int)
+    voxels[:, axis] = layer
+    voxels[:, a1] = j1
+    voxels[:, a2] = j2
+    return voxels, candidate
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage:", sys.argv[0], "input.nrrd output.nrrd")
-        sys.exit(-1) 
+def paint_openings(labels, offset, grid, caps, capLabels):
+    """Paint the opening voxels of every cap with its label.
 
-    import time
-    import nrrd
-    
-    startTime = time.time()
-    #data, data_header = nrrd.read('Files/reference_geom_capped.nrrd')
-    data, data_header = nrrd.read(sys.argv[1])
-    
-    inlet_outlets, data = detectOpenings(data)
-    openingDescr, result = paint_inlets_outlets(inlet_outlets, data)
-    
-    # Write result without the surrounding layer
-    nrrd.write(sys.argv[2], result)
-
-    endTime = time.time()
-    timeElapsed = int(round((endTime - startTime) * 1000))
-    print("Elapsed time:", timeElapsed, "[ms]")
+    Returns, per cap, the number of voxels, the number of connected pieces and the
+    centre of the opening (voxel indices of the labels grid)."""
+    painted = labels.copy()
+    info = []
+    for cap, label in zip(caps, capLabels):
+        voxels, mask2d = opening_voxels(labels, offset, grid, cap)
+        if len(voxels) == 0:
+            raise RuntimeError(f"Cap on face {cap.face} at {np.round(cap.centroid, 3).tolist()} has no opening voxels; "
+                               "the vessel does not reach the bounding-box face there.")
+        current = painted[tuple(voxels.T)]
+        if np.any(current != CONSTANTS.WALL_VOXEL):
+            raise RuntimeError(f"Openings overlap at the cap on face {cap.face}.")
+        painted[tuple(voxels.T)] = label
+        pieces = ndimage.label(mask2d, structure=np.ones((3, 3), dtype=bool))[1]
+        info.append({"voxels": len(voxels), "pieces": pieces, "center": voxels.mean(axis=0)})
+    return painted, info

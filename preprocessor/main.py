@@ -1,420 +1,249 @@
-import sys
-import time
-import numpy as np
+"""HemoFlow preprocessor.
+
+Turns a vessel surface (STL), its centerline (VTP) and optionally a flow diverter
+(STL) into the voxelized geometry file (.npz) read by the hemoFlow solver.
+
+Usage: python main.py case_vox.config
+"""
 import json
 import os
+import sys
+import time
+
+import nrrd
+import numpy as np
 import scipy.interpolate as scpinter
 from scipy.optimize import linear_sum_assignment
-import vtk
-
-from readCL import getOpeningsFromCenterline, convertToVoxelspace
-from voxelizeStl import voxelize
-from createFluidSolid import createWalls
-from detectOpenings import detectOpenings, paint_inlets_outlets
-from constants import const
 from vtk.numpy_interface import dataset_adapter as dsa
 from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
-from vtk.util import numpy_support
+
+import voxelizeStl as vox
+from constants import const
+from createFluidSolid import add_walls, crop_like, fluid_components, leak_check
+from detectOpenings import paint_openings
+from readCL import getOpeningsFromCenterline
 
 #############################
 # Parameters to check before execution:
-SI_FACTOR = 0.001 # Ratio to [m]. Most STL is in [mm]
-
-# 'distance' tolerance (opening-detection voxel slack), in units of the opening's own
-# local radius. Always used (no longer configurable) instead of one flat voxel count,
-# since a flat count doesn't scale with vessel size/resolution: a value tuned for one
-# opening can be wrong by an order of magnitude for a smaller branch in the same geometry.
-# Keep this well under 1.0: at 1.0x, a large vessel's own tolerance can exceed its
-# distance to an unrelated domain face it just happens to sit near coordinate-wise,
-# spuriously flagging a face that isn't a real opening at all.
-DISTANCE_RADIUS_FACTOR = 0.9
-
-# Position of the voxel centre relative to its index, in voxel units, per axis. The scan-line
-# voxelizer samples x and z at integer coordinates; along y (the scan direction) voxel i
-# covers [i, i+1), so its centre is at i + 0.5.
-VOXEL_SAMPLE_OFFSET = (0.0, 0.5, 0.0)
-
-DEBUG_MODE = False # This will enable additional intermediate nrrd output to check with e.g. 3DSlicer
-INHOMOGEN = False
+SI_FACTOR = 0.001   # Ratio of the STL/centerline units to [m]. Most STL is in [mm]
+DEBUG_MODE = False  # Writes intermediate nrrd output to check with e.g. 3D Slicer
+INHOMOGEN = False   # Per-point porous coefficients from <stent_mesh_base>values.vtp
 #############################
-import nrrd
 
 CONSTANTS = const()
 
 
-def inRange(value, rangeValue, distance):
-    if np.abs(rangeValue-value) < distance:
-        return True
-    return False
+def fail(message):
+    print("!!! ERROR:", message)
+    sys.exit(-1)
 
-def inRange3D(value3D, rangeValue3D, distance):
-    isInRange = True
-    for i in range(3):
-        isInRange = (isInRange and inRange(value3D[i], rangeValue3D[i], distance) )
-    
-    return isInRange
 
-def generateCutList(voxelDomainSize, radiusTangentVoxelList, perOpeningDistance):
-    sidesToCut = np.zeros(6)
+def read_config(confFile):
+    """Paths and parameters from the JSON config (paths are relative to the config file)."""
+    workDir = os.path.dirname(os.path.abspath(confFile))
+    with open(confFile) as f:
+        conf = json.load(f)
 
-    # perOpeningDistance: one tolerance per centerline point (voxels). If a point is
-    # within its own tolerance of a boundary, that side is considered an opening.
-    # Note: cutting away unused layers might influence this!
+    stentFile = ""
+    if conf.get("stent_folder"):
+        dirName = os.path.split(workDir)[1]
+        stentFile = os.path.join(workDir, conf["stent_folder"], conf["stent_folder"] + "_" + dirName + "_stent_mesh.stl")
+    elif conf.get("stent_mesh_base"):
+        stentFile = os.path.join(workDir, conf["stent_mesh_base"] + "mesh.stl")
+    # A configured but missing flow diverter file is an error, not a silent "no device".
+    if stentFile and not os.path.isfile(stentFile):
+        fail(f"stent geometry file specified in config but not found: {stentFile}")
 
+    targetDx = float(conf["target_dx"]) if conf.get("target_dx") not in (None, "") else None
+    return {
+        "vessel": os.path.join(workDir, conf["geometry_original_stl"]),
+        "centerline": os.path.join(workDir, conf["centerline_vtp"]),
+        "stent": stentFile,
+        "output": os.path.join(workDir, conf["output_base_name"]),
+        "targetElements": int(conf["target_elements"]),
+        "targetDx": targetDx,
+    }
+
+
+def opening_labels(count):
+    """Labels in centerline order (inlet first, outlets by decreasing radius):
+    10 for the inlet, 11 for the smallest outlet, 12, 13, ... for the others."""
+    labels = [CONSTANTS.INLET_VOXEL]
+    middle = count - 2
+    labels += [CONSTANTS.OUTLET_REST_VOXEL + i for i in range(middle)]
+    if count > 1:
+        labels.append(CONSTANTS.OUTLET_VOXEL)
+    return labels
+
+
+def match_caps(caps, clOpenings, dx):
+    """Assign a cap to every centerline end point (optimal assignment by distance)."""
+    if len(caps) != len(clOpenings):
+        fail(f"the surface has {len(caps)} flat caps on its bounding-box faces, but the centerline has "
+             f"{len(clOpenings)} end points. Every opening must be a flat cut on a bounding-box face.")
+    cost = np.array([[np.linalg.norm(cap.centroid - pos) for cap in caps] for (_, pos, _) in clOpenings])
+    rows, cols = linear_sum_assignment(cost)
+    order = [None] * len(clOpenings)
+    for r, c in zip(rows, cols):
+        radius = clOpenings[r][0]
+        capRadius = np.sqrt(caps[c].area / np.pi)
+        tolerance = 1.5 * max(radius, capRadius) + 2 * dx
+        if cost[r, c] > tolerance:
+            fail(f"centerline end point {np.round(clOpenings[r][1], 3).tolist()} is {cost[r, c]:.3f} mm from the "
+                 f"nearest cap (on face {caps[c].face}); tolerance {tolerance:.3f} mm. Does the centerline end at every opening?")
+        order[r] = c
+    return order
+
+
+def interpolate_coefficients(stentBase, grid, shell):
+    """Per-voxel porous coefficients from <stentBase>values.vtp (INHOMOGEN mode)."""
+    valuesFile = stentBase + "values.vtp"
+    if not os.path.isfile(valuesFile):
+        print("INHOMOGEN resistance values not found:", valuesFile)
+        return shell.astype(np.double), shell.astype(np.double)
+    reader = vtkXMLPolyDataReader()
+    reader.SetFileName(valuesFile)
+    reader.Update()
+    data = dsa.WrapDataObject(reader.GetOutput())
+    available = list(data.PointData.keys())
+    for name in ("linearCoeff", "quadraticCoeff"):
+        if name not in available:
+            fail(f"{valuesFile} has no point array '{name}' (available: {', '.join(available)})")
+    points = (np.asarray(data.GetPoints()) - grid.corner) / grid.dx - 0.5   # voxel index coordinates
+    xg, yg, zg = np.mgrid[0:grid.shape[0], 0:grid.shape[1], 0:grid.shape[2]]
+    linear = scpinter.griddata(points, np.asarray(data.PointData["linearCoeff"]), (xg, yg, zg), method="nearest")
+    quadratic = scpinter.griddata(points, np.asarray(data.PointData["quadraticCoeff"]), (xg, yg, zg), method="nearest")
+    print("Linear and quadratic coefficients interpolated from", valuesFile)
+    return linear * shell, quadratic * shell
+
+
+def main(confFile):
+    config = read_config(confFile)
+    out = config["output"]
+    startTime = time.time()
+
+    print("\n### Reading the vessel surface ###")
+    surface = vox.read_surface(config["vessel"])
+    box = vox.bounds(surface)
+    print("Surface:", surface.GetNumberOfCells(), "triangles, bounding box [mm]:", np.round(box, 4).tolist())
+
+    # Open ends (holes) are closed with flat caps; they must lie on bounding-box faces.
+    loops = vox.boundary_loops(surface)
+    extent = (box[:, 1] - box[:, 0]).max()
+    for loop in loops:
+        onFace = any(np.abs(loop[:, a] - box[a, s]).max() <= 1e-6 * extent for a in range(3) for s in (0, 1))
+        if not onFace:
+            print("WARNING: closing a hole that is not on a bounding-box face (mesh defect?) at",
+                  np.round(loop.mean(axis=0), 3).tolist())
+    if loops:
+        print(f"Closing {len(loops)} open end(s) of the surface")
+        surface = vox.close_holes(surface)
+
+    print("\n### Voxelizing the vessel ###")
+    grid = vox.make_grid(surface, config["targetElements"], config["targetDx"])
+    dx = grid.dx * SI_FACTOR
+    print(f"Grid: {grid.shape[0]} x {grid.shape[1]} x {grid.shape[2]} voxels, dx = {dx} m")
+    fluid = vox.voxelize_closed(surface, grid)
     if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> voxelDomainSize:", voxelDomainSize)
+        nrrd.write(out + "fluid_only.nrrd", fluid.astype(np.uint8))
 
-    for o, distance in zip(radiusTangentVoxelList, perOpeningDistance):
-        pos = o[1]
+    caps, rejected = vox.find_caps(surface, tolerance=max(1e-6 * extent, 1e-3 * grid.dx))
+    print(f"Found {len(caps)} cap(s) on the bounding-box faces")
+    for patch in rejected:
+        print(f"Note: ignoring a flat patch of the vessel wall flush with face {patch.face} "
+              f"({patch.area:.3g} mm^2); it is not an opening")
 
+    print("\n### Creating walls ###")
+    labels, offset = add_walls(fluid)
+    origin = (grid.corner + (offset + 0.5) * grid.dx) * SI_FACTOR
+    print("Domain size:", labels.shape, " origin of the voxel grid [m]:", origin)
+    if DEBUG_MODE:
+        nrrd.write(out + "wall_fluid.nrrd", labels)
+
+    print("\n### Matching openings to the centerline ###")
+    clOpenings = getOpeningsFromCenterline(config["centerline"])
+    capOrder = match_caps(caps, clOpenings, grid.dx)
+    openingIndex = opening_labels(len(clOpenings))
+    orderedCaps = [caps[c] for c in capOrder]
+    painted, info = paint_openings(labels, offset, grid, orderedCaps, openingIndex)
+
+    rOutlets3 = sum(r ** 3 for (r, _, _) in clOpenings[1:])
+    print(f"{'label':>5} {'face':>4} {'voxels':>7} {'cap area [mm2]':>15} {'cap r [mm]':>10} {'centerline r [mm]':>17}")
+    for (r, _, _), cap, label, inf in zip(clOpenings, orderedCaps, openingIndex, info):
+        print(f"{label:>5} {cap.face:>4} {inf['voxels']:>7} {cap.area:>15.3f} {np.sqrt(cap.area / np.pi):>10.3f} {r:>17.3f}")
+        if inf["pieces"] > 1:
+            print(f"WARNING: opening {label} consists of {inf['pieces']} separate pieces of voxels")
+
+    haveStent = bool(config["stent"])
+    if haveStent:
+        print("\n### Voxelizing the flow diverter ###")
+        stentSurface = vox.read_surface(config["stent"])
+        shell = vox.voxelize_shell(stentSurface, grid)
+        if INHOMOGEN:
+            linear, quadratic = interpolate_coefficients(config["stent"].replace("mesh.stl", ""), grid, shell)
+        else:
+            linear, quadratic = shell.astype(np.double), shell.astype(np.double)
+        shellL = crop_like(shell, offset, painted.shape)
+        linearL = crop_like(linear, offset, painted.shape)
+        quadraticL = crop_like(quadratic, offset, painted.shape)
+
+        # Porous voxels only inside the lumen; walls, outside and openings stay as they are.
+        inLumen = shellL & (painted == CONSTANTS.FLUID_VOXEL)
+        print("Flow diverter voxels:", int(shell.sum()), "of which in the lumen:", int(inLumen.sum()),
+              "(discarded: wall", int((shellL & (painted == CONSTANTS.WALL_VOXEL)).sum()),
+              ", outside", int((shell.sum() - shellL.sum()) + (shellL & (painted == CONSTANTS.UNUSED_VOXEL)).sum()),
+              ", openings", int((shellL & (painted >= CONSTANTS.INLET_VOXEL)).sum()), ")")
+        linearL[~inLumen] = 0.0
+        quadraticL[~inLumen] = 0.0
+        print("Min and max of linear coefficients:", np.nanmin(linearL), np.nanmax(linearL))
+        print("Min and max of quadratic coefficients:", np.nanmin(quadraticL), np.nanmax(quadraticL))
         if DEBUG_MODE:
-            print("-> (DEBUG) generatin cutlist -> centerline point:", pos, "distance tolerance:", distance)
+            nrrd.write(out + "stent_final.nrrd", inLumen.astype(np.short))
+            nrrd.write(out + "stent_linear.nrrd", linearL.astype(np.single))
+            nrrd.write(out + "stent_quadratic.nrrd", quadraticL.astype(np.single))
 
-        for j in range(3):
-            if inRange(pos[j], 0, distance):
-                sidesToCut[j*2]=1
-            if inRange(pos[j], voxelDomainSize[j], distance):
-                sidesToCut[j*2+1]=1
+        if max(openingIndex) >= CONSTANTS.FLOW_DIVERTER_VOXEL:
+            fail(f"opening labels reach the flow diverter label {CONSTANTS.FLOW_DIVERTER_VOXEL} (too many openings)")
+        print("Marking flow diverter voxels in geometry flag with label", CONSTANTS.FLOW_DIVERTER_VOXEL)
+        painted[inLumen] = CONSTANTS.FLOW_DIVERTER_VOXEL
 
-    return np.where(sidesToCut == 1)[0]
+    print("\n### Checks ###")
+    volume = painted.size
+    fluidCount = int(np.count_nonzero(painted >= CONSTANTS.FLUID_VOXEL))
+    print(f"Voxels: {volume}, fluid (incl. openings): {fluidCount} ({fluidCount / volume:.1%}), "
+          f"walls: {int(np.count_nonzero(painted == CONSTANTS.WALL_VOXEL))}")
+    leaks = leak_check(painted)
+    if leaks:
+        fail(f"{leaks} fluid voxel(s) touch the outside of the vessel or the domain border")
+    print("Leak check passed: fluid only meets the outside through the openings")
+    components = fluid_components(painted)
+    if len(components) > 1:
+        print(f"WARNING: the fluid has {len(components)} disconnected parts (sizes {components[:5]}...); "
+              "isolated parts carry no flow")
+    else:
+        print("The fluid is one connected region")
 
-def cropLikeGeometry(array, sliced, cutList, cutWidth):
-    """Apply the cropping of createWalls() (removed empty layers and cut opening layers)
-    to an array defined on the uncropped voxel grid."""
-    array = array[sliced[0]:sliced[1], sliced[2]:sliced[3], sliced[4]:sliced[5]]
-    for axis in range(3):
-        index = [slice(None)] * 3
-        if 2 * axis in cutList:
-            index[axis] = slice(cutWidth, None)
-            array = array[tuple(index)]
-            index[axis] = slice(None)
-        if 2 * axis + 1 in cutList:
-            index[axis] = slice(None, -cutWidth)
-            array = array[tuple(index)]
-    return array
+    print("\n### Saving ###")
+    nrrd.write(out + "geometry.nrrd", painted)
+    arrays = dict(
+        geometryFlag=painted.astype(np.short, copy=False),
+        dx=np.array([dx], dtype=np.double),
+        origin=origin.astype(np.double),
+        openingIndex=np.array(openingIndex, dtype=np.short),
+        openingRadius=np.array([r * SI_FACTOR for (r, _, _) in clOpenings], dtype=np.double),
+        openingNormalizedQRatio=np.array([r ** 3 / rOutlets3 for (r, _, _) in clOpenings], dtype=np.double),
+        openingCenter=np.array([inf["center"] for inf in info], dtype=np.double),
+        openingNormal=np.array([d for (_, _, d) in clOpenings], dtype=np.double),
+    )
+    if haveStent:
+        arrays.update(stent=inLumen.astype(np.short), linear=linearL, quadratic=quadraticL)
+    np.savez_compressed(out + "c.npz", **arrays)
+    print("File:", out + "c.npz")
+    print(f"\n### DONE :) -> Elapsed total time: {time.time() - startTime:.1f} [s]")
 
-def computeGridOffset(sliced, cutList, cutWidth):
-    """Offset (in voxels, per axis) from an index of the final geometry to the corresponding
-    index of the voxelization grid: the one-voxel padding of the voxelizer, the removed
-    empty layers and the cut opening layers."""
-    return np.array([sliced[2 * axis] + (cutWidth if 2 * axis in cutList else 0) - 1 for axis in range(3)], dtype=float)
-
-def computeOrigin(domainData, sliced, cutList, cutWidth):
-    """Physical position [m] of voxel (0,0,0) of the final geometry.
-
-    Voxel i of the voxelization samples the scaled and shifted STL at coordinate i
-    (x_mm = i / scale - shift). The final array is offset from that grid by the one-voxel
-    padding of the voxelizer, the removed empty layers and the cut opening layers."""
-    scale, shift = domainData[0], domainData[1]
-    gridOffset = computeGridOffset(sliced, cutList, cutWidth)
-    origin = np.zeros(3)
-    for axis in range(3):
-        origin[axis] = ((gridOffset[axis] + VOXEL_SAMPLE_OFFSET[axis]) / scale[axis] - shift[axis]) * SI_FACTOR
-    return origin
-
-def scaleAndShiftData(points, scale, shift):
-    for i in range(len(points)):
-        pts = points[i]
-        for j in range(3):
-            pts[j] = (pts[j] + shift[j]) * scale[j]
-        points[i] = pts
-    return points
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage:", sys.argv[0], "input.config")
         sys.exit(-1)
-
-    cutWidth = 1  # wall layers to cut open at each boundary. No longer config-driven.
-
-    confFile = sys.argv[1]
-    workDir = os.path.dirname(os.path.abspath(confFile))
-
-    with open(confFile) as json_file:
-        confData = json.load(json_file)
-
-    # 'distance' (voxel opening-detection tolerance) and 'cutWidth' are no longer read from
-    # the config. 'distance' is always resolved per-opening below (once each opening's
-    # physical radius is known) as DISTANCE_RADIUS_FACTOR times that opening's own radius in
-    # voxels, instead of one flat default shared by every opening regardless of size.
-    print("Using radius-relative 'distance' default: {}x each opening's local radius".format(DISTANCE_RADIUS_FACTOR))
-    print("Using fixed 'cutWidth':", cutWidth)
-
-    # Cutlist meaning -> cut one layer from the planes:
-    # 0,1 => Xmin, Xmax
-    # 2,3 => Ymin, Ymax
-    # 4,5 => Zmin, Zmax
-    # cutList =  [int(x) for x in confData["cut_list"].split()]
-
-    vesselGeomFile = workDir + "/" + confData["geometry_original_stl"]
-
-    haveStent = False
-    stentGeomFile = ""
-    if "stent_folder" in confData.keys() and len(confData["stent_folder"]) > 0:
-        dirName = os.path.split(workDir)[1]
-        stentFileName = confData["stent_folder"] + "_" + dirName + "_stent_mesh.stl"
-
-        stentGeomFile = os.path.join(workDir,confData["stent_folder"],stentFileName)
-        haveStent = True
-    elif (len(confData["stent_mesh_base"]) > 0):
-        stentGeomFile = workDir + "/" + confData["stent_mesh_base"] + "mesh.stl"
-        haveStent = True
-
-    # A non-empty 'stent_folder'/'stent_mesh_base' means the config explicitly asks for a
-    # stent. Silently falling back to "no stent" when that file is missing (e.g. a typo or
-    # a path-resolution bug) would produce a result without a flow diverter and no warning
-    # that anything was wrong, so treat a configured-but-missing stent file as fatal.
-    if haveStent and not os.path.isfile(stentGeomFile):
-        print("!!! ERROR: stent geometry file specified in config but not found:", stentGeomFile)
-        sys.exit(-1)
-
-    stentGeomBase = stentGeomFile.replace('mesh.stl','')
-
-    centerLineFile = workDir + "/" + confData["centerline_vtp"]
-
-    outputBaseName =  workDir + "/" + confData["output_base_name"]
-
-    targetElem = int(confData["target_elements"])
-
-    target_dx = None
-    try:
-        target_dx = float(confData["target_dx"])  # milimeter
-    except:
-        print("No dx data available")
-
-    voxel_stent_final = np.zeros(0)
-
-    startTime = time.time()
-
-    print("\n### Voxelizing vessel geometry ###")
-    voxelVol, domainData = voxelize(vesselGeomFile, targetElem, target_dx=target_dx)
-
-    if DEBUG_MODE:
-        print("-> (DEBUG) Saving voxelization result")
-        nrrd.write(outputBaseName+"fluid_only.nrrd", voxelVol)
-
-    sx,sy,sz = domainData[0]
-    tx,ty,tz = domainData[1]
-
-    print("Voxelized domain size:", voxelVol.shape)
-    print("Domain:", domainData[2])
-    print("Bounding box:", domainData[3])
-    print("Transformation matrix from voxelization:")
-    print("Translate: ",tz, tx, ty)
-    print("Rotate: ", 90, 0, 90)
-    print("Scale: ", sz, sx, sy)
-
-    DX = (1.0/sx)*SI_FACTOR
-    print("dx [m]:", DX)
-
-    print("\n### Extracting information on openings from centerline ###")
-    radiusTangentList = getOpeningsFromCenterline(centerLineFile)
-    print("scale", domainData[0])
-    print("translate", domainData[1])
-    radiusTangentVoxelList = convertToVoxelspace(radiusTangentList, domainData[0], domainData[1])
-
-    voxScale = domainData[0][0]  # isotropic: same scale on all 3 axes
-    perOpeningDistance = [DISTANCE_RADIUS_FACTOR * rtv[0] * voxScale for rtv in radiusTangentVoxelList]
-
-    print("Per-opening distance tolerance [voxels]:", perOpeningDistance)
-
-    cutList = generateCutList(domainData[2], radiusTangentVoxelList, perOpeningDistance)
-
-    print("Computed list of sides to cut away for openings:", cutList)
-
-    print("\n### Creating walls and opening in/outlets ###")
-    volWithWalls, sliced = createWalls(voxelVol, cutList, cutWidth)
-
-    if DEBUG_MODE:
-        print("\n-> (DEBUG) Saving nrrd wall geometry ###")
-        nrrd.write(outputBaseName+"wall_fluid.nrrd", volWithWalls)
-
-    gridOffset = computeGridOffset(sliced, cutList, cutWidth)
-    origin = computeOrigin(domainData, sliced, cutList, cutWidth)
-    print("Origin of the voxel grid [m]:", origin)
-
-    print("Size after cutting layers for openings:", volWithWalls.shape)
-    volume = np.prod(volWithWalls.shape)
-    fluids = np.count_nonzero(volWithWalls == 2)
-    print("Volume:", volume)
-    print("Fluid nodes:", fluids)
-    print("Fluid ratio:", fluids / volume)
-    print("Walls:", np.count_nonzero(volWithWalls == 1))
-
-    print("\n### Detecting and assigning voxel openings ###")
-    inlet_outlets, data = detectOpenings(volWithWalls)
-
-    openingCenters = []
-    for io in inlet_outlets:
-        oC = np.zeros(3)
-        for (x,y,z) in io:
-            oC += np.array((z,x,y))
-        openingCenters.append(oC/len(io) - 1)  # Remove the one-voxel padding added by detectOpenings()
-
-    # TODO: Assign tangents and radii to voxelized openings
-
-    if len(openingCenters) != len(radiusTangentVoxelList):
-        print("!!! ERROR: the number of outlets found on the voxelized domain sides differ from the number found along the centerline! :", len(radiusTangentVoxelList), len(openingCenters))
-        sys.exit(-1)
-
-    # The combined information about openings in the correct order (Inlet, Pressure outlet, Other velocity outlets)
-    openingIndex = []
-    openingRadius = []
-    openingNormalizedQratio = []
-    openingCenter = []
-    inlets_outlets_sorted = []
-    openingNormal = []
-
-    # Radial ratio of outlets, note: Qinlet = 1, so it is not included
-    r3Tot = np.sum([x[0]**3 for x in radiusTangentVoxelList[1:]])
-
-    # Match each centerline point to its closest detected opening via a global optimal
-    # (Hungarian) assignment, instead of a distance-threshold scan. A threshold scan can
-    # silently drop a point that has no opening within 'distance' (leaving that opening
-    # unpainted, with no BC at all) while still passing the earlier length check, since
-    # that check only compares counts, not whether every point actually got matched.
-    # The Hungarian assignment always produces a full one-to-one pairing between the two
-    # equal-length lists, so no opening can be silently skipped.
-    costMatrix = np.zeros((len(radiusTangentVoxelList), len(openingCenters)))
-    for ccCL in range(len(radiusTangentVoxelList)):
-        cCL = radiusTangentVoxelList[ccCL][1]
-        for ccVox in range(len(openingCenters)):
-            cVox = openingCenters[ccVox]
-            # Compare in the voxelization frame (the centerline points are not cropped)
-            costMatrix[ccCL, ccVox] = np.linalg.norm(np.array(cVox) + gridOffset - np.array((cCL[0], cCL[1], cCL[2])))
-
-    clMatchIdx, voxMatchIdx = linear_sum_assignment(costMatrix)
-
-    for ccCL, ccVox in zip(clMatchIdx, voxMatchIdx):
-        matchDistance = costMatrix[ccCL, ccVox]
-        matchTolerance = perOpeningDistance[ccCL]
-        if matchDistance > matchTolerance:
-            print("!!! ERROR: closest opening for centerline point is farther than the 'distance' tolerance!")
-            print("    Centerline point", ccCL, "at", radiusTangentVoxelList[ccCL][1], "radius", radiusTangentVoxelList[ccCL][0])
-            print("    Closest opening", ccVox, "at", openingCenters[ccVox], "distance", matchDistance, "> tolerance", matchTolerance)
-            sys.exit(-1)
-
-        rCL = radiusTangentVoxelList[ccCL]
-        cVox = openingCenters[ccVox]
-
-        openingRadius.append(rCL[0]*SI_FACTOR)
-        openingNormalizedQratio.append(rCL[0]**3/r3Tot)  # TODO: it also assigns a number to the inlet, disredards that
-        openingCenter.append(cVox)
-        openingNormal.append( np.array((rCL[2][0], rCL[2][1], rCL[2][2])) )
-
-        inlets_outlets_sorted.append(inlet_outlets[ccVox])
-
-    openingIndex, openingCenters, paintedOpenings = paint_inlets_outlets(inlets_outlets_sorted, data, findBoundaryByArea=False)
-
-    if len(openingIndex) != len(openingCenters):
-        print("-> (DEBUG) Number of matched openings is incorrect:", len(openingIndex), "insead of", len(openingCenters))
-
-    if haveStent:
-        print("\n### Voxelizing flow diverter geometry from 3 projections ###")
-        print("-> Voxelizing flow diverter geometry projection #1")
-        voxelStent, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData)
-
-        print("-> Voxelizing flow diverter geometry projection #2")
-        voxelStent2, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 0)
-
-        print("-> Voxelizing flow diverter geometry projection #3")
-        voxelStent3, domainData_stent = voxelize(stentGeomFile, targetElem, True, domainData, 1)
-
-        print("Starting stent interpolation")
-        xg, yg, zg = np.mgrid[0:voxelStent3.shape[0], 0:voxelStent3.shape[1], 0:voxelStent3.shape[2]]
-
-        stentVoxelLinearInterpolate=1
-        stentVoxelQuadraticInterpolate=1
-
-        if (INHOMOGEN and (os.path.isfile(stentGeomBase + "values.vtp"))):
-            print("INHOMOGEN resistance values found")
-            reader = vtkXMLPolyDataReader()
-            reader.SetFileName(stentGeomBase + "values.vtp")
-            reader.Update()
-            vtpdata = dsa.WrapDataObject(reader.GetOutput())
-            stentPoints = vtpdata.GetPoints()
-
-            stentLinear = vtpdata.PointData['linearCoeff']
-            stentQuadratic = vtpdata.PointData['quadraticCoeff']
-
-            stentPoints = scaleAndShiftData(stentPoints, domainData[0], domainData[1])
-
-            stentVoxelLinearInterpolate = scpinter.griddata(stentPoints, stentLinear, (xg, yg, zg), method="nearest")
-            stentVoxelQuadraticInterpolate = scpinter.griddata(stentPoints, stentQuadratic, (xg, yg, zg), method="nearest")
-            print("Linear and quadratic coefficients interpolated")
-        elif (INHOMOGEN):
-            print("INHOMOGEN resistance values not found!")
-
-        print("-> Merging projections")
-        sdomain_full = np.logical_or(np.logical_or(voxelStent, voxelStent2), voxelStent3)
-        linear = stentVoxelLinearInterpolate*sdomain_full
-        quadratic = stentVoxelQuadraticInterpolate*sdomain_full
-
-        # Apply the same cropping as createWalls() applied to the vessel geometry
-        voxel_stent_final = cropLikeGeometry(sdomain_full, sliced, cutList, cutWidth)
-        voxel_linear_final = cropLikeGeometry(linear, sliced, cutList, cutWidth).astype(np.double)
-        voxel_quadratic_final = cropLikeGeometry(quadratic, sliced, cutList, cutWidth).astype(np.double)
-
-        if voxel_stent_final.shape != paintedOpenings.shape:
-            print("!!! ERROR: flow diverter grid", voxel_stent_final.shape, "does not match the geometry", paintedOpenings.shape)
-            sys.exit(-1)
-
-        # Porous voxels are only allowed inside the lumen. The device voxelization also touches
-        # wall and outside voxels; those must stay walls / outside.
-        stentVoxels = voxel_stent_final.astype(bool)
-        inLumen = stentVoxels & (paintedOpenings == CONSTANTS.FLUID_VOXEL)
-        print("Flow diverter voxels:", int(stentVoxels.sum()), "of which in the lumen:", int(inLumen.sum()),
-              "(discarded: wall", int((stentVoxels & (paintedOpenings == CONSTANTS.WALL_VOXEL)).sum()),
-              ", outside", int((stentVoxels & (paintedOpenings == CONSTANTS.UNUSED_VOXEL)).sum()),
-              ", openings", int((stentVoxels & (paintedOpenings >= CONSTANTS.INLET_VOXEL)).sum()), ")")
-        voxel_stent_final = inLumen
-        voxel_linear_final[~inLumen] = 0.0
-        voxel_quadratic_final[~inLumen] = 0.0
-
-        print("Min and max of linear coefficients:", np.nanmin(voxel_linear_final), np.nanmax(voxel_linear_final))
-        print("Min and max of quadratic coefficients:", np.nanmin(voxel_quadratic_final), np.nanmax(voxel_quadratic_final))
-
-        print("Flow diverter domain size after cutting layers for openings:", voxel_stent_final.shape)
-
-        if DEBUG_MODE:
-            print("-> (DEBUG) Saving voxelized flow diverter")
-            nrrd.write(outputBaseName + "stent_final.nrrd", voxel_stent_final.astype(np.short, copy=False))
-            nrrd.write(outputBaseName + "stent_linear.nrrd", voxel_linear_final.astype(np.single, copy=False))
-            nrrd.write(outputBaseName + "stent_quadratic.nrrd", voxel_quadratic_final.astype(np.single, copy=False))
-
-        # Label the flow diverter voxels for visualization. They are fluid voxels in the lumen,
-        # so the solver treats them as fluid; the porous forcing comes from the 'stent' array.
-        if max(openingIndex) >= CONSTANTS.FLOW_DIVERTER_VOXEL:
-            print("!!! ERROR: opening labels reach the flow diverter label", CONSTANTS.FLOW_DIVERTER_VOXEL,
-                  "(too many openings):", openingIndex)
-            sys.exit(-1)
-        print("Marking flow diverter voxels in geometry flag with label", CONSTANTS.FLOW_DIVERTER_VOXEL)
-        paintedOpenings[voxel_stent_final] = CONSTANTS.FLOW_DIVERTER_VOXEL
-
-    print("Saving nrrd geometry flag")
-    nrrd.write(outputBaseName+"geometry.nrrd", paintedOpenings)
-
-    print("\n### Saving final output ###")
-    print("File:", outputBaseName + "c.npz")
-
-    arrays = dict(
-        geometryFlag=paintedOpenings.astype(np.short, copy=False),
-        dx=np.array([DX]).astype(np.double, copy=False),
-        origin=origin.astype(np.double, copy=False),
-        openingIndex=np.array(openingIndex).astype(np.short, copy=False),
-        openingRadius=np.array(openingRadius).astype(np.double, copy=False),
-        openingNormalizedQRatio=np.array(openingNormalizedQratio).astype(np.double, copy=False),
-        openingCenter=np.array(openingCenter).astype(np.double, copy=False),
-        openingNormal=np.array(openingNormal).astype(np.double, copy=False),
-    )
-    if haveStent:
-        arrays.update(
-            stent=voxel_stent_final.astype(np.short, copy=False),
-            linear=voxel_linear_final,
-            quadratic=voxel_quadratic_final,
-        )
-    np.savez_compressed(outputBaseName + "c.npz", **arrays)
-
-    endTime = time.time()
-    timeElapsed = int(round((endTime - startTime)))
-    print("\n### DONE :) -> Elapsed total time:", timeElapsed, "[s]")
+    main(sys.argv[1])

@@ -7,4 +7,3 @@ dependencies:
   - scipy=1.18
   - vtk=9.7
   - pynrrd=1.1
-  - numpy-stl=4.1

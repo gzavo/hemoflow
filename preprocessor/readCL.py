@@ -9,12 +9,6 @@ Created on Wed Aug  5 13:50:33 2020
 import numpy as np
 import vtk
 
-# vesselGeomFile = "../working_data/Process/NAP287_vessel3.stl"
-# targetElem = 10000000
-# voxelVol, domainData = voxelize(vesselGeomFile, targetElem)
-
-# clFileName = "../working_data/Process/NAP287_centerline.vtp"
-
 def getIdList(vtkIdList):
     l = []
     for i in range(vtkIdList.GetNumberOfIds()):
@@ -40,7 +34,8 @@ def getOpeningsFromCenterline(fileName):
     List of (radius, position, direction) tuples, one per opening. All centerlines must
     run from the source (inlet) to a target (outlet). The first entry is the inlet (the
     start point of the first centerline); the outlets follow, sorted by decreasing radius.
-    All directions point into the domain.
+    Positions are in the units of the centerline file (mm); the directions are unit
+    vectors pointing into the domain.
 
     """
     
@@ -83,26 +78,14 @@ def getOpeningsFromCenterline(fileName):
         
         if ll == 0:
             v1 = pArray[0]-pArray[1]
-            rTanData.append((r1, pArray[0], -v1))  # The inlet should point inwards
+            rTanData.append((r1, pArray[0], normalize(-v1)))  # The inlet should point inwards
         
         # Outlets: the tangent points out of the domain, so it is negated to point inwards
         v2 = pArray[-1]-pArray[-3] # Note, the last 2 points are sometimes the same for some reason
-        rTanData.append((r2, pArray[-1], -v2))
+        rTanData.append((r2, pArray[-1], normalize(-v2)))
 
     # Keep the inlet first, sort the outlets by decreasing radius
     inlet, outlets = rTanData[0], rTanData[1:]
     outlets.sort(key=lambda opening: opening[0], reverse=True)
 
     return [inlet] + outlets
-
-
-def convertToVoxelspace(r_tan_data, scale, shift):
-    
-    voxelList = []
-    for opening in r_tan_data:
-        r, pos, tan = opening
-        newpos = (pos + shift) * scale
-        voxelList.append((r, newpos, normalize(tan)))
-    
-    return voxelList
-        

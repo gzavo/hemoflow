@@ -51,11 +51,8 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       finite-difference pressure boundary (`createInterpBoundaryCondition3D`) reading
       envelope cells of a dropped neighbour block. Once fixed, make sparse the default
       (it saves 40–70 % of the cells in aneurysm geometries).
-- [ ] **Voxelizer drops the partial top layer in y and z.** `slice.calculateScaleAndShift`
-      allocates `int(vox_scale * extent)` samples per axis while the scale comes from x,
-      so up to ~1 voxel at the max-y/max-z side of the vessel is never voxelized (pipe:
-      20 instead of ~21.7 voxels across in z). Fix by sampling the full extent, but check
-      that opening detection on the max faces still works.
+- [x] **Voxelizer dropped the partial top layer in y and z.** Fixed by the new VTK
+      voxelizer, which covers the whole bounding box (phase 1, November 2026).
 - [ ] Full-length verification runs not yet done with the current code:
       `1-flow_split` (2 cycles, ~1–2 h on 20 cores), `2-aneurisk_C0002`, and the
       `testcase/test_*.xml` variants on the 5 M geometry. Only short runs were checked.
@@ -70,12 +67,21 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 - [ ] The porous coefficients act per voxel layer (force −(a u + b u|u|)/dx), so the
       resistance of a device depends on its voxelized thickness and therefore on dx and
-      on the three-projection voxelization. Normalize by the physical device thickness,
-      or specify permeability (Darcy K, Forchheimer C) instead.
+      on the voxelization. Normalize by the physical device thickness, or specify
+      permeability (Darcy K, Forchheimer C) instead. Note: the new ray-cast shell
+      voxelization (phase 1) gives ~25 % fewer device voxels than the old one, whose three
+      projections were shifted against each other; coefficients tuned on old geometry
+      files need re-checking.
+- [ ] Ray-crossing voxelization along the axes can let diagonal (D3Q19) lattice links
+      cross the device without touching a porous voxel; consider a conservative
+      (triangle–voxel overlap) voxelization.
 - [ ] Make per-voxel coefficients the main path for deployment-simulation results: the
       preprocessor writes `linear`/`quadratic` (from `<stent_mesh_base>values.vtp` when
       `INHOMOGEN = True`), but the solver ignores them. Read them in `hemoFlow.cpp` and
-      use them in `PorousForceFunctional`.
+      use them in `PorousForceFunctional`. The shipped `PED_5x20_values.vtp` carries the
+      deployment descriptors `Density`, `Expansion` and `Force`, not `linearCoeff` /
+      `quadraticCoeff`; a mapping from descriptors to coefficients is still needed (the
+      interpolation itself was tested with test arrays).
 - [ ] Coils: volumetric porous regions (e.g. Kozeny–Carman from the packing density)
       instead of shells; needs a solid (not shell) voxelization of the coil region.
 - [ ] High-resistance devices will need a semi-implicit treatment of the porous force
@@ -88,25 +94,28 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       Supporting them needs per-node boundary instantiation (velocity BCs are
       dynamics-based and could be set per node; the interp pressure BC is a data
       processor per domain).
-- [ ] Openings on edges/corners of the bounding box are not supported (preprocessor and
-      solver).
-- [ ] Velocity `parameter` is the mean of an ideal paraboloid (peak = 2 × parameter); the
-      actual mean over the discrete opening differs by a few percent (pipe: 0.464 vs
-      0.45 m/s). Decide whether `parameter` should be the exact mean (would change
-      results of existing configs).
+- [x] Openings on edges/corners of the bounding box: openings now come from the caps of
+      the surface and only the wall in front of each cap is opened, so openings near
+      edges and corners and vessels close to a face with an opening work (tested with
+      synthetic cases, phase 1). Openings must still be flat cuts on bounding-box faces.
+- [x] Velocity `parameter` stays the mean of an ideal paraboloid (peak = 2 × parameter),
+      so existing configs keep their results; the log reports the actual mean over the
+      discrete opening (decided November 2026).
 - [ ] Optional warm-up ramp and a steady-run option (end time or convergence criterion)
-      instead of a constant waveform file whose length defines a "cycle". Deferred.
+      instead of a constant waveform file whose length defines a "cycle". Not needed
+      for now (decided November 2026).
 - [ ] Non-Newtonian rheology (Carreau parameters exist only as literature references).
 
 ## 4. Performance and scalability
 
 - [ ] The whole geometry file (flags, stent, coefficients) is loaded on every MPI
-      process. Read it on one rank and distribute, or switch to HDF5 input.
+      process. Read the `.npz` on one rank and distribute it (decided November 2026:
+      keep the `.npz` format, no HDF5 input).
 - [ ] `OpeningHandler` scans the full domain once per opening at start-up.
-- [ ] Pure-Python scan-line voxelizer is slow for tens of millions of elements; VTK's
-      `vtkPolyDataToImageStencil` (VTK is already a dependency) would be much faster.
-- [ ] Opening detection uses recursion with `sys.setrecursionlimit(100000)` and O(n²)
-      list membership tests; replace with `scipy.ndimage.label` on the faces.
+- [x] Voxelizer replaced by VTK (`vtkPolyDataToImageStencil` for the vessel, ray casting
+      for flow diverters): NAP180 at 20 M voxels in ~4 s instead of ~53 s.
+- [x] Recursive opening detection replaced: openings come from the surface caps; the
+      connectivity checks use `scipy.ndimage.label`.
 
 ## 5. Code structure (C++)
 
@@ -123,9 +132,8 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       `DEBUG_MODE`, `INHOMOGEN`, `DISTANCE_RADIUS_FACTOR`) into the JSON config or CLI
       options.
 - [ ] Remove the ignored legacy keys (`cutWidth`, `distance`) from the shipped configs.
-- [ ] Rename the module `slice.py` (it shadows the built-in `slice`).
-- [ ] Silence or rephrase the "is the geometry watertight?" messages printed for scan
-      lines through the open cuts.
+- [x] `slice.py`, `perimeter.py`, `util.py` removed with the old voxelizer (no more
+      shadowing of the built-in `slice`, no more "watertight" messages).
 
 ## 7. Testing and CI
 

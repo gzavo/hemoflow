@@ -26,15 +26,21 @@ written next to it:
 
 ## What it does
 
-1. `voxelizeStl.py`, `slice.py`, `perimeter.py`: scan-line voxelization of the STL
-   (pure Python).
-2. `createFluidSolid.py`: adds a one-voxel wall around the fluid, removes empty outer
-   layers and cuts one layer from every bounding-box face that contains an opening.
-3. `readCL.py`: reads the opening radii and directions from the centerline end points.
-4. `detectOpenings.py`: finds the openings on the domain faces and labels them.
-5. `main.py`: matches openings to centerline end points, voxelizes the flow diverter
-   (union of three projections, restricted to the lumen), computes the physical origin
-   of the grid and writes the outputs.
+1. `voxelizeStl.py`: reads the STL with VTK, closes open ends with flat caps,
+   voxelizes the closed surface (`vtkPolyDataToImageStencil`, voxel centres over
+   the whole bounding box), finds the caps on the bounding-box faces and
+   voxelizes flow diverter shells by ray casting along the three axes.
+2. `createFluidSolid.py`: adds a one-voxel wall around the fluid and removes empty
+   outer layers; also the leak and connectivity checks.
+3. `readCL.py`: reads the opening radii and directions from the centerline end
+   points (inlet first, outlets by decreasing radius).
+4. `detectOpenings.py`: turns the wall voxels in front of each cap into opening
+   voxels.
+5. `main.py`: reads the config, matches the caps to the centerline end points,
+   restricts the flow diverter to the lumen, computes the physical origin of the
+   grid and writes the outputs.
+
+A 20 M voxel geometry takes a few seconds.
 
 ## Voxel labels
 
@@ -50,11 +56,8 @@ written next to it:
 
 ## Known limitations
 
-* Openings must be flat cuts that lie on a face of the axis-aligned bounding box,
-  away from its edges and corners.
-* Triangles should not be much smaller than a voxel. "is the geometry watertight?"
-  messages are printed for scan lines that pass through the open cuts; they are only
-  a problem if walls appear inside the fluid.
-* The scan-line voxelizer allocates `int(extent / dx)` samples per axis, so up to
-  about one voxel layer at the maximum y and z sides of the vessel is not voxelized.
-* The voxelizer is slow for large targets (tens of millions of elements).
+* Openings must be flat cuts (open or capped) on faces of the axis-aligned
+  bounding box. They may touch its edges and corners.
+* Flat strips of the vessel wall that are flush with a face are told apart from
+  caps by the angle at which the neighbouring wall meets them; a cap whose wall
+  meets it almost tangentially (an extremely oblique cut) would be ignored.
