@@ -33,6 +33,7 @@ struct OutputOptions {
     bool stress = false;    // viscous (deviatoric) stress tensor [Pa]: xx, xy, xz, yy, yz, zz
     bool viscosity = false; // dynamic viscosity [Pa s] (constant for a Newtonian fluid)
     Array<double, 3> origin = Array<double, 3>(0.0, 0.0, 0.0);  // Physical position of lattice node (0,0,0) [m]
+    double lengthUnit = 1.0;    // Length of one unit of the output grid coordinates [m] (0.001: mm, as the input STL)
 };
 
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, const OutputOptions &out);

@@ -6,9 +6,11 @@ Wall shear stress (WSS) from HemoFlow output in ParaView
    The field "stress [Pa]" is the viscous (deviatoric) stress tensor in SI units with
    6 components, in the order XX, XY, XZ, YY, YZ, ZZ (ParaView shows them as 0..5).
 
-2. Load the .vti output and the vessel STL. With geometry files from the current
-   preprocessor the output carries the physical origin, so it overlays the STL once the
-   STL is scaled from mm to m (Transform filter, scale 0.001).
+2. Load the .vti output and the vessel STL. The output grid is in the coordinates of the
+   STL (usually mm; <outputCoordinates>stl</outputCoordinates>, the default), so the two
+   overlay without any transform. (With <outputCoordinates>m</outputCoordinates>, or with
+   geometry files from older preprocessor versions, scale the STL from mm to m instead:
+   Transform filter, scale 0.001.)
 
 3. Compute surface normals on the STL (Generate Surface Normals) and make sure they
    point out of the lumen (flip them otherwise).
@@ -16,7 +18,8 @@ Wall shear stress (WSS) from HemoFlow output in ParaView
 4. Sample the stress on the surface (Resample With Dataset; source: the .vti,
    destination: the STL). Wall voxels carry zero stress, so values sampled exactly on
    the wall are underestimated. Sample on a copy of the surface moved about one voxel
-   (dx) into the lumen instead (Warp By Vector with the normals scaled by -dx).
+   (dx) into the lumen instead (Warp By Vector with the normals scaled by -dx, with dx
+   in the units of the grid: the Spacing of the .vti, usually mm).
 
 5. Traction t = sigma . n (Calculator, result "traction"):
 

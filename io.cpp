@@ -89,7 +89,9 @@ int mkpath(const char *path, mode_t mode)
 // Write out data in VTK image format (.vti) in SI units
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, const OutputOptions &out)
 {
-    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), sim.C_l, out.origin);
+    // Grid coordinates (spacing, origin) in out.lengthUnit; the fields are always in SI units
+    Array<double, 3> origin(out.origin[0] / out.lengthUnit, out.origin[1] / out.lengthUnit, out.origin[2] / out.lengthUnit);
+    VtkImageOutput3D<T> vtkOut(createFileName("vtk", iter, 6), sim.C_l / out.lengthUnit, origin);
 
     if (out.velocity)
         vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", sim.C_l/sim.C_t);

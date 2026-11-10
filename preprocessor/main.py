@@ -155,8 +155,9 @@ def main(confFile):
 
     print("\n### Creating walls ###")
     labels, offset = add_walls(fluid)
-    origin = (grid.corner + (offset + 0.5) * grid.dx) * SI_FACTOR
-    print("Domain size:", labels.shape, " origin of the voxel grid [m]:", origin)
+    originStl = grid.corner + (offset + 0.5) * grid.dx   # Centre of voxel (0, 0, 0), STL units
+    origin = originStl * SI_FACTOR
+    print("Domain size:", labels.shape, " centre of voxel (0, 0, 0) [STL units]:", np.round(originStl, 6).tolist())
     if DEBUG_MODE:
         nrrd.write(out + "wall_fluid.nrrd", labels)
 
@@ -224,11 +225,20 @@ def main(confFile):
         print("The fluid is one connected region")
 
     print("\n### Saving ###")
-    nrrd.write(out + "geometry.nrrd", painted)
+    # Label volumes in the coordinates of the input STL (points at the voxel centres), so
+    # that they overlay the STL and the solver output in ParaView (.vti) or 3D Slicer (.nrrd).
+    vox.write_label_image(out + "geometry.vti", painted.astype(np.short, copy=False), originStl, grid.dx)
+    nrrd.write(out + "geometry.nrrd", painted, header={
+        "space": "left-posterior-superior",   # Slicer reads STL files as LPS by default
+        "space directions": np.diag([grid.dx] * 3),
+        "space origin": originStl,
+        "kinds": ["domain"] * 3,
+    })
     arrays = dict(
         geometryFlag=painted.astype(np.short, copy=False),
         dx=np.array([dx], dtype=np.double),
         origin=origin.astype(np.double),
+        lengthUnit=np.array([SI_FACTOR], dtype=np.double),
         openingIndex=np.array(openingIndex, dtype=np.short),
         openingRadius=np.array([r * SI_FACTOR for (r, _, _) in clOpenings], dtype=np.double),
         openingNormalizedQRatio=np.array([r ** 3 / rOutlets3 for (r, _, _) in clOpenings], dtype=np.double),
@@ -238,7 +248,7 @@ def main(confFile):
     if haveStent:
         arrays.update(stent=inLumen.astype(np.short), linear=linearL, quadratic=quadraticL)
     np.savez_compressed(out + "c.npz", **arrays)
-    print("File:", out + "c.npz")
+    print("Files:", out + "c.npz", "(solver input),", out + "geometry.vti", "and", out + "geometry.nrrd", "(labels)")
     print(f"\n### DONE :) -> Elapsed total time: {time.time() - startTime:.1f} [s]")
 
 

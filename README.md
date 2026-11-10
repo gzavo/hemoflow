@@ -247,8 +247,12 @@ Simulation results therefore change slightly when a case is re-voxelized.
 ### Outputs
 
 * `<output_base_name>c.npz`: simulation input for `hemoFlow`
-* `<output_base_name>geometry.nrrd`: label volume, to check the voxelization
-  (e.g. in 3D Slicer)
+* `<output_base_name>geometry.vti`: the voxel labels (point data `label`) as
+  VTK image data in the coordinates of the input STL (points at the voxel
+  centres). It overlays the STL and the solver output in ParaView.
+* `<output_base_name>geometry.nrrd`: the same label volume for 3D Slicer, with
+  spacing and origin in STL coordinates (space `left-posterior-superior`, the
+  frame in which Slicer reads STL files by default)
 
 Contents of the `.npz` archive (all arrays C-ordered):
 
@@ -256,7 +260,8 @@ Contents of the `.npz` archive (all arrays C-ordered):
 |---|---|---|
 | `geometryFlag` | int16, (Nx, Ny, Nz) | Voxel labels (table below) |
 | `dx` | float64, (1,) | Voxel size [m] |
-| `origin` | float64, (3,) | Position of voxel (0, 0, 0) in the frame of the input STL [m] |
+| `origin` | float64, (3,) | Centre of voxel (0, 0, 0) in the frame of the input STL [m] |
+| `lengthUnit` | float64, (1,) | Length of one unit of the input STL [m] (`SI_FACTOR` in `main.py`, 0.001 for mm) |
 | `openingIndex` | int16, (N,) | Label of each opening |
 | `openingRadius` | float64, (N,) | Centerline radius at each opening [m] |
 | `openingNormal` | float64, (N, 3) | Unit direction of each opening, pointing **into** the domain |
@@ -354,6 +359,7 @@ An annotated template is in `template_config.xml` (same as
 | `saveFrequency` | yes | Output interval [s], ≥ `dt` |
 | `outputDir` | yes | Output directory, created if missing |
 | `outputFields` | no | Space-separated list of `velocity`, `pressure`, `stress`, `viscosity`. Default: `velocity pressure`. |
+| `outputCoordinates` | no | Units of the output grid: `stl` (default) = the coordinates of the input STL (usually mm), so the output overlays the STL; `m` = meters. The fields are in SI units either way. |
 | `checkpointFrequency` | no | Checkpoint interval [s]. Without it, checkpointing is disabled. |
 | `mode` | no | Boundary-condition mode: none (default), `murray` or `pzero`, see below |
 | `sparse` | no | `true` (default): only allocate the blocks that contain the vessel. `false`: allocate the whole bounding box. Both give identical results. |
@@ -454,10 +460,17 @@ match (the solver warns otherwise). Example
   * `viscosity [Pa s]`: dynamic viscosity (constant for a Newtonian fluid)
 * Stress and viscosity are only meaningful in fluid voxels; wall and outside
   voxels carry placeholder values.
-* The grid has spacing dx and the `origin` of the geometry file, so it
-  overlays the input STL once the STL is scaled from mm to m. (Geometry files
-  from older preprocessor versions have no origin; the output then starts at
-  (0, 0, 0).)
+* The grid is in the coordinates of the input STL: in ParaView the output, the
+  original STL, the centerline and `<output_base_name>geometry.vti` overlay
+  without any transform. Each grid point is a voxel centre. Only the grid
+  coordinates are in STL units (usually mm); the fields stay in SI units. So
+  ParaView filters that differentiate or integrate over space (Gradient,
+  vorticity, Integrate Variables) give per-mm or mm² results. Use
+  `<outputCoordinates>m</outputCoordinates>` for a grid in meters. (Geometry
+  files from older preprocessor versions have no `lengthUnit`, so the grid is
+  in meters; files without an `origin` start at (0, 0, 0).)
+* The log lists the centre of every opening in output grid coordinates, which
+  helps to find the labels in ParaView.
 * Checkpoints (if enabled): `checkpoint_lattice.dat` and
   `checkpoint_parameters.dat`, with the previous checkpoint kept as `*_old.dat`.
 * The log (stdout) contains the derived lattice parameters and, for every

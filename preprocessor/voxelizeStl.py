@@ -6,7 +6,7 @@ its centre is at corner + (i + 0.5, j + 0.5, k + 0.5) * dx.
 """
 import numpy as np
 import vtk
-from vtk.util.numpy_support import vtk_to_numpy
+from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 
 
 class VoxelGrid:
@@ -263,3 +263,22 @@ def voxelize_shell(polyData, grid):
                         index[axis], index[a1], index[a2] = c, i, j
                         mask[tuple(index)] = True
     return mask
+
+
+def write_label_image(fileName, labels, origin, spacing, name="label"):
+    """Write a 3D label array (indexed x, y, z) as VTK image data (.vti), with the points
+    at the voxel centres: origin = centre of voxel (0, 0, 0), in the units of the STL."""
+    image = vtk.vtkImageData()
+    image.SetDimensions(*labels.shape)
+    image.SetSpacing(spacing, spacing, spacing)
+    image.SetOrigin(*[float(o) for o in origin])
+    values = numpy_to_vtk(np.ascontiguousarray(labels.ravel(order="F")), deep=True)  # VTK: x fastest
+    values.SetName(name)
+    image.GetPointData().SetScalars(values)
+    writer = vtk.vtkXMLImageDataWriter()
+    writer.SetFileName(fileName)
+    writer.SetInputData(image)
+    writer.SetDataModeToAppended()
+    writer.SetCompressorTypeToZLib()
+    if writer.Write() != 1:
+        raise RuntimeError(f"Cannot write {fileName}")

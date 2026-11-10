@@ -49,6 +49,11 @@ def main(path):
     timesteps = glob.glob(os.path.join(path, "output/**/*.vti"), recursive=True)
     timesteps = sorted(timesteps)
     pointdata = pv.read(timesteps[-1])
+    # The output grid may be in the units of the input STL (mm); put it back into m
+    geom = np.load(os.path.join(path, "input", "vox_pipe_c.npz"))
+    flags, dx_geom = geom["geometryFlag"], geom["dx"][0]
+    pointdata.spacing = (dx_geom, dx_geom, dx_geom)
+    pointdata.origin = tuple(geom["origin"])
     dx = pointdata.spacing[0]
     velocity_magnitude = mag(pointdata.point_data["velocity [m/s]"])
     pointdata.point_data["velocity_magnitude"] = velocity_magnitude
@@ -71,8 +76,6 @@ def main(path):
     L_dp = x_bounds / 2
     # Diameter of a circle with the area of the simulated lumen: fluid voxels (label >= 2)
     # in the geometry file at the two measurement cross-sections
-    geom = np.load(os.path.join(path, "input", "vox_pipe_c.npz"))
-    flags, dx_geom = geom["geometryFlag"], geom["dx"][0]
     nx = flags.shape[0]
     lumen_area = np.mean([np.count_nonzero(flags[i] >= 2) for i in (nx // 4, 3 * nx // 4)]) * dx_geom**2
     D_pipe = np.sqrt(4 * lumen_area / np.pi)

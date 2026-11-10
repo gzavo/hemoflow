@@ -21,8 +21,10 @@ All file names in the JSON config are relative to the config file, and all outpu
 written next to it:
 
 * `<output_base_name>c.npz`: the solver input
-* `<output_base_name>geometry.nrrd`: the label volume, to inspect the voxelization
-  (e.g. in 3D Slicer)
+* `<output_base_name>geometry.vti`: the voxel labels as VTK image data in the
+  coordinates of the input STL; overlays the STL and the solver output in ParaView
+* `<output_base_name>geometry.nrrd`: the same label volume for 3D Slicer (spacing and
+  origin in STL coordinates)
 
 ## What it does
 

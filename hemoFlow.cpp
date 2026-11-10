@@ -58,6 +58,8 @@ int blockSize = 24;       // Side length of the blocks of the sparse decompositi
 int envelopeWidth = 1;    // Set before the lattice is created (2 with pressure openings)
 string outputFolder;
 string workingFolder;
+string outputCoordinates = "stl";   // Units of the output grid: stl (those of the input STL) | m
+bool outputCoordinatesGiven = false;
 T simLength;
 int numCycles;
 T cyclePeriod;
@@ -461,6 +463,9 @@ int main(int argc, char *argv[])
         readOptional(simXml, "simulation", "mode", mode);
         if (mode != "" && mode != "murray" && mode != "pzero")
             throw std::runtime_error("Unknown boundary condition <mode> '" + mode + "'. Valid modes: " + VALID_MODES + ".");
+        outputCoordinatesGiven = readOptional(simXml, "simulation", "outputCoordinates", outputCoordinates);
+        if (outputCoordinates != "stl" && outputCoordinates != "m")
+            throw std::runtime_error("Unknown <simulation><outputCoordinates> '" + outputCoordinates + "' (valid: stl, m).");
 
         if (numCycles < 1)
             throw std::runtime_error("<simulation><cycle> must be at least 1.");
@@ -558,6 +563,24 @@ int main(int argc, char *argv[])
         }
         else {
             pcout << "Note: the geometry file has no 'origin'; the output is written in the voxel frame (origin 0,0,0)." << std::endl;
+        }
+
+        // Units of the output grid: by default those of the input STL (e.g. mm), so that the
+        // output overlays the STL. Only the grid (spacing, origin) is scaled; the fields stay SI.
+        if (outputCoordinates == "stl" && geometry.hasLengthUnit) {
+            outputOptions.lengthUnit = geometry.lengthUnit;
+            pcout << "Output grid in the coordinates of the input STL (1 unit = " << geometry.lengthUnit
+                  << " m); the fields are in SI units." << std::endl;
+        }
+        else if (outputCoordinates == "stl" && outputCoordinatesGiven) {
+            throw std::runtime_error("The geometry file has no 'lengthUnit' (older preprocessor), so <outputCoordinates>stl</outputCoordinates> "
+                                     "is not possible. Re-run the preprocessor or use <outputCoordinates>m</outputCoordinates>.");
+        }
+        else {
+            if (!geometry.hasLengthUnit)
+                pcout << "Note: the geometry file has no 'lengthUnit' (older preprocessor); the output grid is in m." << std::endl;
+            else
+                pcout << "Output grid in m." << std::endl;
         }
 
         // Flow diverter (if there is one)
@@ -683,6 +706,10 @@ int main(int argc, char *argv[])
                 opening->createConstantPressureProfile();
 
             opening->printOpeningDetails(sim);
+            vec3d c = opening->getCenter();
+            double u = outputOptions.lengthUnit;
+            pcout << "-> Center [output grid coordinates]: " << (outputOptions.origin[0] + c.x * sim.C_l) / u << " "
+                  << (outputOptions.origin[1] + c.y * sim.C_l) / u << " " << (outputOptions.origin[2] + c.z * sim.C_l) / u << std::endl;
             openings.push_back(opening);
         }
 

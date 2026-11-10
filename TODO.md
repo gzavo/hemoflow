@@ -182,6 +182,11 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 - [ ] Remove the ignored legacy keys (`cutWidth`, `distance`) from the shipped configs.
 - [x] `slice.py`, `perimeter.py`, `util.py` removed with the old voxelizer (no more
       shadowing of the built-in `slice`, no more "watertight" messages).
+- [x] Everything in the coordinates of the input STL (November 2026): the preprocessor
+      writes the labels as `<base>geometry.vti` (and `.nrrd` with spacing and origin) and
+      stores `lengthUnit` (= `SI_FACTOR`) in the `.npz`; the solver writes its grid in
+      those units by default (`<outputCoordinates>stl|m</outputCoordinates>`). Note that
+      the STL unit is still the `SI_FACTOR` constant (see the first item).
 
 ## 7. Testing and CI
 
@@ -205,5 +210,7 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       decommissioned), `utils/update_times.sh`, the duplicate `compress_output.py`
       (root and `utils/`), the empty `preprocessor/run.sh`.
 - [ ] Campaign scripts in `tests/sensitivity` and `tests/uncertainty` hard-code
-      `SOFTWARE_PATH`; make it an argument or environment variable. The aneurysm
+      `SOFTWARE_PATH`; make it an argument or environment variable. The pipe campaign's
+      `pressure_drop.py` also assumes an output grid in meters starting at (0, 0, 0);
+      take spacing and origin from the geometry file as `tests/verification/0-pipe` does. The aneurysm
       campaigns depend on LBMpost, which is not public.

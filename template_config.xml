@@ -5,6 +5,7 @@
 	<saveFrequency>0.016</saveFrequency> <!-- Output interval [s]. -->
 	<outputDir>output</outputDir> <!-- Output directory, created if missing. -->
 	<outputFields>velocity pressure</outputFields> <!-- Optional. Any of: velocity pressure stress viscosity (default: velocity pressure). -->
+	<outputCoordinates>stl</outputCoordinates> <!-- Optional. Output grid in the coordinates of the input STL (stl, default; usually mm) or in m. Fields are SI. -->
 	<sparse>true</sparse> <!-- Optional. true: only allocate blocks that contain the vessel; false: allocate the whole bounding box (default: true). -->
 	<blockSize>24</blockSize>	<!-- Optional. Block size of the sparse decomposition [LB nodes] (default: 24). -->
 	<!-- <checkpointFrequency>0.1</checkpointFrequency> --> <!-- Optional. Checkpoint interval [s]; restart with -c. -->

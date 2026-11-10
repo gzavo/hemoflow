@@ -81,10 +81,11 @@ void scatterToField(MultiScalarField3D<V>& field, F valueAt)
 
 
 GeometryFile::GeometryFile(const std::string& fileName_)
-    : nx(0), ny(0), nz(0), dx(0.0), hasOrigin(false), origin(0.0, 0.0, 0.0), hasStent(false), fileName(fileName_)
+    : nx(0), ny(0), nz(0), dx(0.0), hasOrigin(false), origin(0.0, 0.0, 0.0), hasLengthUnit(false), lengthUnit(1.0),
+      hasStent(false), fileName(fileName_)
 {
     // Small arrays, read on the main process and broadcast: sizes, dx, origin, openings
-    std::vector<double> header;      // nx, ny, nz, dx, hasOrigin, ox, oy, oz, hasStent, numOpenings
+    std::vector<double> header;      // nx, ny, nz, dx, hasOrigin, ox, oy, oz, hasStent, numOpenings, hasLengthUnit, lengthUnit
     std::vector<double> openingData; // per opening: label, radius, nx, ny, nz
     std::string error;
 
@@ -95,8 +96,9 @@ GeometryFile::GeometryFile(const std::string& fileName_)
                 throw std::runtime_error("'geometryFlag' must be a 3D int16 array.");
 
             cnpy::NpyArray dxArray = loadRequired(fileName, "dx");
-            cnpy::NpyArray originArray;
+            cnpy::NpyArray originArray, unitArray;
             bool originFound = loadOptional(fileName, "origin", originArray);
+            bool unitFound = loadOptional(fileName, "lengthUnit", unitArray);
             bool stentFound = loadOptional(fileName, "stent", stent);
             if (stentFound && (stent.shape != labels.shape || stent.word_size != sizeof(unsigned short)))
                 throw std::runtime_error("The 'stent' array must be an int16 array of the same shape as 'geometryFlag'.");
@@ -112,7 +114,8 @@ GeometryFile::GeometryFile(const std::string& fileName_)
             header = {(double)labels.shape[0], (double)labels.shape[1], (double)labels.shape[2],
                       dxArray.data<double>()[0], originFound ? 1.0 : 0.0,
                       o ? o[0] : 0.0, o ? o[1] : 0.0, o ? o[2] : 0.0,
-                      stentFound ? 1.0 : 0.0, (double)numOpenings};
+                      stentFound ? 1.0 : 0.0, (double)numOpenings,
+                      unitFound ? 1.0 : 0.0, unitFound ? unitArray.data<double>()[0] : 1.0};
             for (size_t i = 0; i < numOpenings; i++) {
                 const double* n = normal.data<double>() + 3 * i;
                 openingData.insert(openingData.end(), {(double)index.data<unsigned short>()[i], radius.data<double>()[i], n[0], n[1], n[2]});
@@ -131,7 +134,7 @@ GeometryFile::GeometryFile(const std::string& fileName_)
         throw std::runtime_error(error);
     }
 
-    header.resize(10);
+    header.resize(12);
     global::mpi().bCast(header.data(), (int)header.size());
     nx = (int)header[0]; ny = (int)header[1]; nz = (int)header[2];
     dx = header[3];
@@ -139,6 +142,8 @@ GeometryFile::GeometryFile(const std::string& fileName_)
     origin = Array<double, 3>(header[5], header[6], header[7]);
     hasStent = header[8] != 0.0;
     int numOpenings = (int)header[9];
+    hasLengthUnit = header[10] != 0.0;
+    lengthUnit = header[11];
 
     openingData.resize(5 * numOpenings);
     if (numOpenings > 0)

@@ -23,6 +23,8 @@ public:
     double dx;                   // Voxel size [m]
     bool hasOrigin;              // False for files from older preprocessor versions
     Array<double, 3> origin;     // Position of voxel (0,0,0) [m]
+    bool hasLengthUnit;          // False for files from older preprocessor versions
+    double lengthUnit;           // Length of one unit of the input STL [m] (0.001: mm)
     bool hasStent;               // The file contains a flow diverter
 
     std::vector<int> openingLabels;
