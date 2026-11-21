@@ -23,6 +23,28 @@ set(CMAKE_DEBUG_POSTFIX d)
 option(ENABLE_MPI "Build with MPI" ON)
 option(BUILD_HDF5 "Build the (parallel) HDF5 writer if parallel HDF5 is found" ON)
 
+# GPU build (doc/dev/TODO-GPU.md): everything is compiled with nvc++ -stdpar from the
+# NVIDIA HPC SDK, so that heap memory is visible on the GPU.
+#   cmake -S . -B build-gpu -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON
+option(HEMOFLOW_GPU "Build for NVIDIA GPUs with nvc++ -stdpar (NVIDIA HPC SDK)" OFF)
+set(HEMOFLOW_STDPAR "gpu" CACHE STRING "nvc++ -stdpar target of the GPU build: gpu, or multicore to run the same code on CPU threads")
+set_property(CACHE HEMOFLOW_STDPAR PROPERTY STRINGS "gpu" "multicore")
+set(HEMOFLOW_GPU_ARCH "ccnative" CACHE STRING "nvc++ -gpu= compute capability: ccnative (the GPU of this machine), cc86 (RTX A1000), cc80 (A100), cc90 (H100), or a comma-separated list")
+# Floating-point type of the solver (T in globals.h). Single precision by default on the GPU.
+set(HEMOFLOW_PRECISION "" CACHE STRING "Floating-point type of the solver: single or double (empty: single with HEMOFLOW_GPU, double otherwise)")
+set_property(CACHE HEMOFLOW_PRECISION PROPERTY STRINGS "" "single" "double")
+if(HEMOFLOW_PRECISION STREQUAL "")
+    if(HEMOFLOW_GPU)
+        set(HEMOFLOW_PRECISION_USED "single")
+    else()
+        set(HEMOFLOW_PRECISION_USED "double")
+    endif()
+elseif(HEMOFLOW_PRECISION STREQUAL "single" OR HEMOFLOW_PRECISION STREQUAL "double")
+    set(HEMOFLOW_PRECISION_USED "${HEMOFLOW_PRECISION}")
+else()
+    message(FATAL_ERROR "HEMOFLOW_PRECISION must be single or double (or empty), not '${HEMOFLOW_PRECISION}'.")
+endif()
+
 include(CheckCXXCompilerFlag)
 
 ###############################################################################
@@ -68,9 +90,27 @@ endif()
 
 # GCC >= 15 rejects ill-formed but never-instantiated templates in the vendored
 # Palabos (multiGrid/). Downgrade that error to a warning where supported.
-check_cxx_compiler_flag(-Wno-error=template-body HEMOFLOW_HAS_WNO_TEMPLATE_BODY)
-if(HEMOFLOW_HAS_WNO_TEMPLATE_BODY)
-    list(APPEND HEMOFLOW_WARNING_FLAGS -Wno-error=template-body)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    check_cxx_compiler_flag(-Wno-error=template-body HEMOFLOW_HAS_WNO_TEMPLATE_BODY)
+    if(HEMOFLOW_HAS_WNO_TEMPLATE_BODY)
+        list(APPEND HEMOFLOW_WARNING_FLAGS -Wno-error=template-body)
+    endif()
+endif()
+
+# nvc++ -stdpar flags, used for compiling and linking every target of the GPU build.
+set(HEMOFLOW_STDPAR_FLAGS "")
+if(HEMOFLOW_GPU)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC")
+        message(FATAL_ERROR "HEMOFLOW_GPU needs nvc++ from the NVIDIA HPC SDK: "
+                            "cmake -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON ... (found ${CMAKE_CXX_COMPILER_ID}).")
+    endif()
+    if(HEMOFLOW_STDPAR STREQUAL "gpu")
+        list(APPEND HEMOFLOW_STDPAR_FLAGS -stdpar=gpu -gpu=${HEMOFLOW_GPU_ARCH})
+    elseif(HEMOFLOW_STDPAR STREQUAL "multicore")
+        list(APPEND HEMOFLOW_STDPAR_FLAGS -stdpar=multicore)
+    else()
+        message(FATAL_ERROR "HEMOFLOW_STDPAR must be gpu or multicore, not '${HEMOFLOW_STDPAR}'.")
+    endif()
 endif()
 
 ###############################################################################
@@ -86,6 +126,8 @@ target_include_directories(palabos SYSTEM PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/palabos/externalLibraries"
     "${CMAKE_CURRENT_SOURCE_DIR}/palabos/externalLibraries/Eigen3")
 target_compile_options(palabos PRIVATE ${HEMOFLOW_WARNING_FLAGS})
+target_compile_options(palabos PUBLIC ${HEMOFLOW_STDPAR_FLAGS})
+target_link_options(palabos PUBLIC ${HEMOFLOW_STDPAR_FLAGS})
 target_compile_definitions(palabos PUBLIC $<$<CONFIG:Debug>:PLB_DEBUG>)
 
 if(ENABLE_MPI)
@@ -117,6 +159,24 @@ target_include_directories(hemoFlow PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(hemoFlow SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/cnpy")
 target_compile_options(hemoFlow PRIVATE ${HEMOFLOW_WARNING_FLAGS})
 target_link_libraries(hemoFlow PRIVATE palabos ZLIB::ZLIB)
+if(HEMOFLOW_GPU)
+    target_compile_definitions(hemoFlow PRIVATE HEMOFLOW_GPU)
+endif()
+if(HEMOFLOW_PRECISION_USED STREQUAL "single")
+    target_compile_definitions(hemoFlow PRIVATE HEMOFLOW_SINGLE)
+    # Flush denormal floats to zero on the CPU. While the flow develops from rest, denormals made
+    # the time loop of a single-precision GCC build 4 times slower (pipe, GCC 13). Results change
+    # only in values below 1e-38. NVIDIA GPUs handle denormal floats at full speed.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        check_cxx_compiler_flag(-mdaz-ftz HEMOFLOW_HAS_MDAZ_FTZ)
+        if(HEMOFLOW_HAS_MDAZ_FTZ)
+            target_link_options(hemoFlow PRIVATE -mdaz-ftz)
+        endif()
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC")
+        target_compile_options(hemoFlow PRIVATE -Mdaz -Mflushz)
+        target_link_options(hemoFlow PRIVATE -Mdaz -Mflushz)
+    endif()
+endif()
 
 if(HEMOFLOW_WITH_HDF5)
     target_compile_definitions(hemoFlow PRIVATE HEMOFLOW_WITH_HDF5 ${HDF5_DEFINITIONS})
@@ -128,4 +188,17 @@ endif()
 
 install(TARGETS hemoFlow RUNTIME DESTINATION bin)
 
-message(STATUS "HemoFlow: MPI=${ENABLE_MPI} HDF5 writer=${HEMOFLOW_WITH_HDF5} C++${CMAKE_CXX_STANDARD}")
+# GPU smoke test: CPU against GPU lattice on a small closed box (doc/dev/TODO-GPU.md, Phase 0)
+if(HEMOFLOW_GPU)
+    add_executable(gpuSmoke tests/gpu/gpuSmoke.cpp)
+    target_link_libraries(gpuSmoke PRIVATE palabos)
+    if(HEMOFLOW_PRECISION_USED STREQUAL "single")
+        target_compile_definitions(gpuSmoke PRIVATE HEMOFLOW_SINGLE)
+    endif()
+endif()
+
+message(STATUS "HemoFlow: MPI=${ENABLE_MPI} HDF5 writer=${HEMOFLOW_WITH_HDF5} C++${CMAKE_CXX_STANDARD} "
+               "precision=${HEMOFLOW_PRECISION_USED} GPU=${HEMOFLOW_GPU}")
+if(HEMOFLOW_GPU)
+    message(STATUS "HemoFlow GPU build: ${HEMOFLOW_STDPAR_FLAGS}")
+endif()

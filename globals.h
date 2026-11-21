@@ -8,7 +8,12 @@
 
 using namespace plb;
 
+// Floating-point type of the solver: HEMOFLOW_SINGLE is set by CMake (HEMOFLOW_PRECISION).
+#ifdef HEMOFLOW_SINGLE
+typedef float T;
+#else
 typedef double T;
+#endif
 
 #define DESCRIPTOR descriptors::ForcedD3Q19Descriptor
 //ForcedMRTD3Q19Descriptor

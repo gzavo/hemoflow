@@ -7,10 +7,12 @@
 #include <vector>
 #include <cmath>
 
-using namespace std;
-
 #include "globals.h"
 #include "rheology.h"
+
+// After the Palabos headers: before them it makes names in the parallel-algorithm headers of
+// nvc++ (stdexec) ambiguous.
+using namespace std;
 
 // Simulation parameters
 struct SimPar{

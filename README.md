@@ -135,6 +135,29 @@ current module versions will differ.
 | `ENABLE_MPI` | `ON` | Build with MPI |
 | `BUILD_HDF5` | `ON` | Use parallel HDF5 if it is found (a warning is printed otherwise) |
 | `CMAKE_CXX_STANDARD` | `20` | C++ standard; Palabos needs at least C++20 |
+| `HEMOFLOW_PRECISION` | empty | `single` or `double` floating-point type of the solver; empty means `double`, or `single` with `HEMOFLOW_GPU`. Single-precision builds flush denormal floats to zero on the CPU. |
+| `HEMOFLOW_GPU` | `OFF` | GPU build with `nvc++` (see below; in development) |
+| `HEMOFLOW_STDPAR` | `gpu` | GPU build: `gpu`, or `multicore` to run the same parallel code on CPU threads |
+| `HEMOFLOW_GPU_ARCH` | `ccnative` | GPU build: target compute capability, e.g. `cc86` (RTX A1000), `cc80` (A100), `cc90` (H100) |
+
+### GPU build (in development)
+
+The port to NVIDIA GPUs is planned in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). So far the GPU
+build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested with
+26.11). It also builds `gpuSmoke`, a test that runs a small forced flow on the GPU lattice of
+Palabos and compares it with the CPU. The solver's time loop still runs on the CPU in this
+build.
+
+```bash
+cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON \
+      -DMPI_CXX_COMPILER=$NVCOMPILERS/$NVARCH/26.11/comm_libs/mpi/bin/mpicxx
+cmake --build build-gpu -j 8
+./build-gpu/gpuSmoke 64 1 200        # n, blocks per axis, steps; prints PASSED or FAILED
+```
+
+Use the `mpirun` that belongs to the MPI a binary was built with. With the HPC SDK first in
+`PATH`, `mpirun` is the SDK's Open MPI 5; a GCC build against the Ubuntu Open MPI then needs
+`/usr/bin/mpirun`.
 
 Compile-time switches in `globals.h`:
 

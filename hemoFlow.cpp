@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-using namespace std;
-
 #include "globals.h"
 #include "helper.h"
 #include "opening.h"
@@ -18,6 +16,8 @@ using namespace std;
 #include "nonNewtonian.h"
 #include "io.h"
 #include "geometry.h"
+
+using namespace std;
 
 
 /* ********** GLOBAL VARIABLES ************/
@@ -390,6 +390,10 @@ int main(int argc, char *argv[])
     pcout   << "********************************* " << endl
             << "*        hemoFlow  v0.31        * " << endl
             << "********************************* " << endl;
+    pcout << "Floating-point precision: " << (sizeof(T) == sizeof(float) ? "single" : "double") << endl;
+#ifdef HEMOFLOW_GPU
+    pcout << "GPU build (in development): the time loop still runs on the CPU." << endl;
+#endif
 
     // *** Reading in command line arguments
     if (argc < 2)
@@ -818,7 +822,7 @@ int main(int argc, char *argv[])
     labelField = nullptr;
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
-    initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), 1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
+    initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), (T)1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
 
     pcout << "Finalizing lattice..." << std::endl;
     lattice->initialize();
