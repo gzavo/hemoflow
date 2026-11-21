@@ -1,35 +1,40 @@
-// GPU smoke test (Phase 0 of doc/dev/TODO-GPU.md); built with -DHEMOFLOW_GPU=ON as gpuSmoke.
+// GPU smoke test (doc/dev/TODO-GPU.md, Phases 0 and 1); built with -DHEMOFLOW_GPU=ON as gpuSmoke.
 //
 // Checks the toolchain and the pattern of the GPU port on a small case: a closed box with
 // bounce-back walls, a bounce-back sphere, a NoDynamics region, a density bump and a constant
 // body force.
-//  - Reference: a CPU lattice with GuoExternalForceBGKdynamics.
+//  - Reference: a CPU lattice with the real dynamics of the chosen model.
 //  - GPU: a CPU lattice with placeholder dynamics (BGK background, which Palabos can map to its
 //    GPU models) is copied to an AcceleratedLattice3D and stepped with a HemoFlow collision
-//    functor that does Guo-forced BGK with the force from the external field.
+//    functor; the force comes from the external field.
+// Models:
+//  - bgk:     Guo-forced BGK (GuoExternalForceBGKdynamics on the CPU).
+//  - hemo:    HemoFlow's Newtonian collision, complete regularized BGK with Guo forcing, from
+//             cellPhysics.h (GuoExternalForceCompleteRegularizedBGKdynamics on the CPU).
+//  - carreau: the Carreau-Yasuda collision of cellPhysics.h (GuoForcedCarreauDynamics on the CPU).
 // After the given number of steps the populations and forces of all bulk cells are compared;
 // the exit code is 1 if they differ by more than round-off. The timings show the cost of the
 // blocks: every block and every block overlap costs synchronous GPU kernels per step.
 //
-// Usage: [mpirun -np N] gpuSmoke [n=64] [blocksPerAxis=1] [steps=200]
+// Usage: [mpirun -np N] gpuSmoke [n=64] [blocksPerAxis=1] [steps=200] [bgk|hemo|carreau]
 
-#include "palabos3D.h"
-#include "palabos3D.hh"
+#include "globals.h"
+#include "nonNewtonian.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 
-using namespace plb;
-
-#ifdef HEMOFLOW_SINGLE
-typedef float T;
-#else
-typedef double T;
-#endif
-#define DESCRIPTOR descriptors::ForcedD3Q19Descriptor
 typedef DESCRIPTOR<T> D;
+typedef CellPhysics<T, DESCRIPTOR> Physics;
+
+void bounceBack(Array<T, D::numPop> &f)
+{
+    for (int iPop = 1; iPop <= D::q / 2; ++iPop)
+        std::swap(f[iPop], f[iPop + D::q / 2]);
+}
 
 // Guo-forced BGK with the arithmetic of GuoExternalForceBGKdynamics::collide. The model id of
 // a cell is only a tag set by the placeholder dynamics.
@@ -52,10 +57,27 @@ struct GuoBGKCollision {
             externalForceTemplatesImpl<T, D>::addGuoForce(f, &ext[0], u, omega, (T)1);
         }
         else if (model == CollisionModel::BounceBack) {
-            for (int iPop = 1; iPop <= D::q / 2; ++iPop)
-                std::swap(f[iPop], f[iPop + D::q / 2]);
+            bounceBack(f);
         }
         // NoDynamics: nothing
+    }
+};
+
+// HemoFlow's bulk collision (cellPhysics.h) with a Newtonian or Carreau relaxation rate
+template <class OmegaFunction>
+struct HemoCollision {
+    T omegaRegularize;
+    OmegaFunction omegaOf;
+    void operator()(int model, Array<T, D::numPop> &f, Array<T, D::ExternalField::numScalars> &ext,
+                    Array<T, GPUconst<T, DESCRIPTOR>::maxStaticScalars>, T *, plint) const
+    {
+        if (model == CollisionModel::BGK) {
+            T rhoBar;
+            Physics::collide(f, &ext[0], omegaRegularize, omegaOf, rhoBar);
+        }
+        else if (model == CollisionModel::BounceBack) {
+            bounceBack(f);
+        }
     }
 };
 
@@ -114,21 +136,34 @@ int main(int argc, char *argv[])
     plint n = argc > 1 ? std::atoi(argv[1]) : 64;
     plint nb = argc > 2 ? std::atoi(argv[2]) : 1;
     plint steps = argc > 3 ? std::atoi(argv[3]) : 200;
-    if (n < 16 || nb < 1 || steps < 2) {
-        pcout << "Usage: gpuSmoke [n >= 16] [blocksPerAxis >= 1] [steps >= 2]" << std::endl;
+    std::string model = argc > 4 ? argv[4] : "bgk";
+    if (n < 16 || nb < 1 || steps < 2 || (model != "bgk" && model != "hemo" && model != "carreau")) {
+        pcout << "Usage: gpuSmoke [n >= 16] [blocksPerAxis >= 1] [steps >= 2] [bgk|hemo|carreau]" << std::endl;
         return 1;
     }
     const T omega = 1.6;
+    // Carreau-Yasuda in lattice units: omega 1.6 at infinite shear, 10 times the viscosity at zero shear
+    CarreauModel carreau;
+    carreau.nuInf = (1.0 / omega - 0.5) / 3.0;
+    carreau.nu0 = 10.0 * carreau.nuInf;
+    carreau.lambda = 2000.0;
+    carreau.n = 0.3568;
 
-    MultiBlockLattice3D<T, DESCRIPTOR> *reference = makeLattice(n, nb, new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega));
+    Dynamics<T, DESCRIPTOR> *referenceDynamics = nullptr;
+    if (model == "bgk")
+        referenceDynamics = new GuoExternalForceBGKdynamics<T, DESCRIPTOR>(omega);
+    else if (model == "hemo")
+        referenceDynamics = new GuoExternalForceCompleteRegularizedBGKdynamics<T, DESCRIPTOR>(omega);
+    else
+        referenceDynamics = new GuoForcedCarreauDynamics<T, DESCRIPTOR>(omega, carreau);
+    MultiBlockLattice3D<T, DESCRIPTOR> *reference = makeLattice(n, nb, referenceDynamics);
     MultiBlockLattice3D<T, DESCRIPTOR> *placeholder = makeLattice(n, nb, new BGKdynamics<T, DESCRIPTOR>(omega));
     plint numBlocks = reference->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
     pcout << "gpuSmoke: " << n << "^3 cells, " << numBlocks << " blocks, " << global::mpi().getSize() << " MPI ranks, "
-          << steps << " steps, " << (sizeof(T) == 4 ? "single" : "double") << " precision" << std::endl;
+          << steps << " steps, model " << model << ", " << (sizeof(T) == 4 ? "single" : "double") << " precision" << std::endl;
 
     auto *gpu = new AcceleratedLattice3D<T, DESCRIPTOR>(*placeholder);
     delete placeholder;
-    GuoBGKCollision collision {omega};
 
     global::mpi().barrier();
     auto t0 = std::chrono::steady_clock::now();
@@ -136,13 +171,23 @@ int main(int argc, char *argv[])
         reference->collideAndStream();
     global::mpi().barrier();
     auto t1 = std::chrono::steady_clock::now();
-    gpu->collideAndStream(collision);   // First step: the data migrates to the GPU
-    global::mpi().barrier();
-    auto t2 = std::chrono::steady_clock::now();
-    for (plint i = 1; i < steps; ++i)
+    // First step separately: the data migrates to the GPU
+    auto t2 = t1, t3 = t1;
+    auto runGpu = [&](auto const &collision) {
         gpu->collideAndStream(collision);
-    global::mpi().barrier();
-    auto t3 = std::chrono::steady_clock::now();
+        global::mpi().barrier();
+        t2 = std::chrono::steady_clock::now();
+        for (plint i = 1; i < steps; ++i)
+            gpu->collideAndStream(collision);
+        global::mpi().barrier();
+        t3 = std::chrono::steady_clock::now();
+    };
+    if (model == "bgk")
+        runGpu(GuoBGKCollision {omega});
+    else if (model == "hemo")
+        runGpu(HemoCollision<Physics::ConstantOmega> {omega, Physics::ConstantOmega {omega}});
+    else
+        runGpu(HemoCollision<Physics::CarreauOmega> {omega, Physics::CarreauOmega {carreau}});
 
     double cpuSec = std::chrono::duration<double>(t1 - t0).count();
     double firstSec = std::chrono::duration<double>(t2 - t1).count();

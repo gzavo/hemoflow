@@ -384,7 +384,7 @@ void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice)
     }
 }
 
-void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T dt)
+void OpeningHandler::advanceTime(T dt)
 {
     if (hasScaleFunction) {
         int len = scaleTime.size();
@@ -400,14 +400,17 @@ void OpeningHandler::progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T
 
         cScale = interpolate(scaleTime[cTimePos], scaleTime[cTimePos + 1], cTimeVal, scaleSignal[cTimePos], scaleSignal[cTimePos + 1]);
     }
+}
 
-    // Impose the profile scaled with the boundary parameter and the waveform
+// Impose the profile scaled with the boundary parameter and the waveform
+void OpeningHandler::imposeValues(MultiBlockLattice3D<T, DESCRIPTOR>& lattice) const
+{
     if (isVelocityType()) {
-        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, &profile, bcParameter * cScale),
+        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, &profile, getVelocityScale()),
                                   boundingBox, lattice);
     }
     else if (type == OPENING_PRESSURE) {
-        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, 1.0 + bcParameter * cScale),
+        applyProcessingFunctional(new ImposeOpeningValues3D<T, DESCRIPTOR>(&nodeSet, getDensity()),
                                   boundingBox, lattice);
     }
     // Free outflow: nothing to impose.

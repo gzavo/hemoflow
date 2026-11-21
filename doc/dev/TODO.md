@@ -185,8 +185,8 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 ## 5. Code structure (C++)
 
-- [ ] Split `main()` in `hemoFlow.cpp` (config, geometry, lattice, boundary setup, time
-      loop) and replace the globals with a configuration/simulation struct.
+- [ ] Replace the globals in `hemoFlow.cpp` with a configuration/simulation struct. (`main()`
+      is split into steps since November 2026, Phase 1 of [TODO-GPU.md](TODO-GPU.md).)
 - [ ] Remove `using namespace std` from headers; use `std::` consistently.
 - [ ] Decide on the unused writers in `io.cpp` (`writeHDF5`, `writeNPZ`): wire them up as
       output options or remove them. `writeHDF5` converts the stress with the Newtonian ω,

@@ -382,11 +382,10 @@ vector<OpeningSpec> buildOpeningSpecs(XMLreader const& xml, const vector<int>& l
     return specs;
 }
 
-// *** Main simulation entry point
-int main(int argc, char *argv[])
-{
-    plbInit(&argc, &argv);
+// *** Steps of main(), in this order
 
+void printBanner()
+{
     pcout   << "********************************* " << endl
             << "*        hemoFlow  v0.31        * " << endl
             << "********************************* " << endl;
@@ -394,13 +393,18 @@ int main(int argc, char *argv[])
 #ifdef HEMOFLOW_GPU
     pcout << "GPU build (in development): the time loop still runs on the CPU." << endl;
 #endif
+}
 
+// Command-line options. Returns false if the program has to stop, with its exit code.
+bool parseCommandLine(int argc, char *argv[], int& exitCode)
+{
     // *** Reading in command line arguments
     if (argc < 2)
     {
         pcout << "Not enough arguments" << endl;
         print_help();
-        return -1;
+        exitCode = -1;
+        return false;
     }
 
     for (int i = 1; i < argc; ++i)
@@ -410,7 +414,8 @@ int main(int argc, char *argv[])
         if (arg == "-h" || arg == "--help")
         {
             print_help();
-            return 0;
+            exitCode = 0;
+            return false;
         }
         else if (i == 1)
         {
@@ -430,330 +435,333 @@ int main(int argc, char *argv[])
         {
             pcout << "Unknown argument: " << arg << endl;
             print_help();
-            return 1;
+            exitCode = 1;
+            return false;
+        }
+    }
+    return true;
+}
+
+// <simulation>: run control, output fields; <fluid>: fluid model and properties
+void readSimulationSection(XMLreader const& xml)
+{
+    XMLreaderProxy simXml = xml["simulation"];
+
+    // Main simulation parameters
+    readRequired(simXml, "simulation", "outputDir", outputFolder);
+    readRequired(simXml, "simulation", "cycle", numCycles);
+    readRequired(simXml, "simulation", "saveFrequency", saveFreqTime);
+    readOptional(simXml, "simulation", "blockSize", blockSize);
+    readOptional(simXml, "simulation", "sparse", useSparse);
+    useCheckpoint = readOptional(simXml, "simulation", "checkpointFrequency", checkpointFreqTime);
+    if (!useCheckpoint)
+        pcout << "Note: no <checkpointFrequency> in the config, checkpointing is disabled." << std::endl;
+    mode = "";
+    readOptional(simXml, "simulation", "mode", mode);
+    if (mode != "" && mode != "murray" && mode != "pzero")
+        throw std::runtime_error("Unknown boundary condition <mode> '" + mode + "'. Valid modes: " + VALID_MODES + ".");
+    outputCoordinatesGiven = readOptional(simXml, "simulation", "outputCoordinates", outputCoordinates);
+    if (outputCoordinates != "stl" && outputCoordinates != "m")
+        throw std::runtime_error("Unknown <simulation><outputCoordinates> '" + outputCoordinates + "' (valid: stl, m).");
+
+    if (numCycles < 1)
+        throw std::runtime_error("<simulation><cycle> must be at least 1.");
+    if (saveFreqTime <= 0.0)
+        throw std::runtime_error("<simulation><saveFrequency> must be positive.");
+    if (blockSize < 4)
+        throw std::runtime_error("<simulation><blockSize> must be at least 4.");
+
+    // Output fields
+    string fieldList;
+    if (readOptional(simXml, "simulation", "outputFields", fieldList)) {
+        outputOptions.velocity = outputOptions.pressure = outputOptions.stress = outputOptions.viscosity = false;
+        std::istringstream fields(fieldList);
+        string field;
+        while (fields >> field) {
+            if (field == "velocity") outputOptions.velocity = true;
+            else if (field == "pressure") outputOptions.pressure = true;
+            else if (field == "stress") outputOptions.stress = true;
+            else if (field == "viscosity") outputOptions.viscosity = true;
+            else throw std::runtime_error("Unknown output field '" + field + "' in <simulation><outputFields> (valid: velocity pressure stress viscosity).");
         }
     }
 
-    string paramXmlFileName = argv[1];
-    string outDir; // Output directory
-
-    // This also checks if there are folders in the path or not!
-    size_t folderIdx = paramXmlFileName.find_last_of("/\\");
-    if (std::string::npos == folderIdx)
-        workingFolder = ".";
-    else
-        workingFolder = paramXmlFileName.substr(0, folderIdx);
-
-    // *** Read the configuration and the geometry, set up the lattice and the boundary conditions
-    try {
-        XMLreader xml(paramXmlFileName);
-
-        if (!hasSection(xml, "simulation"))
-            throw std::runtime_error("The configuration file has no <simulation> section.");
-        if (!hasSection(xml, "geometry"))
-            throw std::runtime_error("The configuration file has no <geometry> section.");
-        XMLreaderProxy simXml = xml["simulation"];
-        XMLreaderProxy geomXml = xml["geometry"];
-
-        // Main simulation parameters
-        readRequired(simXml, "simulation", "outputDir", outputFolder);
-        readRequired(simXml, "simulation", "cycle", numCycles);
-        readRequired(simXml, "simulation", "saveFrequency", saveFreqTime);
-        readOptional(simXml, "simulation", "blockSize", blockSize);
-        readOptional(simXml, "simulation", "sparse", useSparse);
-        useCheckpoint = readOptional(simXml, "simulation", "checkpointFrequency", checkpointFreqTime);
-        if (!useCheckpoint)
-            pcout << "Note: no <checkpointFrequency> in the config, checkpointing is disabled." << std::endl;
-        mode = "";
-        readOptional(simXml, "simulation", "mode", mode);
-        if (mode != "" && mode != "murray" && mode != "pzero")
-            throw std::runtime_error("Unknown boundary condition <mode> '" + mode + "'. Valid modes: " + VALID_MODES + ".");
-        outputCoordinatesGiven = readOptional(simXml, "simulation", "outputCoordinates", outputCoordinates);
-        if (outputCoordinates != "stl" && outputCoordinates != "m")
-            throw std::runtime_error("Unknown <simulation><outputCoordinates> '" + outputCoordinates + "' (valid: stl, m).");
-
-        if (numCycles < 1)
-            throw std::runtime_error("<simulation><cycle> must be at least 1.");
-        if (saveFreqTime <= 0.0)
-            throw std::runtime_error("<simulation><saveFrequency> must be positive.");
-        if (blockSize < 4)
-            throw std::runtime_error("<simulation><blockSize> must be at least 4.");
-
-        // Output fields
-        string fieldList;
-        if (readOptional(simXml, "simulation", "outputFields", fieldList)) {
-            outputOptions.velocity = outputOptions.pressure = outputOptions.stress = outputOptions.viscosity = false;
-            std::istringstream fields(fieldList);
-            string field;
-            while (fields >> field) {
-                if (field == "velocity") outputOptions.velocity = true;
-                else if (field == "pressure") outputOptions.pressure = true;
-                else if (field == "stress") outputOptions.stress = true;
-                else if (field == "viscosity") outputOptions.viscosity = true;
-                else throw std::runtime_error("Unknown output field '" + field + "' in <simulation><outputFields> (valid: velocity pressure stress viscosity).");
-            }
-        }
-
-        // Fluid properties (optional)
-        if (hasSection(xml, "fluid")) {
-            XMLreaderProxy fluidXml = xml["fluid"];
-            readOptional(fluidXml, "fluid", "model", fluidModel);
-            readOptional(fluidXml, "fluid", "density", fluidDensity);
-            bool hasNu = readOptional(fluidXml, "fluid", "kinematicViscosity", fluidKinematicViscosity);
-            bool hasCarreau = false;
-            hasCarreau |= readOptional(fluidXml, "fluid", "mu0", carreauSI.mu0);
-            hasCarreau |= readOptional(fluidXml, "fluid", "muInf", carreauSI.muInf);
-            hasCarreau |= readOptional(fluidXml, "fluid", "lambda", carreauSI.lambda);
-            hasCarreau |= readOptional(fluidXml, "fluid", "n", carreauSI.n);
-            hasCarreau |= readOptional(fluidXml, "fluid", "a", carreauSI.a);
-            if (fluidModel == "carreau" && hasNu)
-                throw std::runtime_error("<fluid><kinematicViscosity> is not used by the carreau model; set mu0 and muInf [Pa s] instead.");
-            if (fluidModel == "newtonian" && hasCarreau)
-                throw std::runtime_error("<fluid> has Carreau parameters (mu0, muInf, lambda, n, a), but <model> is not 'carreau'.");
-        }
-        if (fluidModel != "newtonian" && fluidModel != "carreau")
-            throw std::runtime_error("Unknown <fluid><model> '" + fluidModel + "' (valid: newtonian, carreau).");
-        if (fluidKinematicViscosity <= 0.0 || fluidDensity <= 0.0)
-            throw std::runtime_error("The fluid viscosity and density must be positive.");
-        if (fluidModel == "carreau") {
-            if (!(carreauSI.muInf > 0.0 && carreauSI.mu0 >= carreauSI.muInf))
-                throw std::runtime_error("Carreau model: 0 < muInf <= mu0 is required.");
-            if (!(carreauSI.lambda >= 0.0))
-                throw std::runtime_error("Carreau model: lambda must not be negative.");
-            if (!(carreauSI.n > 0.0 && carreauSI.n <= 1.0))
-                throw std::runtime_error("Carreau model: 0 < n <= 1 is required (shear-thinning).");
-            if (!(carreauSI.a > 0.0))
-                throw std::runtime_error("Carreau model: the Yasuda exponent a must be positive.");
-        #if LES
-            throw std::runtime_error("The carreau fluid model cannot be combined with LES (LES 1 in globals.h).");
-        #endif
-            // The time step and the stability checks use the lowest viscosity
-            fluidKinematicViscosity = carreauSI.muInf / fluidDensity;
-        }
-
-        // Output directory, created by the main process
-        outDir = resolvePath(outputFolder);
-        int dirStatus = 1;
-        if (global::mpi().isMainProcessor()) {
-            if (dirExists(outDir) <= 0) {
-                pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
-                dirStatus = (mkpath(outDir.c_str(), 0777) == 0) ? 1 : 0;
-            }
-        }
-        global::mpi().bCast(&dirStatus, 1);
-        global::mpi().barrier();
-        if (!dirStatus)
-            throw std::runtime_error("Cannot create the output folder " + outDir);
-        pcout << "Output folder: " << outDir+"/" << std::endl;
-        global::directories().setOutputDir(outDir+"/");
-
-        // Geometry file: read on the main process; the other processes get only the
-        // parts of the voxel fields they own (see geometry.h)
-        pcout << "Loading in data file..." << std::endl;
-        string npzFileName;
-        readRequired(geomXml, "geometry", "file", npzFileName);
-        npzFileName = resolvePath(npzFileName);
-        GeometryFile geometry(npzFileName);
-        Nx = geometry.nx;
-        Ny = geometry.ny;
-        Nz = geometry.nz;
-        pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
-        double sim_dx = geometry.dx;
-        pcout << "Resolution [m]: " << sim_dx << std::endl;
-
-        // Physical position of voxel (0,0,0), used for the output (older geometry files have none)
-        if (geometry.hasOrigin) {
-            outputOptions.origin = geometry.origin;
-            pcout << "Origin [m]: " << geometry.origin[0] << " " << geometry.origin[1] << " " << geometry.origin[2] << std::endl;
-        }
-        else {
-            pcout << "Note: the geometry file has no 'origin'; the output is written in the voxel frame (origin 0,0,0)." << std::endl;
-        }
-
-        // Units of the output grid: by default those of the input STL (e.g. mm), so that the
-        // output overlays the STL. Only the grid (spacing, origin) is scaled; the fields stay SI.
-        if (outputCoordinates == "stl" && geometry.hasLengthUnit) {
-            outputOptions.lengthUnit = geometry.lengthUnit;
-            pcout << "Output grid in the coordinates of the input STL (1 unit = " << geometry.lengthUnit
-                  << " m); the fields are in SI units." << std::endl;
-        }
-        else if (outputCoordinates == "stl" && outputCoordinatesGiven) {
-            throw std::runtime_error("The geometry file has no 'lengthUnit' (older preprocessor), so <outputCoordinates>stl</outputCoordinates> "
-                                     "is not possible. Re-run the preprocessor or use <outputCoordinates>m</outputCoordinates>.");
-        }
-        else {
-            if (!geometry.hasLengthUnit)
-                pcout << "Note: the geometry file has no 'lengthUnit' (older preprocessor); the output grid is in m." << std::endl;
-            else
-                pcout << "Output grid in m." << std::endl;
-        }
-
-        // Flow diverter (if there is one)
-        if (geometry.hasStent) {
-            pcout << "Found flow diverter information to load." << std::endl;
-            if (!hasSection(xml, "flowdiverter"))
-                throw std::runtime_error("The geometry contains a flow diverter, but the config has no <flowdiverter> section.");
-            XMLreaderProxy fdXml = xml["flowdiverter"];
-            readRequired(fdXml, "flowdiverter", "linCoeff", linCoeff);
-            readRequired(fdXml, "flowdiverter", "quadCoeff", quadCoeff);
-        }
-
-        // Time step (optional)
-        double sim_dt = -1.0;
-        if (readOptional(simXml, "simulation", "dt", sim_dt) && sim_dt <= 0.0)
-            throw std::runtime_error("<simulation><dt> must be positive.");
-
-        pcout << "Setting LBM parameters..." << std::endl;
-        calcSimulationParameters(sim, sim_dx, sim_dt, fluidKinematicViscosity, fluidDensity);
-        if (fluidModel == "carreau")
-            setCarreauModel(sim, carreauSI, fluidDensity);
-
-        // **** Openings in the geometry file ****
-        pcout << "Processing openings..." << std::endl;
-        const vector<int>& openingLabels = geometry.openingLabels;
-        int numOpenings = (int)openingLabels.size();
-        if (numOpenings < 2)
-            throw std::runtime_error("The geometry has fewer than 2 openings.");
-
-        pcout << "Number of openings in geometry: " << numOpenings << std::endl;
-        pcout << "Opening labels: ";
-        for (int label : openingLabels)
-            pcout << label << " ";
-        pcout << endl;
-        pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
-
-        vector<OpeningSpec> specs = buildOpeningSpecs(xml, openingLabels);
-
-        // **** Lattice ****
-        // The finite-difference ("interp") pressure boundary reads data two cells deep across
-        // block boundaries. With a one-cell envelope the result would depend on how the domain
-        // is split into blocks wherever a block boundary cuts a pressure opening.
-        bool hasPressureOpening = std::any_of(specs.begin(), specs.end(),
-                                              [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
-        envelopeWidth = hasPressureOpening ? 2 : 1;
-        pcout << "Envelope width: " << envelopeWidth << endl;
-
-        Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
-        #if LES
-            bulkDynamics = new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
-        #else
-            if (sim.nonNewtonian)
-                bulkDynamics = new CarreauBackgroundDynamics(sim.omega, sim.carreau);
-            else
-                bulkDynamics = new BackgroundDynamics(sim.omega);
-        #endif
-
-        if (useSparse) {
-            pcout << "Setting simulation domain mask for sparse decomposition (block size " << blockSize << ")..." << endl;
-            // Keep every block that contains a wall, fluid or opening voxel (label > UNUSED).
-            MultiScalarField3D<int> occupancy(Nx, Ny, Nz);
-            geometry.fillOccupancy(occupancy);
-
-            pcout << "Creating sparse representation ..." << endl;
-            MultiBlockManagement3D sparseBlockManagement =
-                computeSparseManagement(*plb::reparallelize(occupancy, blockSize, blockSize, blockSize), envelopeWidth);
-
-            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(sparseBlockManagement,
-                                                        defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                                                        defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                                                        defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                                                        bulkDynamics);
-        }
-        else {
-            lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(
-                defaultMultiBlockPolicy3D().getMultiBlockManagement(Box3D(0, Nx - 1, 0, Ny - 1, 0, Nz - 1), envelopeWidth),
-                defaultMultiBlockPolicy3D().getBlockCommunicator(),
-                defaultMultiBlockPolicy3D().getCombinedStatistics(),
-                defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
-                bulkDynamics);
-        }
-
-        #if LES
-            instantiateStaticSmagorinsky(*lattice, lattice->getBoundingBox(), cSmago);
-        #endif
-
-        pcout << getMultiBlockInfo(*lattice) << endl;
-        plint numBlocks = lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
-        if (useSparse && numBlocks < global::mpi().getSize())
-            pcout << "Note: " << numBlocks << " blocks for " << global::mpi().getSize()
-                  << " processes, so some processes have no work. Use a smaller <blockSize>." << endl;
-
-        // Voxel labels and porosity as distributed fields with the block structure of the lattice
-        labelField = generateMultiScalarField<int>(*lattice, envelopeWidth).release();
-        geometry.fillLabels(*labelField);
-        if (geometry.hasStent && geometry.numPorous == 0) {
-            pcout << "Note: the flow diverter has no voxels in the lumen, so it has no effect." << std::endl;
-        } else if (geometry.hasStent) {
-            porosityField = generateMultiTensorField<T, 2>(*lattice, envelopeWidth).release();
-            geometry.fillPorosity(*porosityField);
-            porousBox = geometry.porousBox;
-            pcout << "Flow diverter: " << geometry.numPorous << " porous voxels. Resistance multipliers ";
-            if (geometry.hasMultipliers)
-                pcout << "(min / mean / max): linear " << geometry.multiplierMin[0] << " / " << geometry.multiplierMean[0]
-                      << " / " << geometry.multiplierMax[0] << ", quadratic " << geometry.multiplierMin[1] << " / "
-                      << geometry.multiplierMean[1] << " / " << geometry.multiplierMax[1] << std::endl;
-            else
-                pcout << "1 (the geometry file has none: older preprocessor)." << std::endl;
-        }
-        geometry.release();
-
-        // **** Boundary conditions ****
-        for (auto const& spec : specs) {
-            int idx = (int)(std::find(openingLabels.begin(), openingLabels.end(), spec.label) - openingLabels.begin());
-            pcout << "Processing opening with label " << spec.label << std::endl;
-
-            auto *opening = new OpeningHandler(geometry.openingNodes.at(spec.label), spec.label, spec.type,
-                                               geometry.openingRadius[idx] / sim.C_l, geometry.openingNormal[idx]);
-            opening->setName(spec.name);
-            opening->setBCType(*lattice);
-
-            if (spec.type == OPENING_VELOCITY)
-                opening->setBCParameter(spec.parameter * 2, sim);   // Mean velocity -> peak velocity of a paraboloid
-            else
-                opening->setBCParameter(spec.parameter, sim);
-
-            if (!spec.waveformFile.empty())
-                opening->loadScaleFunction(resolvePath(spec.waveformFile));
-
-            if (opening->isVelocityType())
-                opening->createPoiseuilleProfile();   // Peak velocity 1 (lattice units)
-            else if (spec.type == OPENING_PRESSURE)
-                opening->createConstantPressureProfile();
-
-            opening->printOpeningDetails(sim);
-            vec3d c = opening->getCenter();
-            double u = outputOptions.lengthUnit;
-            pcout << "-> Center [output grid coordinates]: " << (outputOptions.origin[0] + c.x * sim.C_l) / u << " "
-                  << (outputOptions.origin[1] + c.y * sim.C_l) / u << " " << (outputOptions.origin[2] + c.z * sim.C_l) / u << std::endl;
-            openings.push_back(opening);
-        }
-
-        // Derive the cardiac cycle period from the first opening with a waveform
-        cyclePeriod = -1.0;
-        for (auto &o : openings) {
-            if (o->getHasScaleFunction()) {
-                if (cyclePeriod < 0.0)
-                    cyclePeriod = o->getPeriod();
-                else if (std::fabs(o->getPeriod() - cyclePeriod) > 1e-12)
-                    pcout << "WARNING: the waveform of opening " << o->getLabel() << " has a period of " << o->getPeriod()
-                          << " s; the cycle length is taken from the first waveform (" << cyclePeriod << " s)." << std::endl;
-            }
-        }
-        if (cyclePeriod <= 0.0)
-            throw std::runtime_error("No opening has a <timeScaleFunction>, so the cardiac cycle period for <cycle> is undefined. "
-                                     "Give the inlet a waveform file (a two-point constant file for steady inflow).");
-        simLength = numCycles * cyclePeriod;
-        pcout << "Cardiac cycle period: " << cyclePeriod << " s. Running " << numCycles << " cycles -> simLength = " << simLength << " s." << std::endl;
+    // Fluid properties (optional)
+    if (hasSection(xml, "fluid")) {
+        XMLreaderProxy fluidXml = xml["fluid"];
+        readOptional(fluidXml, "fluid", "model", fluidModel);
+        readOptional(fluidXml, "fluid", "density", fluidDensity);
+        bool hasNu = readOptional(fluidXml, "fluid", "kinematicViscosity", fluidKinematicViscosity);
+        bool hasCarreau = false;
+        hasCarreau |= readOptional(fluidXml, "fluid", "mu0", carreauSI.mu0);
+        hasCarreau |= readOptional(fluidXml, "fluid", "muInf", carreauSI.muInf);
+        hasCarreau |= readOptional(fluidXml, "fluid", "lambda", carreauSI.lambda);
+        hasCarreau |= readOptional(fluidXml, "fluid", "n", carreauSI.n);
+        hasCarreau |= readOptional(fluidXml, "fluid", "a", carreauSI.a);
+        if (fluidModel == "carreau" && hasNu)
+            throw std::runtime_error("<fluid><kinematicViscosity> is not used by the carreau model; set mu0 and muInf [Pa s] instead.");
+        if (fluidModel == "newtonian" && hasCarreau)
+            throw std::runtime_error("<fluid> has Carreau parameters (mu0, muInf, lambda, n, a), but <model> is not 'carreau'.");
     }
-    catch (PlbIOException& exception) {
-        pcout << "ERROR while processing input file " << paramXmlFileName << ": " << exception.what() << std::endl;
-        return -1;
+    if (fluidModel != "newtonian" && fluidModel != "carreau")
+        throw std::runtime_error("Unknown <fluid><model> '" + fluidModel + "' (valid: newtonian, carreau).");
+    if (fluidKinematicViscosity <= 0.0 || fluidDensity <= 0.0)
+        throw std::runtime_error("The fluid viscosity and density must be positive.");
+    if (fluidModel == "carreau") {
+        if (!(carreauSI.muInf > 0.0 && carreauSI.mu0 >= carreauSI.muInf))
+            throw std::runtime_error("Carreau model: 0 < muInf <= mu0 is required.");
+        if (!(carreauSI.lambda >= 0.0))
+            throw std::runtime_error("Carreau model: lambda must not be negative.");
+        if (!(carreauSI.n > 0.0 && carreauSI.n <= 1.0))
+            throw std::runtime_error("Carreau model: 0 < n <= 1 is required (shear-thinning).");
+        if (!(carreauSI.a > 0.0))
+            throw std::runtime_error("Carreau model: the Yasuda exponent a must be positive.");
+    #if LES
+        throw std::runtime_error("The carreau fluid model cannot be combined with LES (LES 1 in globals.h).");
+    #endif
+        // The time step and the stability checks use the lowest viscosity
+        fluidKinematicViscosity = carreauSI.muInf / fluidDensity;
     }
-    catch (std::exception& exception) {
-        pcout << "ERROR: " << exception.what() << std::endl;
-        return -1;
+}
+
+// Output folder, created by the main process. Returns its path.
+std::string createOutputFolder()
+{
+    // Output directory, created by the main process
+    std::string outDir = resolvePath(outputFolder);
+    int dirStatus = 1;
+    if (global::mpi().isMainProcessor()) {
+        if (dirExists(outDir) <= 0) {
+            pcout << "Output folder " << outDir << " does not exist! Creating it...." << std::endl;
+            dirStatus = (mkpath(outDir.c_str(), 0777) == 0) ? 1 : 0;
+        }
+    }
+    global::mpi().bCast(&dirStatus, 1);
+    global::mpi().barrier();
+    if (!dirStatus)
+        throw std::runtime_error("Cannot create the output folder " + outDir);
+    pcout << "Output folder: " << outDir+"/" << std::endl;
+    global::directories().setOutputDir(outDir+"/");
+    return outDir;
+}
+
+// Domain size, output frame, flow diverter coefficients and lattice Boltzmann parameters
+void setUpFromGeometry(XMLreader const& xml, GeometryFile const& geometry)
+{
+    XMLreaderProxy simXml = xml["simulation"];
+
+    Nx = geometry.nx;
+    Ny = geometry.ny;
+    Nz = geometry.nz;
+    pcout << "Domain size: " << Nx << " x " << Ny << " x " << Nz << std::endl;
+    double sim_dx = geometry.dx;
+    pcout << "Resolution [m]: " << sim_dx << std::endl;
+
+    // Physical position of voxel (0,0,0), used for the output (older geometry files have none)
+    if (geometry.hasOrigin) {
+        outputOptions.origin = geometry.origin;
+        pcout << "Origin [m]: " << geometry.origin[0] << " " << geometry.origin[1] << " " << geometry.origin[2] << std::endl;
+    }
+    else {
+        pcout << "Note: the geometry file has no 'origin'; the output is written in the voxel frame (origin 0,0,0)." << std::endl;
     }
 
+    // Units of the output grid: by default those of the input STL (e.g. mm), so that the
+    // output overlays the STL. Only the grid (spacing, origin) is scaled; the fields stay SI.
+    if (outputCoordinates == "stl" && geometry.hasLengthUnit) {
+        outputOptions.lengthUnit = geometry.lengthUnit;
+        pcout << "Output grid in the coordinates of the input STL (1 unit = " << geometry.lengthUnit
+              << " m); the fields are in SI units." << std::endl;
+    }
+    else if (outputCoordinates == "stl" && outputCoordinatesGiven) {
+        throw std::runtime_error("The geometry file has no 'lengthUnit' (older preprocessor), so <outputCoordinates>stl</outputCoordinates> "
+                                 "is not possible. Re-run the preprocessor or use <outputCoordinates>m</outputCoordinates>.");
+    }
+    else {
+        if (!geometry.hasLengthUnit)
+            pcout << "Note: the geometry file has no 'lengthUnit' (older preprocessor); the output grid is in m." << std::endl;
+        else
+            pcout << "Output grid in m." << std::endl;
+    }
+
+    // Flow diverter (if there is one)
+    if (geometry.hasStent) {
+        pcout << "Found flow diverter information to load." << std::endl;
+        if (!hasSection(xml, "flowdiverter"))
+            throw std::runtime_error("The geometry contains a flow diverter, but the config has no <flowdiverter> section.");
+        XMLreaderProxy fdXml = xml["flowdiverter"];
+        readRequired(fdXml, "flowdiverter", "linCoeff", linCoeff);
+        readRequired(fdXml, "flowdiverter", "quadCoeff", quadCoeff);
+    }
+
+    // Time step (optional)
+    double sim_dt = -1.0;
+    if (readOptional(simXml, "simulation", "dt", sim_dt) && sim_dt <= 0.0)
+        throw std::runtime_error("<simulation><dt> must be positive.");
+
+    pcout << "Setting LBM parameters..." << std::endl;
+    calcSimulationParameters(sim, sim_dx, sim_dt, fluidKinematicViscosity, fluidDensity);
+    if (fluidModel == "carreau")
+        setCarreauModel(sim, carreauSI, fluidDensity);
+}
+
+// Boundary conditions to create, from the configuration and the openings of the geometry file
+vector<OpeningSpec> readOpenings(XMLreader const& xml, GeometryFile const& geometry)
+{
+    // **** Openings in the geometry file ****
+    pcout << "Processing openings..." << std::endl;
+    const vector<int>& openingLabels = geometry.openingLabels;
+    int numOpenings = (int)openingLabels.size();
+    if (numOpenings < 2)
+        throw std::runtime_error("The geometry has fewer than 2 openings.");
+
+    pcout << "Number of openings in geometry: " << numOpenings << std::endl;
+    pcout << "Opening labels: ";
+    for (int label : openingLabels)
+        pcout << label << " ";
+    pcout << endl;
+    pcout << "Boundary condition mode: " << (mode.empty() ? "xml (default)" : mode) << std::endl;
+
+    return buildOpeningSpecs(xml, openingLabels);
+}
+
+// The lattice with the sparse or dense block decomposition and the bulk dynamics
+void createLattice(GeometryFile& geometry, vector<OpeningSpec> const& specs)
+{
+    // **** Lattice ****
+    // The finite-difference ("interp") pressure boundary reads data two cells deep across
+    // block boundaries. With a one-cell envelope the result would depend on how the domain
+    // is split into blocks wherever a block boundary cuts a pressure opening.
+    bool hasPressureOpening = std::any_of(specs.begin(), specs.end(),
+                                          [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
+    envelopeWidth = hasPressureOpening ? 2 : 1;
+    pcout << "Envelope width: " << envelopeWidth << endl;
+
+    Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
+    #if LES
+        bulkDynamics = new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
+    #else
+        if (sim.nonNewtonian)
+            bulkDynamics = new CarreauBackgroundDynamics(sim.omega, sim.carreau);
+        else
+            bulkDynamics = new BackgroundDynamics(sim.omega);
+    #endif
+
+    if (useSparse) {
+        pcout << "Setting simulation domain mask for sparse decomposition (block size " << blockSize << ")..." << endl;
+        // Keep every block that contains a wall, fluid or opening voxel (label > UNUSED).
+        MultiScalarField3D<int> occupancy(Nx, Ny, Nz);
+        geometry.fillOccupancy(occupancy);
+
+        pcout << "Creating sparse representation ..." << endl;
+        MultiBlockManagement3D sparseBlockManagement =
+            computeSparseManagement(*plb::reparallelize(occupancy, blockSize, blockSize, blockSize), envelopeWidth);
+
+        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(sparseBlockManagement,
+                                                    defaultMultiBlockPolicy3D().getBlockCommunicator(),
+                                                    defaultMultiBlockPolicy3D().getCombinedStatistics(),
+                                                    defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+                                                    bulkDynamics);
+    }
+    else {
+        lattice = new MultiBlockLattice3D<T, DESCRIPTOR>(
+            defaultMultiBlockPolicy3D().getMultiBlockManagement(Box3D(0, Nx - 1, 0, Ny - 1, 0, Nz - 1), envelopeWidth),
+            defaultMultiBlockPolicy3D().getBlockCommunicator(),
+            defaultMultiBlockPolicy3D().getCombinedStatistics(),
+            defaultMultiBlockPolicy3D().getMultiCellAccess<T,DESCRIPTOR>(),
+            bulkDynamics);
+    }
+
+    #if LES
+        instantiateStaticSmagorinsky(*lattice, lattice->getBoundingBox(), cSmago);
+    #endif
+
+    pcout << getMultiBlockInfo(*lattice) << endl;
+    plint numBlocks = lattice->getMultiBlockManagement().getSparseBlockStructure().getNumBlocks();
+    if (useSparse && numBlocks < global::mpi().getSize())
+        pcout << "Note: " << numBlocks << " blocks for " << global::mpi().getSize()
+              << " processes, so some processes have no work. Use a smaller <blockSize>." << endl;
+}
+
+// Voxel labels, porous multipliers and the boundary conditions of the openings
+void createFieldsAndOpenings(GeometryFile& geometry, vector<OpeningSpec> const& specs)
+{
+    const vector<int>& openingLabels = geometry.openingLabels;
+
+    // Voxel labels and porosity as distributed fields with the block structure of the lattice
+    labelField = generateMultiScalarField<int>(*lattice, envelopeWidth).release();
+    geometry.fillLabels(*labelField);
+    if (geometry.hasStent && geometry.numPorous == 0) {
+        pcout << "Note: the flow diverter has no voxels in the lumen, so it has no effect." << std::endl;
+    } else if (geometry.hasStent) {
+        porosityField = generateMultiTensorField<T, 2>(*lattice, envelopeWidth).release();
+        geometry.fillPorosity(*porosityField);
+        porousBox = geometry.porousBox;
+        pcout << "Flow diverter: " << geometry.numPorous << " porous voxels. Resistance multipliers ";
+        if (geometry.hasMultipliers)
+            pcout << "(min / mean / max): linear " << geometry.multiplierMin[0] << " / " << geometry.multiplierMean[0]
+                  << " / " << geometry.multiplierMax[0] << ", quadratic " << geometry.multiplierMin[1] << " / "
+                  << geometry.multiplierMean[1] << " / " << geometry.multiplierMax[1] << std::endl;
+        else
+            pcout << "1 (the geometry file has none: older preprocessor)." << std::endl;
+    }
+    geometry.release();
+
+    // **** Boundary conditions ****
+    for (auto const& spec : specs) {
+        int idx = (int)(std::find(openingLabels.begin(), openingLabels.end(), spec.label) - openingLabels.begin());
+        pcout << "Processing opening with label " << spec.label << std::endl;
+
+        auto *opening = new OpeningHandler(geometry.openingNodes.at(spec.label), spec.label, spec.type,
+                                           geometry.openingRadius[idx] / sim.C_l, geometry.openingNormal[idx]);
+        opening->setName(spec.name);
+        opening->setBCType(*lattice);
+
+        if (spec.type == OPENING_VELOCITY)
+            opening->setBCParameter(spec.parameter * 2, sim);   // Mean velocity -> peak velocity of a paraboloid
+        else
+            opening->setBCParameter(spec.parameter, sim);
+
+        if (!spec.waveformFile.empty())
+            opening->loadScaleFunction(resolvePath(spec.waveformFile));
+
+        if (opening->isVelocityType())
+            opening->createPoiseuilleProfile();   // Peak velocity 1 (lattice units)
+        else if (spec.type == OPENING_PRESSURE)
+            opening->createConstantPressureProfile();
+
+        opening->printOpeningDetails(sim);
+        vec3d c = opening->getCenter();
+        double u = outputOptions.lengthUnit;
+        pcout << "-> Center [output grid coordinates]: " << (outputOptions.origin[0] + c.x * sim.C_l) / u << " "
+              << (outputOptions.origin[1] + c.y * sim.C_l) / u << " " << (outputOptions.origin[2] + c.z * sim.C_l) / u << std::endl;
+        openings.push_back(opening);
+    }
+}
+
+// Cardiac cycle period and simulated time
+void setCyclePeriod()
+{
+    // Derive the cardiac cycle period from the first opening with a waveform
+    cyclePeriod = -1.0;
+    for (auto &o : openings) {
+        if (o->getHasScaleFunction()) {
+            if (cyclePeriod < 0.0)
+                cyclePeriod = o->getPeriod();
+            else if (std::fabs(o->getPeriod() - cyclePeriod) > 1e-12)
+                pcout << "WARNING: the waveform of opening " << o->getLabel() << " has a period of " << o->getPeriod()
+                      << " s; the cycle length is taken from the first waveform (" << cyclePeriod << " s)." << std::endl;
+        }
+    }
+    if (cyclePeriod <= 0.0)
+        throw std::runtime_error("No opening has a <timeScaleFunction>, so the cardiac cycle period for <cycle> is undefined. "
+                                 "Give the inlet a waveform file (a two-point constant file for steady inflow).");
+    simLength = numCycles * cyclePeriod;
+    pcout << "Cardiac cycle period: " << cyclePeriod << " s. Running " << numCycles << " cycles -> simLength = " << simLength << " s." << std::endl;
+}
+
+void printSimulationParameters()
+{
     pcout   << "*********** Simulation parameters *********** " << endl
             << "size [LU]:   " << Nx << "x" << Ny << "x" << Nz << endl
             << "dx [m]:  " << sim.C_l << endl
@@ -776,7 +784,11 @@ int main(int argc, char *argv[])
     pcout   << "rho [kg/m^3]: " << fluidDensity << endl
             << "U_max [lbm]: " << sim.U_max_lb << endl
             << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
+}
 
+// Initial state (or checkpoint), time loop, output and checkpoints. Returns the exit code.
+int runSimulation(std::string const& outDir)
+{
     const int totalSteps = (int)std::llround(simLength / sim.C_t);
     const int saveFrequency = (int)std::llround(saveFreqTime / sim.C_t);
     if (saveFrequency < 1) {
@@ -921,4 +933,64 @@ int main(int argc, char *argv[])
     pcout << endl << "Simulation done successfully :)" << endl;
 
     return 0;
+}
+
+// *** Main simulation entry point
+int main(int argc, char *argv[])
+{
+    plbInit(&argc, &argv);
+    printBanner();
+
+    int exitCode = 0;
+    if (!parseCommandLine(argc, argv, exitCode))
+        return exitCode;
+
+    string paramXmlFileName = argv[1];
+    string outDir; // Output directory
+
+    // This also checks if there are folders in the path or not!
+    size_t folderIdx = paramXmlFileName.find_last_of("/\\");
+    if (std::string::npos == folderIdx)
+        workingFolder = ".";
+    else
+        workingFolder = paramXmlFileName.substr(0, folderIdx);
+
+    // *** Read the configuration and the geometry, set up the lattice and the boundary conditions
+    try {
+        XMLreader xml(paramXmlFileName);
+
+        if (!hasSection(xml, "simulation"))
+            throw std::runtime_error("The configuration file has no <simulation> section.");
+        if (!hasSection(xml, "geometry"))
+            throw std::runtime_error("The configuration file has no <geometry> section.");
+        XMLreaderProxy geomXml = xml["geometry"];
+
+        readSimulationSection(xml);
+        outDir = createOutputFolder();
+
+        // Geometry file: read on the main process; the other processes get only the
+        // parts of the voxel fields they own (see geometry.h)
+        pcout << "Loading in data file..." << std::endl;
+        string npzFileName;
+        readRequired(geomXml, "geometry", "file", npzFileName);
+        npzFileName = resolvePath(npzFileName);
+        GeometryFile geometry(npzFileName);
+        setUpFromGeometry(xml, geometry);
+        vector<OpeningSpec> specs = readOpenings(xml, geometry);
+        createLattice(geometry, specs);
+        createFieldsAndOpenings(geometry, specs);
+        setCyclePeriod();
+    }
+    catch (PlbIOException& exception) {
+        pcout << "ERROR while processing input file " << paramXmlFileName << ": " << exception.what() << std::endl;
+        return -1;
+    }
+    catch (std::exception& exception) {
+        pcout << "ERROR: " << exception.what() << std::endl;
+        return -1;
+    }
+
+    printSimulationParameters();
+
+    return runSimulation(outDir);
 }

@@ -1,7 +1,7 @@
 # Running HemoFlow on NVIDIA GPUs (plan)
 
-Status: Phase 0 (toolchain) done on 21 November 2026, see "Phase 0 results"; Phase 1 not
-started. First investigated on 10 November 2026 (that version is in git, commit bca490e);
+Status: Phases 0 (toolchain) and 1 (shared per-cell physics on the CPU) done on 21 November
+2026, see "Phase 0 results" and Phase 1; Phase 2 (GPU skeleton) next. First investigated on 10 November 2026 (that version is in git, commit bca490e);
 revised on 21 November 2026 after a second reading of the vendored Palabos (`palabos/src`), the
 upstream GPU examples and the workstation. Target precision: single (decided on 21 November
 2026); double only if single turns out insufficient. Palabos stays an external dependency: the
@@ -142,9 +142,11 @@ With these changes the GCC double build writes byte-identical checkpoints to the
   flush (263 against 358 s).
 - **`nvc++` CPU loop.** Its speed is fine: the `-stdpar=multicore` build is faster than GCC
   (5.7 against 6.6 s). The `-stdpar=gpu` build adds 2-3 s of CUDA start-up per run and about
-  10 % on one rank (managed memory). Several ranks sharing one GPU do not scale on the CPU side:
-  8 ranks took 26 s, as long as 1 rank. This does not matter for production (one rank per GPU),
-  only for tests of several ranks on the workstation.
+  10 % on one rank (managed memory). With several ranks it did not scale at first: 8 ranks took
+  26 s, as long as 1 rank. The cause is HPC-X's CUDA-aware UCX, which handles the MPI messages
+  in managed host memory with its CUDA transports. With `UCX_TLS=^cuda` 8 ranks take 7.3 s,
+  most of it CUDA start-up, against 3.5 s for 16 ranks of the GCC single build. Each rank also
+  creates a CUDA context of about 120 MB on the GPU.
 
 **GPU smoke test** (`tests/gpu/gpuSmoke.cpp`, target `gpuSmoke` of the GPU build). A closed box
 with walls, a sphere, a NoDynamics region, a density bump and a body force. The CPU reference
@@ -351,39 +353,103 @@ comparable to rounding.
 - [x] Single precision validated on the CPU against double on the full pipe (0.025 % in the
       pressure drop).
 
-### Phase 1: preparation on the CPU (results must stay bit-identical)
+### Phase 1: preparation on the CPU (done 21 November 2026, results bit-identical)
 
-- [ ] Split `main()` (TODO.md section 5) at least into: configuration, geometry, lattice
-      builder, boundary setup and time loop. The lattice builder and boundary setup take a
-      "placeholder dynamics" switch, so that lattices (1) and (2) come from the same code.
-- [ ] Shared per-cell physics as array-based inline functions in a new header (no `Cell`, no
-      virtual calls, no exceptions), with the same order of operations as now:
-  - forced complete-regularized BGK with a given ω;
-  - the Carreau ω from Π^neq (`rheology.h` is already plain C++);
-  - the porous force.
+- [x] `main()` split into steps (`hemoFlow.cpp`):
+  - `printBanner`, `parseCommandLine`;
+  - `readSimulationSection` (`<simulation>`, output fields, `<fluid>`), `createOutputFolder`;
+  - `setUpFromGeometry` (domain, output frame, flow diverter, LB parameters);
+  - `readOpenings`, `createLattice`, `createFieldsAndOpenings` (labels, multipliers, boundary
+    conditions), `setCyclePeriod`, `printSimulationParameters`;
+  - `runSimulation` (initial state or checkpoint, time loop, output, checkpoints).
 
-  A HemoFlow bulk dynamics class (Newtonian and Carreau; it replaces the direct use of
-  `GuoExternalForceCompleteRegularizedBGKdynamics` and generalizes `GuoForcedCarreauDynamics`)
-  and `PorousForceFunctional` call them. Check with the regression harness that the CPU stays
-  bit-identical: pipe, NAP180 with flow diverter, C0002 Murray, pressure waveform, Carreau pipe.
-- [ ] Array-based ports of the two Palabos boundary steps HemoFlow uses:
-  - completion of a velocity-opening node (complete-equilibrium Π^neq and regularization, as in
-    `RegularizedVelocityBoundaryDynamics` around the bulk dynamics);
-  - the finite-difference pressure completion of one node from its neighbours' velocities
-    (`PlaneFdBoundaryFunctional3D`).
+  The blocks moved unchanged and the globals stay (replacing them with a configuration struct
+  is still TODO.md section 5). The "placeholder dynamics" switch of `createLattice` /
+  `createFieldsAndOpenings` comes with Phase 2, where it is first used.
+- [x] Shared per-cell physics in `cellPhysics.h` (`CellPhysics<T, Descriptor>`: no `Cell`, no
+      virtual calls, no exceptions; array templates of Palabos in the same order as its `Cell`
+      versions):
+  - `collide` / `collideExternal`: forced complete-regularized BGK with an omega function
+    (`ConstantOmega`, `CarreauOmega`);
+  - `forcedVelocity`, `porousForce`;
+  - `completeVelocityNode<dir, ori>` (velocity and Murray openings);
+  - `pressureNodeVelocity`, `pressureNodeGradient`, `completePressureNode` (finite-difference
+    pressure openings).
 
-  CPU unit tests compare them with the Palabos classes on random populations, for all six
-  faces.
-- [ ] `OpeningHandler`: split `progressTime` into advancing the waveform and imposing the values,
-      so that the host can impose on the GPU lattice and on the output lattice separately.
-- [ ] A check that refuses opening nodes on a bounding-box edge in the GPU build (this cannot
-      happen with the current preprocessor).
+  `GuoForcedCarreauDynamics` and `PorousForceFunctional` now call it. Newtonian CPU runs keep
+  Palabos' `GuoExternalForceCompleteRegularizedBGKdynamics` (less change to the CPU path).
+  Instead, a unit test checks that `CellPhysics::collide` reproduces it bit for bit.
+- [x] Unit tests (`tests/unit/cellPhysicsTest.cpp`, target `hemoUnitTests`, `ctest`): 72 checks
+      on random cells, bit-identical in single and double:
+  - forced velocity;
+  - Newtonian `collide` and `collideExternal` against Palabos;
+  - Carreau against the previous code;
+  - porous force;
+  - for all six faces: the velocity node (completion; with the Newtonian and the Carreau bulk
+    collision), the pressure-node velocity, and the finite-difference pressure node against
+    `PlaneFdBoundaryFunctional3D`.
+- [x] Regression harness against the committed binary, byte-identical checkpoints after
+      1000 / 400 steps:
+  - pipe: Newtonian, flow diverter (a = 100, b = 200), Carreau, Carreau with flow diverter,
+    100 Pa outlet with waveform;
+  - NAP180 5 M with flow diverter and Murray outlets, Newtonian and Carreau.
+
+  Logs, exit codes and error messages are unchanged, and a checkpoint restart is identical.
+- [x] `OpeningHandler`: `progressTime` = `advanceTime` (waveform) + `imposeValues` (lattice);
+      `getVelocityScale()` / `getDensity()` give the current boundary value for the GPU update.
+- [ ] Refuse opening nodes on a bounding-box edge in GPU mode. This cannot happen with the
+      current preprocessor; the check belongs to the GPU mode of Phase 2.
+
+**Findings of Phase 1 for the GPU port.**
+- **Pressure-node order.** Palabos' `PlaneFdBoundaryFunctional3D` rebuilds the pressure nodes in
+  place, one after another. A node's in-plane neighbours may already be rebuilt when its
+  gradient is taken, so the CPU result depends at round-off on the order of the nodes (also
+  across blocks, which is probably why CPU process counts agree only to about 3·10⁻¹¹). On the
+  GPU the nodes are processed in parallel. That needs two passes: first all node velocities
+  into a buffer, then the rebuild from the buffer (in place it would be a race). GPU and CPU
+  will therefore agree at round-off, not bitwise, on pressure openings.
+- **Double literals.** The Palabos boundary code has `0.5 * force` (double literals). The port
+  keeps them so that single-precision results stay bit-identical. They cost double-precision
+  arithmetic only on opening nodes.
+- **GPU check** (`gpuSmoke` models `hemo` and `carreau`, which use `cellPhysics.h` in the GPU
+  functor). 128³, one block, against the CPU dynamics:
+
+  | Model | Single | Double | GPU against CPU |
+  |---|---|---|---|
+  | HemoFlow Newtonian (`hemo`) | 805 M cell updates/s | 73 M/s | 1·10⁻⁸ (single) / 2·10⁻¹⁷ (double) |
+  | Carreau (`carreau`) | 66 M/s | 36 M/s | 3·10⁻⁹ (single) / 4·10⁻¹⁸ (double) |
+
+  - The Newtonian collision is bandwidth-bound in single, as fast as plain BGK.
+  - Carreau in single is 12 times slower, because `rheology.h` computes in double. Templating
+    it on `T` (Phase 4) is therefore the main speed item for Carreau runs.
 
 ### Phase 2: GPU skeleton
 
 - [ ] `toggleBlockingCommunication(true)` before any lattice is created (GPU build only).
-- [ ] Layout of the GPU build: dense (one block per rank) or large sparse blocks by default, not
-      the CPU's blocks of 24 (Phase 0); tuned in Phase 6.
+- [ ] Execution policy of the GPU build (decided 21 November 2026, README "GPU build"):
+  - **Default.** The whole domain is one dense block on the GPU, in single precision.
+  - **Fallback.** If that block does not fit the GPU memory, run on the CPU with the sparse
+    multi-block decomposition of the CPU build, on all ranks of the launch.
+
+  Implementation:
+  - **Decision.** Rank 0 reads the geometry header (Nx, Ny, Nz), estimates the GPU memory of
+    the block plus a margin for the CUDA context, and compares it with `cudaMemGetInfo`, then
+    broadcasts the decision. GPU-resident per cell: about 180 bytes (two population arrays,
+    force, model id, bounce-back links, dynamic-scalar index) plus the multiplier field.
+  - **GPU mode.** Rank 0 owns the block and Palabos runs on a sub-communicator of the GPU ranks
+    (`global::mpi().init(MPI_Comm)`). The other ranks release their CUDA context, so it does not
+    take GPU memory (about 120 MB per rank, measured), and wait for the end without spinning on
+    a core.
+  - **CPU mode.** The current CPU code path, in the precision of the build.
+  - **MPI with HPC-X.** On the CPU path, UCX's CUDA transports must be off (`UCX_TLS=^cuda`).
+    With them, managed host memory is staged as if it were GPU memory: 8 ranks took 26 s
+    instead of 7.3 s for 1000 pipe steps. The single-GPU mode has no MPI messages, so the
+    solver can set `UCX_TLS=^cuda` before `MPI_Init` when the user has not set it. Multi-GPU
+    runs (Phase 6) will need the CUDA transports.
+  - **Log.** The chosen mode and the memory estimate.
+  - **Override.** A config element or command-line option to force CPU or GPU mode.
+- [ ] Layout: the GPU mode above, not the CPU's blocks of 24 (Phase 0). Large sparse blocks as
+      an alternative are measured in Phase 6.
 - [ ] Lattice (2) with the placeholder dynamics, equilibrium initialization and the initial
       opening values. On restart, the checkpoint is loaded into (2). Then copy it to the GPU and
       delete (2).
@@ -405,6 +471,8 @@ comparable to rounding.
     complete-regularizes the populations.
   - The neighbour velocity depends on the tag: 0 for walls, j/ρ + F/2 for fluid, the boundary
     velocity for pressure nodes, the imposed u for velocity nodes.
+  - Two passes (Phase 1 findings): first the velocities of all pressure nodes into a buffer,
+    then the rebuild with `CellPhysics::pressureNodeGradient` / `completePressureNode`.
   - Envelope width 2, as on the CPU.
   - The functor then applies only the bulk collision. Keep ω∞ in the condition, as on the CPU
     (TODO.md section 3), unless both builds change.
@@ -423,7 +491,9 @@ comparable to rounding.
       5-scalar descriptor (force plus multipliers, about 9 % more traffic for every cell), or
       carry the multipliers in dynamic scalars of a separate placeholder model. With the
       in-collision variant the first step after a restart differs slightly from the CPU.
-- [ ] Carreau: local ω in the functor. `rheology.h` computes in double with a 1e-12 tolerance.
+- [ ] Carreau: local ω in the functor (`CellPhysics::CarreauOmega`, already checked on the GPU
+      in `gpuSmoke`). `rheology.h` computes in double with a 1e-12 tolerance; measured, Carreau
+      in single runs at 66 against 805 M cell updates/s for Newtonian (Phase 1).
       For the single build, template it on `T` with a tolerance near float resolution;
       otherwise every cell runs a double-precision Newton solve with `pow` at 1/64 speed. The
       warm start from the previous ω (TODO.md section 4) would need one more external field.
@@ -527,7 +597,7 @@ get them:
 ## Effort (rough)
 
 - Phase 0: done (21 November 2026).
-- Phase 1: 3-5 days.
+- Phase 1: done (21 November 2026).
 - Phases 2-3: 2 weeks (first GPU pipe run after about one week).
 - Phase 4 and output/checkpoints: 1 week.
 - Phase 5: 1 week.

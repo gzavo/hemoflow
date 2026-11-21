@@ -3,6 +3,7 @@
 
 #include "globals.h"
 #include "rheology.h"
+#include "cellPhysics.h"
 
 // Bulk dynamics of a Carreau-Yasuda fluid: the Newtonian bulk dynamics of HemoFlow
 // (GuoExternalForceCompleteRegularizedBGKdynamics, regularized BGK with Guo forcing) with
@@ -48,56 +49,30 @@ public:
         unserializer.readValue(model.a);
     }
 
-    // Same steps as Base::collide, with the local relaxation rate
+    // Same steps as Base::collide, with the local relaxation rate (cellPhysics.h)
     virtual void collide(Cell<T_, Descriptor>& cell, BlockStatistics& statistics)
     {
-        T_ rhoBar = this->computeRhoBar(cell);
-        Array<T_, Descriptor<T_>::d> u, j;
-        this->computeVelocity(cell, u);
-        T_ rho = Descriptor<T_>::fullRho(rhoBar);
-        for (plint iD = 0; iD < Descriptor<T_>::d; ++iD)
-            j[iD] = rho * u[iD];
-        collideWithOmega(cell, rhoBar, u, j, statistics);
+        T_ rhoBar;
+        T_ uSqr = Physics::collide(cell.getRawPopulations(), cell.getExternal(0), this->getOmega(),
+                                   typename Physics::CarreauOmega {model}, rhoBar);
+        if (cell.takesStatistics())
+            gatherStatistics(statistics, rhoBar, uSqr);
     }
 
     // Same steps as Base::collideExternal, with the local relaxation rate
     virtual void collideExternal(Cell<T_, Descriptor>& cell, T_ rhoBar, Array<T_, Descriptor<T_>::d> const& j, T_,
                                  BlockStatistics& statistics)
     {
-        Array<T_, Descriptor<T_>::d> u;
-        this->computeVelocityExternal(cell, rhoBar, j, u);
-        T_ rho = Descriptor<T_>::fullRho(rhoBar);
-        Array<T_, Descriptor<T_>::d> newJ;
-        for (plint iD = 0; iD < Descriptor<T_>::d; ++iD)
-            newJ[iD] = rho * u[iD];
-        collideWithOmega(cell, rhoBar, u, newJ, statistics);
+        T_ uSqr = Physics::collideExternal(cell.getRawPopulations(), cell.getExternal(0), rhoBar, j, this->getOmega(),
+                                           typename Physics::CarreauOmega {model});
+        if (cell.takesStatistics())
+            gatherStatistics(statistics, rhoBar, uSqr);
     }
 
     CarreauModel const& getModel() const { return model; }
 
 private:
-    void collideWithOmega(Cell<T_, Descriptor>& cell, T_ rhoBar, Array<T_, Descriptor<T_>::d> const& u,
-                          Array<T_, Descriptor<T_>::d> const& j, BlockStatistics& statistics)
-    {
-        T_ rhoBarLb;
-        Array<T_, Descriptor<T_>::d> jLb;
-        Array<T_, SymmetricTensor<T_, Descriptor>::n> piNeqLb;
-        momentTemplates<T_, Descriptor>::compute_rhoBar_j_PiNeq(cell, rhoBarLb, jLb, piNeqLb);
-        T_ jSqrLb = VectorTemplate<T_, Descriptor>::normSqr(jLb);
-
-        T_ omega = model.omegaFromPi(SymmetricTensor<T_, Descriptor>::tensorNormSqr(piNeqLb),
-                                     Descriptor<T_>::fullRho(rhoBarLb), Descriptor<T_>::cs2);
-
-        // The regularization does not depend on omega (only on the ratio of its two omegas)
-        this->regularize(cell, rhoBarLb, jLb, jSqrLb, piNeqLb);
-        T_ uSqr = dynamicsTemplates<T_, Descriptor>::complete_bgk_ma2_collision(
-            cell, rhoBar, Descriptor<T_>::invRho(rhoBar), j, omega);
-        externalForceTemplates<T_, Descriptor>::addGuoForce(cell, u, omega, (T_)1);
-
-        if (cell.takesStatistics())
-            gatherStatistics(statistics, rhoBar, uSqr);
-    }
-
+    typedef CellPhysics<T_, Descriptor> Physics;
     CarreauModel model;   // Lattice units
     static int id;
 };

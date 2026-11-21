@@ -3,6 +3,7 @@
 
 #include "globals.h"
 #include "helper.h"
+#include "cellPhysics.h"
 
 
 // The multiplier field holds (linear, quadratic) resistance multipliers in the porous
@@ -37,19 +38,11 @@ struct PorousForceFunctional : public BoxProcessingFunctional3D_LT<T, Descriptor
                 if(lattice.get(iX,iY,iZ).getDynamics().isBoundary())
                     continue;
 
-                //If it has porosity
-                Array<T,Descriptor<T>::d> vel;
-            	lattice.get(iX,iY,iZ).computeVelocity(vel);
-
-            	T *force = lattice.get(iX, iY, iZ).getExternal(Descriptor<T>::ExternalField::forceBeginsAt);
-
-            	// Calculate the force (momentum loss)
-            	T speed = std::sqrt(VectorTemplate<T, Descriptor>::normSqr(vel));
-            	T resistance = m[0] * linCoeff + m[1] * quadCoeff * speed;
-            	for (pluint iD = 0; iD < Descriptor<T>::d; ++iD) 
-            	{
-                	force[iD] = -resistance * vel[iD];
-            	}
+                // Force (momentum loss) from the post-streaming velocity (cellPhysics.h)
+                Cell<T, Descriptor>& cell = lattice.get(iX, iY, iZ);
+                Array<T, Descriptor<T>::d> vel;
+                cell.computeVelocity(vel);
+                CellPhysics<T, Descriptor>::porousForce(vel, m[0], m[1], linCoeff, quadCoeff, cell.getExternal(0));
             }
         
     }

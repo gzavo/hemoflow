@@ -188,9 +188,18 @@ endif()
 
 install(TARGETS hemoFlow RUNTIME DESTINATION bin)
 
+# Unit tests of the per-cell physics (cellPhysics.h) against the Palabos CPU code: ctest
+enable_testing()
+add_executable(hemoUnitTests tests/unit/cellPhysicsTest.cpp)
+target_include_directories(hemoUnitTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(hemoUnitTests PRIVATE ${HEMOFLOW_WARNING_FLAGS})
+target_link_libraries(hemoUnitTests PRIVATE palabos)
+add_test(NAME cellPhysics COMMAND hemoUnitTests)
+
 # GPU smoke test: CPU against GPU lattice on a small closed box (doc/dev/TODO-GPU.md, Phase 0)
 if(HEMOFLOW_GPU)
     add_executable(gpuSmoke tests/gpu/gpuSmoke.cpp)
+    target_include_directories(gpuSmoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(gpuSmoke PRIVATE palabos)
     if(HEMOFLOW_PRECISION_USED STREQUAL "single")
         target_compile_definitions(gpuSmoke PRIVATE HEMOFLOW_SINGLE)

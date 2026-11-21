@@ -110,6 +110,10 @@ cmake --build build -j 8
 The executable is `build/hemoFlow`. The first build compiles all of Palabos
 and takes a few minutes; later builds only recompile the HemoFlow sources.
 
+`build/hemoUnitTests` (also run by `ctest --test-dir build`) checks that the per-cell physics
+of `cellPhysics.h` reproduces the Palabos and HemoFlow CPU code bit for bit, in single and
+double precision.
+
 Tested toolchains (November 2026):
 
 * **Ubuntu 24.04 system packages**: GCC 13.3, CMake 3.28, OpenMPI 4.1.6, no
@@ -145,19 +149,35 @@ current module versions will differ.
 The port to NVIDIA GPUs is planned in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). So far the GPU
 build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested with
 26.11). It also builds `gpuSmoke`, a test that runs a small forced flow on the GPU lattice of
-Palabos and compares it with the CPU. The solver's time loop still runs on the CPU in this
-build.
+Palabos with HemoFlow's collision (Newtonian or Carreau) and compares it with the CPU. The
+solver's time loop still runs on the CPU in this build.
 
 ```bash
 cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON \
       -DMPI_CXX_COMPILER=$NVCOMPILERS/$NVARCH/26.11/comm_libs/mpi/bin/mpicxx
 cmake --build build-gpu -j 8
-./build-gpu/gpuSmoke 64 1 200        # n, blocks per axis, steps; prints PASSED or FAILED
+./build-gpu/gpuSmoke 64 1 200 hemo   # n, blocks per axis, steps, model (bgk|hemo|carreau); PASSED or FAILED
 ```
 
-Use the `mpirun` that belongs to the MPI a binary was built with. With the HPC SDK first in
-`PATH`, `mpirun` is the SDK's Open MPI 5; a GCC build against the Ubuntu Open MPI then needs
-`/usr/bin/mpirun`.
+**Where the GPU build runs a case (planned behaviour, being implemented).**
+- **Default: GPU.** The whole domain is one block on the GPU, in single precision.
+- **Fallback: CPU.** At start-up the solver estimates the GPU memory that this single block
+  needs (about 190 bytes per voxel of the geometry's bounding box in single precision, e.g.
+  3.8 GB for 20 M voxels) and compares it with the free memory of the GPU. If the case does not
+  fit, it runs on the CPU instead, with the sparse multi-block decomposition of the CPU build
+  (`<sparse>`, `<blockSize>`) on all MPI ranks of the launch.
+- **How to launch.** Start the GPU build with as many MPI ranks as the CPU fallback should use.
+  On the GPU one rank does the work and the others wait.
+
+The log says which of the two was chosen. Single precision was checked against double on the
+pipe (test case 1): the pressure drop differs by 0.025 %.
+
+Use the `mpirun` that belongs to the MPI a binary was built with.
+- With the HPC SDK first in `PATH`, `mpirun` is the SDK's Open MPI 5; a GCC build against the
+  Ubuntu Open MPI then needs `/usr/bin/mpirun`.
+- For runs of the GPU build on the CPU with several ranks, add `-x UCX_TLS=^cuda` to that
+  `mpirun`. Otherwise its CUDA-aware UCX treats the solver's host memory as GPU memory and the
+  run becomes several times slower.
 
 Compile-time switches in `globals.h`:
 

@@ -33,7 +33,13 @@ public:
     void setBCParameter(T parameter, const SimPar& s);    // SI value (velocity [m/s] or gauge pressure [Pa]) -> lattice units
     void setBCParameterLB(T parameter_lb) { bcParameter = parameter_lb; }
     void setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice);   // Instantiates the boundary condition on the lattice
-    void progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T dt);  // Advance time by dt and impose the boundary values
+    void advanceTime(T dt);   // Advance the waveform by dt
+    void imposeValues(MultiBlockLattice3D<T, DESCRIPTOR>& lattice) const;   // Impose the current boundary values
+    // Advance time by dt and impose the boundary values
+    void progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T dt) { advanceTime(dt); imposeValues(lattice); }
+    // Current boundary value: velocity openings u = profile * getVelocityScale() (peak velocity [lb]), pressure openings rho
+    T getVelocityScale() const { return bcParameter * cScale; }
+    T getDensity() const { return 1.0 + bcParameter * cScale; }
     void createConstantPressureProfile();
     void createPoiseuilleProfile();     // Peak velocity 1 (lattice units), zero on the fitted ellipse
     void createBluntVelocityProfile();  // Velocity 1 (lattice units) on every node
