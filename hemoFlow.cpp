@@ -868,7 +868,7 @@ void printSimulationParameters()
 }
 
 #ifdef HEMOFLOW_GPU
-// Why the case cannot run on the GPU yet (empty: it can). doc/dev/TODO-GPU.md, Phases 2-4.
+// Why the case cannot run on the GPU yet (empty: it can). doc/dev/TODO-GPU.md.
 std::string gpuUnsupportedReason(GeometryFile const& geometry, vector<OpeningSpec> const& specs)
 {
     if (LES)
@@ -877,9 +877,6 @@ std::string gpuUnsupportedReason(GeometryFile const& geometry, vector<OpeningSpe
         if (spec.type == OUTLET_FREEFLOW)
             return "free-outflow openings are not implemented on the GPU";
     }
-    // A device without resistance exerts no force (the CPU writes a zero force every step)
-    if (geometry.hasStent && geometry.numPorous > 0 && (linCoeff_lb != 0.0 || quadCoeff_lb != 0.0))
-        return "flow diverters are not on the GPU yet";
     // Opening nodes on an edge of the bounding box (geometry files of older preprocessors)
     int N[3] = {geometry.nx, geometry.ny, geometry.nz};
     for (auto const& entry : geometry.openingNodes)
@@ -923,12 +920,13 @@ bool chooseGpu(GeometryFile const& geometry, vector<OpeningSpec> const& specs)
     global::mpi().bCast(&available, 1);
     global::mpi().bCast(&total, 1);
 
-    // One block with its envelope (two cells with pressure openings), plus 5 % and 256 MB for the
-    // CUDA context and the runtime
+    // One block with its envelope (two cells with pressure openings) and the list of porous
+    // cells, plus 5 % and 256 MB for the CUDA context and the runtime
     bool hasPressure = std::any_of(specs.begin(), specs.end(), [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
     int e = hasPressure ? 2 : 1;
     double cells = (double)(geometry.nx + 2 * e) * (geometry.ny + 2 * e) * (geometry.nz + 2 * e);
-    double needed = cells * gpuBytesPerCell() * 1.05 + 256e6;
+    double porousCells = geometry.hasStent ? (double)geometry.numPorous : 0.0;
+    double needed = (cells * gpuBytesPerCell() + porousCells * gpuBytesPerPorousCell()) * 1.05 + 256e6;
     std::ostringstream memory;
     memory.precision(2);
     memory << std::fixed << needed / 1e9 << " GB needed, " << available / 1e9 << " GB of " << total / 1e9 << " GB available";
@@ -1000,7 +998,14 @@ void startGpu()
     copy(*lattice, box, *placeholder, box, modif::staticVariables);
     for (auto &o : openings)
         o->imposeValues(*placeholder);
-    gpu = new GpuSolver(*placeholder, openings, sim);
+    GpuPorousMedium porous;
+    if (porosityField != nullptr) {
+        porous.multipliers = porosityField;
+        porous.box = porousBox;
+        porous.linCoeff = linCoeff_lb;
+        porous.quadCoeff = quadCoeff_lb;
+    }
+    gpu = new GpuSolver(*placeholder, openings, sim, porous);
     delete placeholder;
 
     std::string name;

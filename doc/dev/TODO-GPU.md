@@ -1,7 +1,8 @@
 # Running HemoFlow on NVIDIA GPUs (plan)
 
-Status: Phases 0-3 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
-openings, Newtonian and Carreau fluid on the GPU. Phase 4 (flow diverter on the GPU) is next. First investigated on 10 November 2026 (that version is in git, commit bca490e);
+Status: Phases 0-4 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
+openings, flow diverters, Newtonian and Carreau fluid on the GPU. Next: Phase 5 (verification)
+and Phase 6 (output speed, several GPUs). First investigated on 10 November 2026 (that version is in git, commit bca490e);
 revised on 21 November 2026 after a second reading of the vendored Palabos (`palabos/src`), the
 upstream GPU examples and the workstation. Target precision: single (decided on 21 November
 2026); double only if single turns out insufficient. Palabos stays an external dependency: the
@@ -65,7 +66,8 @@ collision function, one MPI rank per GPU). These points were wrong, missing or o
    for every cell, which is roughly 9 % more memory traffic. The plan now keeps the 3-scalar
    `ForcedD3Q19Descriptor` and computes the porous force in a GPU processor over the device
    box with the existing multiplier field, which matches the CPU code step for step. Folding the
-   force into the collision stays as an optimization.
+   force into the collision stays as an optimization. (Phase 4: a kernel over a list of the
+   porous cells instead of a processor over the box.)
 7. **Openings on box edges and corners cannot occur.** The preprocessor makes an opening voxel
    only where fluid lies directly behind the wall layer, and every fluid voxel has a wall voxel
    on each side inside the cropped domain (`detectOpenings.py`, `createFluidSolid.py`). So no
@@ -520,22 +522,80 @@ comparable to rounding.
   the copy from the GPU takes 0.1 s, the rest is `writeVTK` / `saveBinaryBlock` on one rank over
   the dense box (see Phase 6). Setup on one rank takes about 15 s at 5 M voxels.
 
-### Phase 4: porous force and Carreau
+### Phase 4: porous force and Carreau (done 22 November 2026)
 
-- [ ] Porous force: `_AT` processor over `porousBox` with the existing
-      `MultiTensorField3D<T,2>` of multipliers. It uses the Phase 1 function, applies to fluid
-      tags only, in the bulk, and writes the force into `ext`. Same order as the CPU: force from
-      the post-streaming velocity, then the next collision with that force.
-- [ ] Alternative, only if profiling asks for it: fold the force into the collision with a
-      5-scalar descriptor (force plus multipliers, about 9 % more traffic for every cell), or
-      carry the multipliers in dynamic scalars of a separate placeholder model. With the
-      in-collision variant the first step after a restart differs slightly from the CPU.
-- [ ] Carreau: local ω in the functor (`CellPhysics::CarreauOmega`, already checked on the GPU
-      in `gpuSmoke`). `rheology.h` computes in double with a 1e-12 tolerance; measured, Carreau
-      in single runs at 66 against 805 M cell updates/s for Newtonian (Phase 1).
-      For the single build, template it on `T` with a tolerance near float resolution;
-      otherwise every cell runs a double-precision Newton solve with `pow` at 1/64 speed. The
-      warm start from the previous ω (TODO.md section 4) would need one more external field.
+- [x] **Porous force** (`gpuSolver.cpp`).
+  - At start-up the host lists the porous fluid cells of each block, with their cell index and
+    both multipliers (16 bytes per cell in single). This replaces the planned `_AT` processor
+    over `porousBox`.
+  - Each step a kernel over the list computes the force from the velocity after streaming
+    (half-force correction with the force of the previous step) with
+    `CellPhysics::porousForce`, as `PorousForceFunctional` does, and writes it into the force
+    field for the next collision.
+  - Order as on the CPU: collision and streaming, opening nodes, porous force, exchange. On the
+    CPU the opening processors come first because they were added first. So on both, the
+    finite-difference pressure condition reads its neighbours' velocities with the force of the
+    previous step.
+  - **Cells.**
+    - Opening nodes in the porous medium get no force, as on the CPU, where
+      `PorousForceFunctional` skips boundary dynamics.
+    - Porous voxels are fluid or opening voxels (`GeometryFile::isPorous`), so any other tag
+      stops the start-up with an error.
+    - Only bulk cells are listed: the exchange copies the external scalars, so envelope copies
+      get the force from their owner block.
+  - **Zero coefficients.** The kernel also runs with zero coefficients, as the CPU, which
+    writes a zero force every step.
+  - **Memory.** The list counts in the GPU memory estimate; NAP180 5 M has 5205 porous voxels.
+  - **Cost.** About 30 µs per step, one kernel launch: NAP180 5 M takes 2.82 s for 400 steps,
+    against 2.80 s without the force (Phase 3). Folding the force into the collision is not
+    worth it.
+- [x] **Carreau in the precision of the lattice** (`rheology.h`).
+  - `CarreauModelT<R>` is the solver in precision R. `CarreauModel` (`CarreauModelT<double>`)
+    keeps the parameters for the configuration and the serialization.
+    `CellPhysics::CarreauOmega` converts it to `T`, so single-precision builds solve in float,
+    on the GPU and on the CPU. The Carreau output fields (`carreauCellOmega`) use the precision
+    of the collision.
+  - Newton tolerance: 1e-12 in double, unchanged, so double CPU results stay byte-identical. In
+    float it is 64 ulp (7.6·10⁻⁶), as 1e-12 cannot be reached. ω in float is within 1.4·10⁻⁷
+    of double from rest to g = 1/dt (unit test, Carreau and Yasuda a = 1.25).
+  - **Speed.**
+    - 128³ box (`gpuSmoke`): Carreau single runs at 702 M cell updates/s, against 66 before
+      and 783 for Newtonian.
+    - NAP180 5 M: Carreau takes 2.83 s for 400 steps, the same as Newtonian, so the Newton
+      solve is hidden behind the memory traffic. A warm start is not needed.
+- **Verification** (GPU against CPU in the same precision; flow diverter a = 100, b = 200, the
+  pipe and NAP180 cases of Phase 3):
+  - **Pipe** (`short_fd`, 370 porous voxels), Newtonian and Carreau.
+    - Single: velocity within 2.8 / 3.5·10⁻⁶, pressure within 1.9 / 2.1·10⁻⁶.
+    - Double: pressure identical in the output. The velocity differs only by one-ulp flips of
+      the float32 output, at most 2.3·10⁻¹⁰ m/s, away from the device; nvc++ on the CPU against
+      GCC: 7·10⁻¹².
+  - **NAP180 5 M, Murray mode** (5205 porous voxels).
+    - Newtonian double: output identical.
+    - Carreau double: pressure identical; velocity one-ulp flips of the output, at most
+      7.5·10⁻⁹ m/s, next to the device.
+    - Single: velocity within 1.3 / 1.8·10⁻⁶, pressure within 3.7·10⁻⁶.
+    - The flow diverter itself changes this flow by up to 0.039 m/s and 35 Pa (zero against
+      these coefficients), four orders of magnitude above the GPU-CPU difference in single.
+  - **Restart.** A GPU run restarted from a GPU checkpoint with the flow diverter gives the
+    output of the uninterrupted run, exactly.
+  - **CPU path.** Byte-identical to the committed code (harness, 7 cases). CPU single builds now
+    also solve Carreau in float.
+  - **Unit tests.** 74 checks: the 72 of Phase 1, plus the double solver bit for bit against the
+    double-only one and the float solver against double.
+    - GCC: all pass.
+    - nvc++ (`-fast`): the double porous-force check differs in the last bit, as before
+      Phase 4, because the compiler contracts the test's own reference expression into fused
+      multiply-adds differently from the function.
+- **Speed** (NAP180 5 M with the flow diverter, single, 400 steps without output):
+
+  | Run | Newtonian | Carreau |
+  |---|---|---|
+  | GPU | 2.82 s | 2.83 s |
+  | CPU, 16 ranks | 7.9 s | 8.1 s |
+
+  With output every 200 steps the GPU took 19.3 s (18.6 s in Phase 3); output is the Phase 6
+  item.
 
 ### Output and checkpoints
 
@@ -558,6 +618,8 @@ comparable to rounding.
 - [ ] Pipe (`tests/verification/0-pipe`): GPU against CPU, pressure drop (78.7 Pa) and profile;
       Carreau pipe (`carreau.xml`).
 - [ ] NAP180 with the flow diverter, C0002 Murray, a pressure waveform: GPU against CPU.
+      Short runs (400 steps) of NAP180 with the flow diverter in Murray mode are done
+      (Phase 4); a full cycle and the other two cases are not.
       Newtonian runs of the validation build without FMA may be bit-identical; otherwise
       report the differences, which are expected near round-off. Carreau differs at round-off
       level because the device `pow` differs from glibc's.

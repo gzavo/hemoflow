@@ -167,23 +167,24 @@ mpirun -np 16 ./build-gpu/hemoFlow case.xml     # the SDK's mpirun
   runs on the CPU instead, with the sparse multi-block decomposition (`<sparse>`, `<blockSize>`)
   on all MPI ranks of the launch.
 - **Not on the GPU yet,** also run on the CPU:
-  - flow diverters with nonzero `linCoeff` or `quadCoeff`;
   - free-outflow openings;
   - `LES 1`;
   - openings that touch an edge of the bounding box (geometry files of older preprocessor
     versions).
 - **On the GPU:** velocity, Murray and pressure openings (also with waveforms), Newtonian and
-  Carreau-Yasuda fluid.
+  Carreau-Yasuda fluid, flow diverters (porous voxels with their resistance multipliers).
 - **How to launch.** Start the GPU build with as many MPI ranks as the CPU fallback should use.
   The log says where the case runs and why (`Execution: GPU ...` or `Execution: CPU (...)`).
   `<simulation><device>` forces one or the other.
 
 **Results and speed** (RTX A1000, details in TODO-GPU.md).
-- **Accuracy.** A GPU build in double precision gives the output of the CPU build, to round-off. In
-  single precision it agrees to float rounding, about 3·10⁻⁶. The pipe (test case 1) gives
-  78.70 Pa on the GPU against 78.72 Pa for the CPU in double precision.
+- **Accuracy.** A GPU build in double precision gives the output of the CPU build, to round-off
+  (also with a flow diverter). In single precision it agrees to float rounding, about 3·10⁻⁶.
+  The pipe (test case 1) gives 78.70 Pa on the GPU against 78.72 Pa for the CPU in double
+  precision.
 - **Speed.** The pipe validation (80 k steps) takes 67 s on the GPU against 263-358 s on 16 CPU
-  cores. NAP180 at 5 M voxels runs at about 730 M cell updates/s, 3.5 times the 16-core
+  cores. NAP180 at 5 M voxels with its flow diverter runs at about 720 M cell updates/s, for
+  Newtonian and Carreau blood alike: 2.8 s for 400 steps, against about 8 s for the 16-core
   single-precision CPU run.
 - **Output is still slow.** About 5 s per output or checkpoint at 5 M voxels: the fields are
   written on one rank.
@@ -408,7 +409,7 @@ arbitrarily close to each other.
   μ∞ = 0.00345 Pa·s, λ = 3.313 s, n = 0.3568 and a = 2 (the Carreau model).
   Every cell takes its viscosity from its own shear rate at every time step.
   The shear rate itself depends on the viscosity, and the solver solves this
-  relation to round-off (`rheology.h`). ρ scales the pressure and stress
+  relation to round-off, in the precision of the build (`rheology.h`). ρ scales the pressure and stress
   values and, for the Carreau model, converts μ to ν.
 * If `<dt>` is given, the relaxation rate follows from dx, dt and ν. If it is
   omitted, ω = 1 and dt = dx²/(6ν). For the Carreau model ν is the lowest

@@ -33,8 +33,9 @@ struct CellPhysics {
         T_ operator()(Tensor const &, T_) const { return omega; }
     };
 
+    // Solved in the precision of the lattice: float in single-precision builds (rheology.h)
     struct CarreauOmega {
-        CarreauModel model;   // Lattice units
+        CarreauModelT<T_> model;   // Lattice units
         T_ operator()(Tensor const &piNeq, T_ rhoBar) const
         {
             return model.omegaFromPi(SymmetricTensor<T_, Descriptor>::tensorNormSqr(piNeq), D::fullRho(rhoBar), D::cs2);

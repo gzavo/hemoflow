@@ -27,7 +27,10 @@
 //      after streaming), in two passes: the velocities of all pressure nodes into a buffer, then the
 //      rebuild from their neighbours' velocities. The CPU updates the nodes one after another in
 //      place, so the two agree at round-off, not bit for bit;
-//   4. envelope exchange.
+//   4. porous force of a flow diverter (on the CPU PorousForceFunctional, after the opening
+//      processors): from the velocity after streaming, written into the force field that the
+//      next collision uses. Only porous fluid cells, from a list made at start-up;
+//   5. envelope exchange (populations and external scalars).
 //
 // The CPU lattice with the real dynamics stays: copyTo() brings the GPU state into it for
 // output, checkpoints and diagnostics, so that io.cpp and the checkpoint format do not change.
@@ -51,16 +54,27 @@ void releaseGpu();
 // the model id, the bounce-back links and the dynamic-scalar index.
 std::size_t gpuBytesPerCell();
 
+// GPU memory per porous cell of a flow diverter (cell index and two multipliers)
+std::size_t gpuBytesPerPorousCell();
+
+// Porous medium of a flow diverter (porous.h)
+struct GpuPorousMedium {
+    MultiTensorField3D<T, 2> const* multipliers = nullptr;   // (linear, quadratic) per voxel; nullptr: none
+    Box3D box;                                             // Bounding box of the porous voxels
+    T linCoeff = 0, quadCoeff = 0;                         // a and b in lattice units
+};
+
 class GpuSolver {
 public:
     // placeholder: CPU lattice with placeholder dynamics and the state to start from; it is
     // copied and can be deleted afterwards. openings: their boundary values are written to the
-    // GPU by imposeOpenings(), which the constructor calls once.
+    // GPU by imposeOpenings(), which the constructor calls once. porous: read once (the
+    // multipliers of the porous fluid cells are copied).
     GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std::vector<OpeningHandler*> const& openings,
-              SimPar const& sim);
+              SimPar const& sim, GpuPorousMedium const& porous);
     ~GpuSolver();
 
-    // One time step (collision, streaming, opening nodes, envelope exchange)
+    // One time step (collision, streaming, opening nodes, porous force, envelope exchange)
     void collideAndStream();
     // Write the current boundary values of the openings (OpeningHandler::getVelocityScale,
     // getDensity) to the GPU
@@ -76,6 +90,11 @@ public:
         int kind;
         plint cell;   // FLUID: linear index of the cell in its block
         plint aux;    // VELOCITY_NODE: dynamic-scalar index; PRESSURE_NODE: index in the velocity buffer
+    };
+    // Fluid cell in the porous medium
+    struct PorousCell {
+        plint cell;       // Linear index of the cell in its block
+        T mLin, mQuad;    // Resistance multipliers
     };
 
 private:
@@ -104,13 +123,21 @@ private:
         std::vector<Node> nodes;
     };
 
+    struct PorousGroup {
+        AtomicAcceleratedLattice3D<T, DESCRIPTOR>* block;
+        std::vector<PorousCell> cells;   // In the bulk of the block; the exchange fills the envelope
+    };
+
     void completeVelocityNodes();
     void completePressureNodes();
+    void applyPorousForce();
 
     AcceleratedLattice3D<T, DESCRIPTOR>* lattice;
     std::vector<NodeGroup<VelocityNode> > velocityNodes;
     std::vector<NodeGroup<PressureNode> > pressureNodes;
     std::vector<Array<T, 3> > pressureVelocities;   // Velocity buffer of the pressure nodes
+    std::vector<PorousGroup> porousCells;
+    T linCoeff, quadCoeff;      // Porous coefficients a, b (lattice units)
     T omega;                    // Newtonian omega, or the one at infinite shear (Carreau)
     bool nonNewtonian;
     CarreauModel carreau;

@@ -1,11 +1,14 @@
 // Unit tests of cellPhysics.h (doc/dev/TODO-GPU.md, Phase 1): the array-based per-cell physics
 // must reproduce the Palabos and HemoFlow CPU code bit for bit, in single and double precision.
 // Random cells near equilibrium with a random force; every result is compared with memcmp.
+// The float Carreau solver is compared with the double one to a tolerance.
 // Built as hemoUnitTests; run directly or with ctest.
 
 #include "cellPhysics.h"
 #include "nonNewtonian.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -61,7 +64,8 @@ struct RandomCells {
 };
 
 // Copy of GuoForcedCarreauDynamics::collideWithOmega before it moved to cellPhysics.h (Cell-based
-// Palabos templates), to check that the move did not change a bit.
+// Palabos templates), to check that the move did not change a bit. Since Phase 4 the Carreau
+// solver runs in the precision of the lattice (rheology.h), here as well.
 template <typename Real>
 void oldCarreauCollide(Cell<Real, descriptors::ForcedD3Q19Descriptor> &cell, CarreauModel const &model, Real omegaInf)
 {
@@ -78,8 +82,8 @@ void oldCarreauCollide(Cell<Real, descriptors::ForcedD3Q19Descriptor> &cell, Car
     Array<Real, 6> piNeqLb;
     momentTemplates<Real, descriptors::ForcedD3Q19Descriptor>::compute_rhoBar_j_PiNeq(cell, rhoBarLb, jLb, piNeqLb);
     Real jSqrLb = VectorTemplate<Real, descriptors::ForcedD3Q19Descriptor>::normSqr(jLb);
-    Real omega = model.omegaFromPi(SymmetricTensor<Real, descriptors::ForcedD3Q19Descriptor>::tensorNormSqr(piNeqLb),
-                                   D::fullRho(rhoBarLb), D::cs2);
+    Real omega = CarreauModelT<Real>(model).omegaFromPi(
+        SymmetricTensor<Real, descriptors::ForcedD3Q19Descriptor>::tensorNormSqr(piNeqLb), D::fullRho(rhoBarLb), D::cs2);
     base.regularize(cell, rhoBarLb, jLb, jSqrLb, piNeqLb);
     dynamicsTemplates<Real, descriptors::ForcedD3Q19Descriptor>::complete_bgk_ma2_collision(cell, rhoBar, D::invRho(rhoBar), j, omega);
     externalForceTemplates<Real, descriptors::ForcedD3Q19Descriptor>::addGuoForce(cell, u, omega, (Real)1);
@@ -295,6 +299,85 @@ void testFace(std::string const &precision)
     report(face + ": finite-difference pressure node", fdOk);
 }
 
+// The Carreau-Yasuda solver before it was templated on the precision (double only)
+double oldShearRateFromK(CarreauModel const &m, double K, double invCs2)
+{
+    if (!(K > 0.0))
+        return 0.0;
+    if (m.isNewtonian())
+        return K / (m.nu0 * invCs2 + 0.5);
+    double lo = K / (m.nu0 * invCs2 + 0.5);
+    double hi = K / (m.nuInf * invCs2 + 0.5);
+    double exponent = (m.n - 1.0) / m.a;
+    double g = hi;
+    for (int it = 0; it < 100; ++it) {
+        double x = m.lambda * g;
+        x = m.a == 2.0 ? x * x : std::pow(x, m.a);
+        double base = 1.0 + x;
+        double powTerm = std::pow(base, exponent);
+        double nu = m.nuInf + (m.nu0 - m.nuInf) * powTerm;
+        double f = g * (nu * invCs2 + 0.5) - K;
+        if (f == 0.0)
+            return g;
+        if (f < 0.0)
+            lo = g;
+        else
+            hi = g;
+        double dStress = m.nuInf + (m.nu0 - m.nuInf) * powTerm / base * (1.0 + m.n * x);
+        double next = g - f / (dStress * invCs2 + 0.5);
+        if (!(next >= lo && next <= hi))
+            next = 0.5 * (lo + hi);
+        if (std::fabs(next - g) <= 1e-12 * g)
+            return next;
+        g = next;
+    }
+    return g;
+}
+
+double oldOmegaFromPi(CarreauModel const &m, double piNeqNormSqr, double rho, double cs2)
+{
+    double invCs2 = 1.0 / cs2;
+    double K = std::sqrt(0.5 * piNeqNormSqr) / (rho * cs2);
+    if (!(K > 0.0))
+        return 1.0 / (m.nu0 * invCs2 + 0.5);
+    return oldShearRateFromK(m, K, invCs2) / K;
+}
+
+// Carreau-Yasuda relaxation rate: in double bit-identical to the double-only solver; in float
+// within 1e-6 of double, from rest to shear rates far beyond the shear-thinning range, for the
+// Carreau (a = 2) and a Yasuda (a = 1.25) model
+void testCarreauSolver()
+{
+    CarreauModel models[2];
+    models[0].nu0 = 0.056 / 1055 * 1e-4 / 9e-8;
+    models[0].nuInf = 0.00345 / 1055 * 1e-4 / 9e-8;
+    models[0].lambda = 3.313 / 1e-4;
+    models[0].n = 0.3568;
+    models[1] = models[0];
+    models[1].a = 1.25;
+    bool identical = true, close = true;
+    double worst = 0.0;
+    for (CarreauModel const &model : models) {
+        CarreauModelT<float> single(model);
+        for (int k = 0; k <= 400; ++k) {
+            double g = 1e-10 * std::pow(10.0, k / 40.0);   // Shear rate 1e-10 .. 1 [1/dt]
+            double rho = 1.0 + 0.05 * std::sin(0.37 * k);
+            double cs2 = 1.0 / 3.0;
+            double K = g * (model.viscosity(g) / cs2 + 0.5);
+            double piSqr = 2.0 * (K * rho * cs2) * (K * rho * cs2);
+            double omega = model.omegaFromPi(piSqr, rho, cs2);
+            identical &= sameBits(omega, oldOmegaFromPi(model, piSqr, rho, cs2));
+            float omegaSingle = single.omegaFromPi((float)piSqr, (float)rho, (float)cs2);
+            double error = std::fabs(omegaSingle - omega) / omega;
+            worst = std::max(worst, error);
+            close &= error < 1e-6;
+        }
+    }
+    report("double: Carreau solver", identical);
+    report("single: Carreau solver within 1e-6 of double", close);
+    std::cout << "Carreau solver, single against double: largest relative difference of omega " << worst << std::endl;
+}
+
 template <typename Real>
 void testFaces(std::string const &precision)
 {
@@ -315,7 +398,8 @@ int main(int argc, char *argv[])
     testPrecision<float>("single");
     testFaces<double>("double");
     testFaces<float>("single");
+    testCarreauSolver();
     std::cout << (failures == 0 ? "PASSED" : "FAILED") << ": " << checks - failures << " of " << checks
-              << " checks bit-identical" << std::endl;
+              << " checks passed" << std::endl;
     return failures == 0 ? 0 : 1;
 }

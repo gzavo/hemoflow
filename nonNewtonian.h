@@ -82,8 +82,9 @@ int GuoForcedCarreauDynamics<T_, Descriptor>::id =
     meta::registerGeneralDynamics<T_, Descriptor, GuoForcedCarreauDynamics<T_, Descriptor> >("HemoFlow_GuoForcedCarreau");
 
 
-// Local relaxation rate of a cell, as GuoForcedCarreauDynamics computes it. Applied to every
-// cell (also walls and boundary cells), so that the output fields need no dynamics lookup.
+// Local relaxation rate of a cell, as GuoForcedCarreauDynamics computes it (in the precision of
+// the lattice). Applied to every cell (also walls and boundary cells), so that the output fields
+// need no dynamics lookup.
 template <typename T_, template <typename U> class Descriptor>
 inline T_ carreauCellOmega(CarreauModel const& model, Cell<T_, Descriptor> const& cell, Array<T_, 6>& piNeq)
 {
@@ -91,7 +92,8 @@ inline T_ carreauCellOmega(CarreauModel const& model, Cell<T_, Descriptor> const
     T_ rho = cell.computeDensity();
     if (!(rho > 0.0))
         rho = 1.0;
-    return model.omegaFromPi(SymmetricTensor<T_, Descriptor>::tensorNormSqr(piNeq), rho, Descriptor<T_>::cs2);
+    CarreauModelT<T_> const solver(model);
+    return solver.omegaFromPi(SymmetricTensor<T_, Descriptor>::tensorNormSqr(piNeq), rho, Descriptor<T_>::cs2);
 }
 
 // Viscous stress -(1 - omega/2) Pi^neq with the local relaxation rate (lattice units).

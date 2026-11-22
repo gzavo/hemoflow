@@ -158,6 +158,24 @@ void completePressure(Block* block, T const* scalars, Node const* nodes, std::si
     });
 }
 
+// Porous force in the porous fluid cells of one block (PorousForceFunctional): from the velocity
+// after streaming, with the force of the previous step in the half-force correction
+template <typename PorousCell>
+void porousForce(Block* block, PorousCell const* cells, std::size_t n, T linCoeff, T quadCoeff)
+{
+    std::for_each(std::execution::par_unseq, cells, cells + n, [=](PorousCell const& c) {
+        Array<T, D::q> f;
+        block->pullPop(c.cell, f);
+        T ext[D::ExternalField::numScalars];
+        pullExternal(block, c.cell, ext);
+        Vec u;
+        Physics::forcedVelocity(f, ext, u);
+        Physics::porousForce(u, c.mLin, c.mQuad, linCoeff, quadCoeff, ext);
+        for (int iD = 0; iD < D::d; ++iD)
+            block->pushExt(c.cell, D::ExternalField::forceBeginsAt + iD, ext[D::ExternalField::forceBeginsAt + iD]);
+    });
+}
+
 // Face index 0..5 of (direction, orientation), for the dispatch to the templates
 int faceIndex(int direction, int orientation)
 {
@@ -190,11 +208,16 @@ std::size_t gpuBytesPerCell()
          + sizeof(plint);
 }
 
+std::size_t gpuBytesPerPorousCell()
+{
+    return sizeof(GpuSolver::PorousCell);
+}
+
 
 GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std::vector<OpeningHandler*> const& openings,
-                     SimPar const& sim)
-    : lattice(nullptr), omega(sim.omega), nonNewtonian(sim.nonNewtonian), carreau(sim.carreau),
-      domain(placeholder.getBoundingBox())
+                     SimPar const& sim, GpuPorousMedium const& porous)
+    : lattice(nullptr), linCoeff(porous.linCoeff), quadCoeff(porous.quadCoeff), omega(sim.omega),
+      nonNewtonian(sim.nonNewtonian), carreau(sim.carreau), domain(placeholder.getBoundingBox())
 {
     // The copy would keep pointers to the placeholder's data processors and the blocks they modify
     if (!placeholder.getStoredProcessors().empty())
@@ -337,6 +360,42 @@ GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std:
         }
     }
 
+    // Porous fluid cells: nonzero multipliers and the fluid tag. As on the CPU, opening nodes in
+    // the porous medium get no force (PorousForceFunctional skips boundary dynamics); porous voxels
+    // are fluid or opening voxels (GeometryFile::isPorous), so walls and outside cells do not occur.
+    if (porous.multipliers) {
+        MultiBlockManagement3D const& management = lattice->getMultiBlockManagement();
+        MultiBlockManagement3D const& fieldManagement = porous.multipliers->getMultiBlockManagement();
+        for (auto const& entry : lattice->getBlockLattices()) {
+            Block& block = *entry.second;
+            Box3D bulk = management.getBulk(entry.first), cells;
+            if (!(fieldManagement.getBulk(entry.first) == bulk))
+                fail("the multiplier field of the flow diverter has another block structure than the lattice.");
+            if (!intersect(bulk, porous.box, cells))
+                continue;
+            TensorField3D<T, 2> const& field = porous.multipliers->getComponent(entry.first);
+            Dot3D location = block.getLocation(), fieldLocation = field.getLocation();
+            plint ny = block.getNy(), nz = block.getNz();
+            int const* models = block.getCollisionMatrix();
+            PorousGroup group;
+            group.block = &block;
+            for (plint x = cells.x0; x <= cells.x1; ++x)
+                for (plint y = cells.y0; y <= cells.y1; ++y)
+                    for (plint z = cells.z0; z <= cells.z1; ++z) {
+                        Array<T, 2> const& m = field.get(x - fieldLocation.x, y - fieldLocation.y, z - fieldLocation.z);
+                        if (m[0] == 0.0 && m[1] == 0.0)
+                            continue;
+                        plint i = (z - location.z) + nz * ((y - location.y) + ny * (x - location.x));
+                        if (models[i] == CollisionModel::BGK)
+                            group.cells.push_back(PorousCell {i, m[0], m[1]});
+                        else if (!isVelocityTag(models[i]) && !isPressureTag(models[i]))
+                            fail("a porous voxel is neither fluid nor an opening node.");
+                    }
+            if (!group.cells.empty())
+                porousCells.push_back(std::move(group));
+        }
+    }
+
     imposeOpenings(openings);
 }
 
@@ -353,6 +412,7 @@ void GpuSolver::collideAndStream()
         lattice->externalCollideAndStream(HemoCollision<Physics::ConstantOmega> {omega, Physics::ConstantOmega {omega}});
     completeVelocityNodes();
     completePressureNodes();
+    applyPorousForce();
     lattice->executeInternalProcessors();   // Envelope exchange
     lattice->incrementTime();
 }
@@ -400,6 +460,12 @@ void GpuSolver::completePressureNodes()
         default: completePressure<2, 1>(group.block, group.dynamicScalars, nodes, n, buffer, omega); break;
         }
     }
+}
+
+void GpuSolver::applyPorousForce()
+{
+    for (PorousGroup const& group : porousCells)
+        porousForce(group.block, group.cells.data(), group.cells.size(), linCoeff, quadCoeff);
 }
 
 // Velocity openings: u = profile * scale, rounded to T as ImposeOpeningValues3D does on the CPU.
