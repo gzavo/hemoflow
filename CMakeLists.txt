@@ -160,6 +160,7 @@ target_include_directories(hemoFlow SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 target_compile_options(hemoFlow PRIVATE ${HEMOFLOW_WARNING_FLAGS})
 target_link_libraries(hemoFlow PRIVATE palabos ZLIB::ZLIB)
 if(HEMOFLOW_GPU)
+    target_sources(hemoFlow PRIVATE gpuSolver.cpp)
     target_compile_definitions(hemoFlow PRIVATE HEMOFLOW_GPU)
 endif()
 if(HEMOFLOW_PRECISION_USED STREQUAL "single")

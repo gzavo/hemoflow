@@ -146,38 +146,58 @@ current module versions will differ.
 
 ### GPU build (in development)
 
-The port to NVIDIA GPUs is planned in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). So far the GPU
-build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested with
-26.11). It also builds `gpuSmoke`, a test that runs a small forced flow on the GPU lattice of
-Palabos with HemoFlow's collision (Newtonian or Carreau) and compares it with the CPU. The
-solver's time loop still runs on the CPU in this build.
+The port to NVIDIA GPUs is planned and documented in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). The
+GPU build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested
+with 26.11) and runs the time loop on the GPU, in single precision by default.
 
 ```bash
 cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON \
       -DMPI_CXX_COMPILER=$NVCOMPILERS/$NVARCH/26.11/comm_libs/mpi/bin/mpicxx
 cmake --build build-gpu -j 8
-./build-gpu/gpuSmoke 64 1 200 hemo   # n, blocks per axis, steps, model (bgk|hemo|carreau); PASSED or FAILED
+mpirun -np 16 ./build-gpu/hemoFlow case.xml     # the SDK's mpirun
+./build-gpu/gpuSmoke 64 1 200 hemo   # GPU check: n, blocks per axis, steps, model (bgk|hemo|carreau)
 ```
 
-**Where the GPU build runs a case (planned behaviour, being implemented).**
-- **Default: GPU.** The whole domain is one block on the GPU, in single precision.
-- **Fallback: CPU.** At start-up the solver estimates the GPU memory that this single block
-  needs (about 190 bytes per voxel of the geometry's bounding box in single precision, e.g.
-  3.8 GB for 20 M voxels) and compares it with the free memory of the GPU. If the case does not
-  fit, it runs on the CPU instead, with the sparse multi-block decomposition of the CPU build
-  (`<sparse>`, `<blockSize>`) on all MPI ranks of the launch.
+**Where the GPU build runs a case.**
+- **GPU.** The whole domain is one block on the GPU of MPI rank 0, in single precision. The
+  other ranks give back their GPU memory and wait for the end.
+- **CPU fallback.** At start-up the solver estimates the GPU memory of that block (about
+  190 bytes per voxel of the geometry's bounding box in single precision, e.g. 3.8 GB for
+  20 M voxels) and compares it with the free memory of the GPU. If the case does not fit, it
+  runs on the CPU instead, with the sparse multi-block decomposition (`<sparse>`, `<blockSize>`)
+  on all MPI ranks of the launch.
+- **Not on the GPU yet,** also run on the CPU:
+  - flow diverters with nonzero `linCoeff` or `quadCoeff`;
+  - free-outflow openings;
+  - `LES 1`;
+  - openings that touch an edge of the bounding box (geometry files of older preprocessor
+    versions).
+- **On the GPU:** velocity, Murray and pressure openings (also with waveforms), Newtonian and
+  Carreau-Yasuda fluid.
 - **How to launch.** Start the GPU build with as many MPI ranks as the CPU fallback should use.
-  On the GPU one rank does the work and the others wait.
+  The log says where the case runs and why (`Execution: GPU ...` or `Execution: CPU (...)`).
+  `<simulation><device>` forces one or the other.
 
-The log says which of the two was chosen. Single precision was checked against double on the
-pipe (test case 1): the pressure drop differs by 0.025 %.
+**Results and speed** (RTX A1000, details in TODO-GPU.md).
+- **Accuracy.** A GPU build in double precision gives the output of the CPU build, to round-off. In
+  single precision it agrees to float rounding, about 3·10⁻⁶. The pipe (test case 1) gives
+  78.70 Pa on the GPU against 78.72 Pa for the CPU in double precision.
+- **Speed.** The pipe validation (80 k steps) takes 67 s on the GPU against 263-358 s on 16 CPU
+  cores. NAP180 at 5 M voxels runs at about 730 M cell updates/s, 3.5 times the 16-core
+  single-precision CPU run.
+- **Output is still slow.** About 5 s per output or checkpoint at 5 M voxels: the fields are
+  written on one rank.
 
-Use the `mpirun` that belongs to the MPI a binary was built with.
-- With the HPC SDK first in `PATH`, `mpirun` is the SDK's Open MPI 5; a GCC build against the
-  Ubuntu Open MPI then needs `/usr/bin/mpirun`.
-- For runs of the GPU build on the CPU with several ranks, add `-x UCX_TLS=^cuda` to that
-  `mpirun`. Otherwise its CUDA-aware UCX treats the solver's host memory as GPU memory and the
-  run becomes several times slower.
+Output files and checkpoints have the same format on GPU and CPU; a run can be restarted on
+either.
+
+**MPI.**
+- Use the `mpirun` that belongs to the MPI a binary was built with. With the HPC SDK first in
+  `PATH`, `mpirun` is the SDK's Open MPI 5; a GCC build against the Ubuntu Open MPI then needs
+  `/usr/bin/mpirun`.
+- The GPU build sets `UCX_TLS=^cuda` and `OMPI_MCA_coll_ucc_enable=0` before `MPI_Init`, unless
+  they are already set. With the CUDA parts of HPC-X's UCX and UCC, CPU runs of the GPU build
+  were several times slower, and the waiting ranks of a GPU run crashed at the end.
 
 Compile-time switches in `globals.h`:
 
@@ -416,6 +436,7 @@ An annotated template is in `template_config.xml` (same as
 | `mode` | no | Boundary-condition mode: none (default), `murray` or `pzero`, see below |
 | `sparse` | no | `true` (default): only allocate the blocks that contain the vessel. `false`: allocate the whole bounding box. Both give identical results. |
 | `blockSize` | no | Block size of the sparse decomposition [lattice nodes], default 24 |
+| `device` | no | GPU build only: `auto` (default) runs on the GPU when the case is supported there and fits its memory, otherwise on the CPU; `gpu` makes that an error instead; `cpu` always runs on the CPU. See "GPU build". |
 
 The **simulated time is `cycle` × period**, where the period is the last time
 entry of the first waveform file found among the openings. At least one

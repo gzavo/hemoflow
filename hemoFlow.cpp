@@ -16,6 +16,12 @@
 #include "nonNewtonian.h"
 #include "io.h"
 #include "geometry.h"
+#ifdef HEMOFLOW_GPU
+#include "gpuSolver.h"
+#include <unistd.h>
+#endif
+
+#include <chrono>
 
 using namespace std;
 
@@ -76,6 +82,14 @@ MultiBlockLattice3D<T, DESCRIPTOR> *lattice = nullptr;
 MultiScalarField3D<int> *labelField = nullptr;   // Voxel labels (distributed)
 MultiTensorField3D<T, 2> *porosityField = nullptr;   // (linear, quadratic) resistance multipliers in porous voxels, 0 elsewhere (distributed)
 Box3D porousBox;   // Bounding box of the porous voxels
+
+// Where the time loop runs (doc/dev/TODO-GPU.md): <simulation><device> auto | gpu | cpu
+string deviceOption = "auto";
+bool gpuMode = false;   // The time loop runs on the GPU (one dense block on world rank 0)
+#ifdef HEMOFLOW_GPU
+GpuSolver *gpu = nullptr;                      // The GPU lattice, once the initial state is set
+MPI_Comm worldCommunicator = MPI_COMM_NULL;    // GPU mode with idle ranks: all ranks of the launch
+#endif
 
 
 namespace {
@@ -250,6 +264,18 @@ void setCarreauModel(SimPar &sim, CarreauParametersSI const& p, T rho)
     sim.carreau.a = p.a;
 }
 
+// Advance an opening by dt and impose its boundary value on the CPU lattice. With the GPU
+// lattice, imposeOpenings() writes all values to the GPU at the end instead.
+void advanceOpening(OpeningHandler& o, T dt)
+{
+    o.advanceTime(dt);
+#ifdef HEMOFLOW_GPU
+    if (gpu)
+        return;
+#endif
+    o.imposeValues(*lattice);
+}
+
 // Advance the openings by dt and impose their boundary values.
 void imposeOpenings(T dt)
 {
@@ -260,7 +286,7 @@ void imposeOpenings(T dt)
     // Phase I: openings with a prescribed velocity
     for (auto &o : openings) {
         if (o->getOpeningType() == OPENING_VELOCITY) {
-            o->progressTime(*lattice, dt);
+            advanceOpening(*o, dt);
             sumInflow += o->getImposedFluxLB();
         }
         else {
@@ -275,12 +301,52 @@ void imposeOpenings(T dt)
         if (o->getOpeningType() == OPENING_MURRAY) {
             T flowRate = -sumInflow * pow(o->getRadius() * 2, murrayExponent) / sumDiameterPower;  // Outflow is negative
             o->setBCParameterLB(flowRate / o->getProfileFlux());  // Peak velocity of the discrete profile
-            o->progressTime(*lattice, dt);
+            advanceOpening(*o, dt);
         }
         else if (o->getOpeningType() != OPENING_VELOCITY) {
-            o->progressTime(*lattice, dt);   // Pressure (and free outflow) openings
+            advanceOpening(*o, dt);   // Pressure (and free outflow) openings
         }
     }
+#ifdef HEMOFLOW_GPU
+    if (gpu)
+        gpu->imposeOpenings(openings);
+#endif
+}
+
+// GPU mode: the GPU state into the CPU lattice, with the current boundary values, for output,
+// checkpoints and diagnostics (io.cpp works on the CPU lattice)
+void syncCpuLattice()
+{
+#ifdef HEMOFLOW_GPU
+    if (!gpu)
+        return;
+    auto start = std::chrono::steady_clock::now();
+    gpu->copyTo(*lattice);
+    for (auto &o : openings)
+        o->imposeValues(*lattice);
+    pcout << "GPU state copied to the CPU lattice in "
+          << std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() << " s." << endl;
+#endif
+}
+
+T averageEnergy()
+{
+#ifdef HEMOFLOW_GPU
+    if (gpu)
+        return gpu->averageEnergy();
+#endif
+    return computeAverageEnergy(*lattice);
+}
+
+void collideAndStream()
+{
+#ifdef HEMOFLOW_GPU
+    if (gpu) {
+        gpu->collideAndStream();
+        return;
+    }
+#endif
+    lattice->collideAndStream();
 }
 
 void print_help()
@@ -391,7 +457,7 @@ void printBanner()
             << "********************************* " << endl;
     pcout << "Floating-point precision: " << (sizeof(T) == sizeof(float) ? "single" : "double") << endl;
 #ifdef HEMOFLOW_GPU
-    pcout << "GPU build (in development): the time loop still runs on the CPU." << endl;
+    pcout << "GPU build (in development, doc/dev/TODO-GPU.md)." << endl;
 #endif
 }
 
@@ -463,6 +529,13 @@ void readSimulationSection(XMLreader const& xml)
     outputCoordinatesGiven = readOptional(simXml, "simulation", "outputCoordinates", outputCoordinates);
     if (outputCoordinates != "stl" && outputCoordinates != "m")
         throw std::runtime_error("Unknown <simulation><outputCoordinates> '" + outputCoordinates + "' (valid: stl, m).");
+    readOptional(simXml, "simulation", "device", deviceOption);
+    if (deviceOption != "auto" && deviceOption != "gpu" && deviceOption != "cpu")
+        throw std::runtime_error("Unknown <simulation><device> '" + deviceOption + "' (valid: auto, gpu, cpu).");
+#ifndef HEMOFLOW_GPU
+    if (deviceOption == "gpu")
+        throw std::runtime_error("<simulation><device>gpu</device> needs the GPU build (cmake -DHEMOFLOW_GPU=ON); this build runs on the CPU.");
+#endif
 
     if (numCycles < 1)
         throw std::runtime_error("<simulation><cycle> must be at least 1.");
@@ -637,6 +710,14 @@ void createLattice(GeometryFile& geometry, vector<OpeningSpec> const& specs)
     envelopeWidth = hasPressureOpening ? 2 : 1;
     pcout << "Envelope width: " << envelopeWidth << endl;
 
+    if (gpuMode) {
+        // One dense block for the GPU. The GPU-side packing of MPI messages needs the blocking communicator.
+        defaultMultiBlockPolicy3D().toggleBlockingCommunication(true);
+        if (useSparse)
+            pcout << "GPU mode: one dense block (<sparse> and <blockSize> apply to CPU runs)." << endl;
+        useSparse = false;
+    }
+
     Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
     #if LES
         bulkDynamics = new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
@@ -786,6 +867,164 @@ void printSimulationParameters()
             << "U_max [m/s]: " << sim.U_max_lb * sim.C_l / sim.C_t << endl << endl;
 }
 
+#ifdef HEMOFLOW_GPU
+// Why the case cannot run on the GPU yet (empty: it can). doc/dev/TODO-GPU.md, Phases 2-4.
+std::string gpuUnsupportedReason(GeometryFile const& geometry, vector<OpeningSpec> const& specs)
+{
+    if (LES)
+        return "LES is not implemented on the GPU";
+    for (auto const& spec : specs) {
+        if (spec.type == OUTLET_FREEFLOW)
+            return "free-outflow openings are not implemented on the GPU";
+    }
+    // A device without resistance exerts no force (the CPU writes a zero force every step)
+    if (geometry.hasStent && geometry.numPorous > 0 && (linCoeff_lb != 0.0 || quadCoeff_lb != 0.0))
+        return "flow diverters are not on the GPU yet";
+    // Opening nodes on an edge of the bounding box (geometry files of older preprocessors)
+    int N[3] = {geometry.nx, geometry.ny, geometry.nz};
+    for (auto const& entry : geometry.openingNodes)
+        for (Index3D const& node : entry.second) {
+            int c[3] = {node.x, node.y, node.z};
+            int faces = 0;
+            for (int a = 0; a < 3; a++)
+                faces += (c[a] == 0 || c[a] == N[a] - 1) ? 1 : 0;
+            if (faces > 1)
+                return "opening " + std::to_string(entry.first) + " touches an edge of the bounding box (older geometry file)";
+        }
+    return "";
+}
+
+// Where the time loop runs (collective): on the GPU of world rank 0 as one dense block if the
+// case is supported there and the block fits the free GPU memory, otherwise on the CPU with
+// the usual decomposition. <device>gpu</device> makes a missing GPU or an unsupported case an
+// error, <device>cpu</device> skips the GPU.
+bool chooseGpu(GeometryFile const& geometry, vector<OpeningSpec> const& specs)
+{
+    std::string reason = (deviceOption == "cpu") ? "<device>cpu</device>" : gpuUnsupportedReason(geometry, specs);
+
+    // The other ranks on the node of rank 0 release their CUDA contexts in GPU mode (about 120 MB
+    // each, measured); count 100 MB for them.
+    MPI_Comm node;
+    MPI_Comm_split_type(global::mpi().getGlobalCommunicator(), MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
+    int nodeRanks = 1;
+    MPI_Comm_size(node, &nodeRanks);
+    MPI_Comm_free(&node);
+
+    int found = 0;
+    double available = 0.0, total = 0.0;
+    std::string name;
+    if (global::mpi().isMainProcessor()) {
+        std::size_t freeBytes = 0, totalBytes = 0;
+        found = queryGpu(name, freeBytes, totalBytes) ? 1 : 0;
+        available = (double)freeBytes + (nodeRanks - 1) * 100e6;
+        total = (double)totalBytes;
+    }
+    global::mpi().bCast(&found, 1);
+    global::mpi().bCast(&available, 1);
+    global::mpi().bCast(&total, 1);
+
+    // One block with its envelope (two cells with pressure openings), plus 5 % and 256 MB for the
+    // CUDA context and the runtime
+    bool hasPressure = std::any_of(specs.begin(), specs.end(), [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
+    int e = hasPressure ? 2 : 1;
+    double cells = (double)(geometry.nx + 2 * e) * (geometry.ny + 2 * e) * (geometry.nz + 2 * e);
+    double needed = cells * gpuBytesPerCell() * 1.05 + 256e6;
+    std::ostringstream memory;
+    memory.precision(2);
+    memory << std::fixed << needed / 1e9 << " GB needed, " << available / 1e9 << " GB of " << total / 1e9 << " GB available";
+    if (reason.empty() && !found)
+        reason = "no GPU found";
+    if (reason.empty() && needed > available)
+        reason = "the domain does not fit the GPU memory in one block (" + memory.str() + ")";
+
+    if (reason.empty()) {
+        pcout << "Execution: GPU (" << name << "), one block of " << geometry.nx << " x " << geometry.ny << " x " << geometry.nz
+              << " cells, " << memory.str() << "." << endl;
+        return true;
+    }
+    if (deviceOption == "gpu")
+        throw std::runtime_error("<simulation><device>gpu</device>, but " + reason + ".");
+    pcout << "Execution: CPU (" << reason << ")." << endl;
+    return false;
+}
+
+// GPU mode: Palabos continues on world rank 0 alone. The other ranks release their GPU and
+// wait, without spinning, for the end of the run (finishRun); they do not return.
+void enterGpuMode()
+{
+    gpuMode = true;
+    MPI_Comm world = global::mpi().getGlobalCommunicator();
+    int rank = 0, size = 1;
+    MPI_Comm_rank(world, &rank);
+    MPI_Comm_size(world, &size);
+    if (size == 1)
+        return;
+    MPI_Comm gpuCommunicator;
+    MPI_Comm_split(world, rank == 0 ? 0 : MPI_UNDEFINED, 0, &gpuCommunicator);
+    if (rank == 0) {
+        worldCommunicator = world;
+        global::mpi().init(gpuCommunicator);
+        pcout << "The other " << size - 1 << " MPI ranks wait for the end of the GPU run." << endl;
+        return;
+    }
+    releaseGpu();
+    MPI_Request request;
+    MPI_Ibarrier(world, &request);
+    int done = 0;
+    while (!done) {
+        MPI_Test(&request, &done, MPI_STATUS_IGNORE);
+        if (!done)
+            usleep(100000);
+    }
+    int code = 0;
+    MPI_Bcast(&code, 1, MPI_INT, 0, world);
+    MPI_Finalize();
+    std::_Exit(code);
+}
+
+// GPU mode: a CPU lattice with placeholder dynamics (gpuSolver.h) and the current state of the
+// CPU lattice is copied to the GPU. The CPU lattice keeps the real dynamics for output and
+// checkpoints.
+void startGpu()
+{
+    pcout << "Copying the lattice to the GPU..." << endl;
+    Box3D box = lattice->getBoundingBox();
+    auto *placeholder = new MultiBlockLattice3D<T, DESCRIPTOR>(
+        lattice->getMultiBlockManagement(), defaultMultiBlockPolicy3D().getBlockCommunicator(),
+        defaultMultiBlockPolicy3D().getCombinedStatistics(), defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
+        new BGKdynamics<T, DESCRIPTOR>(sim.omega));
+    for (auto &o : openings)
+        o->setPlaceholderBCType(*placeholder, sim.omega);
+    defineDynamics(*placeholder, *labelField, box, new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);
+    defineDynamics(*placeholder, *labelField, box, new BounceBack<T, DESCRIPTOR>(1.0), (int)WALL);
+    copy(*lattice, box, *placeholder, box, modif::staticVariables);
+    for (auto &o : openings)
+        o->imposeValues(*placeholder);
+    gpu = new GpuSolver(*placeholder, openings, sim);
+    delete placeholder;
+
+    std::string name;
+    std::size_t freeBytes = 0, totalBytes = 0;
+    if (queryGpu(name, freeBytes, totalBytes))
+        pcout << "GPU memory in use: " << (totalBytes - freeBytes) / 1e9 << " GB of " << totalBytes / 1e9 << " GB." << endl;
+}
+#endif
+
+// GPU mode with idle ranks: release them, with the exit code of the run
+int finishRun(int code)
+{
+#ifdef HEMOFLOW_GPU
+    if (worldCommunicator != MPI_COMM_NULL) {
+        MPI_Request request;
+        MPI_Ibarrier(worldCommunicator, &request);
+        MPI_Wait(&request, MPI_STATUS_IGNORE);
+        MPI_Bcast(&code, 1, MPI_INT, 0, worldCommunicator);
+        worldCommunicator = MPI_COMM_NULL;
+    }
+#endif
+    return code;
+}
+
 // Initial state (or checkpoint), time loop, output and checkpoints. Returns the exit code.
 int runSimulation(std::string const& outDir)
 {
@@ -830,8 +1069,6 @@ int runSimulation(std::string const& outDir)
     pcout << "Defining walls..." << std::endl;
     defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);  // Reference density, so outside cells report 0 Pa
     defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new BounceBack<T, DESCRIPTOR>(1.0), (int)WALL);
-    delete labelField;   // Not needed any more
-    labelField = nullptr;
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
     initializeAtEquilibrium (*lattice, lattice->getBoundingBox(), (T)1.0, Array<T,3>((T)0.,(T)0.,(T)0.) );
@@ -867,21 +1104,32 @@ int runSimulation(std::string const& outDir)
         pcout << "Checkpoint at iteration " << stat_cycle << " (" << stat_cycle * sim.C_t << " s) loaded successfully." << std::endl;
     }
 
+#ifdef HEMOFLOW_GPU
+    if (gpuMode)
+        startGpu();
+#endif
+    delete labelField;   // Not needed any more
+    labelField = nullptr;
+
     pcout << "Starting computation..." << endl;
+    const int firstStep = stat_cycle;
+    auto loopStart = std::chrono::steady_clock::now();
 
     while(stat_cycle < totalSteps)
     {
         if(stat_cycle % 200 == 0) {
-            T cE = computeAverageEnergy(*lattice);
+            T cE = averageEnergy();
             pcout << "\rTime: " << stat_cycle*sim.C_t << "s / " << simLength << "s" << " [" << stat_cycle << " / " << totalSteps << "] " << " - Energy: " << cE << endl;
 
             // Capture numerical divergence if appears
             if (std::isnan(cE)){
                 pcout << "ERROR: NaN average energy! Saving state and stopping simulation" << std::endl;
+                syncCpuLattice();
                 writeVTK(*lattice, sim, stat_cycle, outputOptions);
                 return 1;
             }
             if (DEBUG) {
+                syncCpuLattice();
                 T sumMeasured = 0.0;
                 for (auto &o : openings) {
                     T measured = o->measureFlowRate(*lattice, sim);
@@ -899,7 +1147,7 @@ int runSimulation(std::string const& outDir)
         imposeOpenings(sim.C_t);
 
         // Calculate next step
-        lattice->collideAndStream();
+        collideAndStream();
 
         // Advance time
         stat_cycle++;
@@ -907,6 +1155,7 @@ int runSimulation(std::string const& outDir)
         // Save output
         if(stat_cycle >= lastCycleStartIter && stat_cycle % saveFrequency == 0) {
             pcout << "Writing output at: " << stat_cycle << " (" << stat_cycle*sim.C_t << " s)." << endl;
+            syncCpuLattice();
             writeVTK(*lattice, sim, stat_cycle, outputOptions);
         }
 
@@ -926,9 +1175,16 @@ int runSimulation(std::string const& outDir)
             global::mpi().barrier();
 
             plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
+            syncCpuLattice();
             saveBinaryBlock(*lattice, chkDataFile);
         }
     } // End of main loop
+
+    double loopSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - loopStart).count();
+    if (stat_cycle > firstStep)
+        pcout << "Time loop: " << loopSeconds << " s for " << stat_cycle - firstStep << " steps ("
+              << (double)Nx * Ny * Nz * (stat_cycle - firstStep) / loopSeconds * 1e-6
+              << " M updates/s of the domain box, " << (gpuMode ? "GPU" : "CPU") << ")." << endl;
 
     pcout << endl << "Simulation done successfully :)" << endl;
 
@@ -938,6 +1194,15 @@ int runSimulation(std::string const& outDir)
 // *** Main simulation entry point
 int main(int argc, char *argv[])
 {
+#ifdef HEMOFLOW_GPU
+    // HPC-X: without its CUDA transports UCX does not stage the solver's (managed) host memory
+    // through the GPU, which made CPU runs of the GPU build several times slower. The single-GPU
+    // mode sends no MPI messages. (doc/dev/TODO-GPU.md, Phase 2)
+    setenv("UCX_TLS", "^cuda", 0);
+    // HPC-X: UCC collectives keep CUDA resources that MPI_Finalize destroys; on the ranks that
+    // released their CUDA context during a GPU run that crashed. Palabos uses few collectives.
+    setenv("OMPI_MCA_coll_ucc_enable", "0", 0);
+#endif
     plbInit(&argc, &argv);
     printBanner();
 
@@ -977,20 +1242,24 @@ int main(int argc, char *argv[])
         GeometryFile geometry(npzFileName);
         setUpFromGeometry(xml, geometry);
         vector<OpeningSpec> specs = readOpenings(xml, geometry);
+#ifdef HEMOFLOW_GPU
+        if (chooseGpu(geometry, specs))
+            enterGpuMode();   // The other ranks wait there until the end of the run
+#endif
         createLattice(geometry, specs);
         createFieldsAndOpenings(geometry, specs);
         setCyclePeriod();
     }
     catch (PlbIOException& exception) {
         pcout << "ERROR while processing input file " << paramXmlFileName << ": " << exception.what() << std::endl;
-        return -1;
+        return finishRun(-1);
     }
     catch (std::exception& exception) {
         pcout << "ERROR: " << exception.what() << std::endl;
-        return -1;
+        return finishRun(-1);
     }
 
     printSimulationParameters();
 
-    return runSimulation(outDir);
+    return finishRun(runSimulation(outDir));
 }

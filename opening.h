@@ -33,6 +33,10 @@ public:
     void setBCParameter(T parameter, const SimPar& s);    // SI value (velocity [m/s] or gauge pressure [Pa]) -> lattice units
     void setBCParameterLB(T parameter_lb) { bcParameter = parameter_lb; }
     void setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice);   // Instantiates the boundary condition on the lattice
+    // GPU placeholder lattice (gpuSolver.h), without the data processors that rebuild the nodes on
+    // the CPU: velocity openings get RegularizedVelocityBoundaryDynamics around BGK, pressure
+    // openings RegularizedDensityBoundaryDynamics around TRT, with this omega
+    void setPlaceholderBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T omega) const;
     void advanceTime(T dt);   // Advance the waveform by dt
     void imposeValues(MultiBlockLattice3D<T, DESCRIPTOR>& lattice) const;   // Impose the current boundary values
     // Advance time by dt and impose the boundary values
@@ -48,6 +52,17 @@ public:
     OpeningType getOpeningType() const { return type; }
     bool isVelocityType() const { return type == OPENING_VELOCITY || type == OPENING_MURRAY; }
     size_t getNumNodes() const { return nodes.size(); }
+    std::vector<Index3D> const& getNodes() const { return nodes; }
+    // Unit-peak velocity of a node of a velocity opening; false if the node has none (then
+    // imposeValues() leaves its velocity unchanged)
+    bool getUnitProfile(Index3D const& node, vec3d& u) const
+    {
+        VelocityProfileMap::const_iterator it = profile.find(gT(node.x, node.y, node.z));
+        if (it == profile.end())
+            return false;
+        u = it->second;
+        return true;
+    }
     T getRadius() const { return R; }
     vec3d getCenter() const { return center; }
     Box3D const& getBoundingBox() const { return boundingBox; }

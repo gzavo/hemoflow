@@ -28,6 +28,20 @@ std::string labelStr(int label)
     return "Opening (label " + std::to_string(label) + ")";
 }
 
+// GPU placeholders: dynamics whose names Palabos maps to GPU models (gpuSolver.h)
+template <int direction, int orientation>
+void definePlaceholder(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, std::vector<Box3D> const& runs, T omega, bool velocity)
+{
+    for (Box3D const& run : runs) {
+        if (velocity)
+            defineDynamics(lattice, run, new RegularizedVelocityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
+                                             new BGKdynamics<T, DESCRIPTOR>(omega)));
+        else
+            defineDynamics(lattice, run, new RegularizedDensityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
+                                             new TRTdynamics<T, DESCRIPTOR>(omega)));
+    }
+}
+
 }  // namespace
 
 
@@ -381,6 +395,22 @@ void OpeningHandler::setBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice)
 
         for (Box3D const& run : runs)
             integrateProcessingFunctional(new VirtualOutlet<T, DESCRIPTOR>(1.0, domain, 1), run, bcargs, 2);
+    }
+}
+
+void OpeningHandler::setPlaceholderBCType(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T omega) const
+{
+    bool velocity = isVelocityType();
+    if (!velocity && type != OPENING_PRESSURE)
+        throw std::runtime_error(labelStr(label) + ": free-outflow openings have no GPU placeholder.");
+    int orientation = -faceSign;   // Palabos: sign of the outward normal
+    switch (faceAxis * 2 + (orientation > 0 ? 1 : 0)) {
+        case 0: definePlaceholder<0, -1>(lattice, runs, omega, velocity); break;
+        case 1: definePlaceholder<0, 1>(lattice, runs, omega, velocity); break;
+        case 2: definePlaceholder<1, -1>(lattice, runs, omega, velocity); break;
+        case 3: definePlaceholder<1, 1>(lattice, runs, omega, velocity); break;
+        case 4: definePlaceholder<2, -1>(lattice, runs, omega, velocity); break;
+        default: definePlaceholder<2, 1>(lattice, runs, omega, velocity); break;
     }
 }
 

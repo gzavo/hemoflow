@@ -1,7 +1,7 @@
 # Running HemoFlow on NVIDIA GPUs (plan)
 
-Status: Phases 0 (toolchain) and 1 (shared per-cell physics on the CPU) done on 21 November
-2026, see "Phase 0 results" and Phase 1; Phase 2 (GPU skeleton) next. First investigated on 10 November 2026 (that version is in git, commit bca490e);
+Status: Phases 0-3 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
+openings, Newtonian and Carreau fluid on the GPU. Phase 4 (flow diverter on the GPU) is next. First investigated on 10 November 2026 (that version is in git, commit bca490e);
 revised on 21 November 2026 after a second reading of the vendored Palabos (`palabos/src`), the
 upstream GPU examples and the workstation. Target precision: single (decided on 21 November
 2026); double only if single turns out insufficient. Palabos stays an external dependency: the
@@ -425,6 +425,33 @@ comparable to rounding.
 
 ### Phase 2: GPU skeleton
 
+**Status: done (22 November 2026).**
+- **Code.** `gpuSolver.h/.cpp`, the GPU mode in `hemoFlow.cpp`, `<simulation><device>auto|gpu|cpu`
+  and `OpeningHandler::setPlaceholderBCType`.
+- **Supported on the GPU.** Fluid (Newtonian and Carreau), walls, outside voxels, velocity and
+  Murray openings. Other cases fall back to the CPU with the reason in the log: pressure openings
+  (Phase 3), flow diverters with nonzero coefficients (Phase 4), free outflow, LES, openings on a
+  box edge.
+- **Accuracy.** On the velocity-velocity pipe, GPU double equals GCC double exactly in the output,
+  and GPU single matches CPU single to 2·10⁻⁶.
+- **Restart and checkpoints.** A GPU restart reproduces velocity, pressure and stress exactly.
+  The checkpoint files differ only in non-fluid cells, which hold the populations that arrive
+  from beyond the domain. CPU checkpoints continue on the GPU.
+- **Several ranks.** With 8 ranks, rank 0 runs the GPU (identical output) and 7 ranks wait with
+  their CUDA contexts released. An error after the decision releases them (exit 255).
+- **CPU path.** Byte-identical to the committed code (harness, 7 cases).
+- **Findings.**
+  - Velocity openings: on the CPU, `createLocalBoundaryCondition3D` rebuilds the nodes after
+    streaming (`WrappedLocalBoundaryFunctional3D`, `automaticPrepareCollision = false`). The GPU
+    does the same: external collide-and-stream, then the node rebuild, then the exchange. A
+    placeholder lattice must not carry that processor (its copy kept a dangling pointer).
+  - HPC-X: `OMPI_MCA_coll_ucc_enable=0` is set before `MPI_Init`. UCC's CUDA transport crashed
+    `MPI_Finalize` on the ranks that had released their context.
+- **Memory fallback, tested.** A pipe of 45.5 M voxels (9.1 GB estimated in one single block) runs
+  on the CPU with the sparse decomposition, on all ranks. With `<device>gpu</device>` it stops
+  with the reason.
+
+
 - [ ] `toggleBlockingCommunication(true)` before any lattice is created (GPU build only).
 - [ ] Execution policy of the GPU build (decided 21 November 2026, README "GPU build"):
   - **Default.** The whole domain is one dense block on the GPU, in single precision.
@@ -458,28 +485,40 @@ comparable to rounding.
 - [ ] First GPU run: the pipe with a velocity inlet and a velocity outlet (no pressure opening),
       compared with the CPU.
 
-### Phase 3: openings
+### Phase 3: openings (done 22 November 2026)
 
-- [ ] Velocity and Murray openings: per-block node lists with the unit profile; a per-step
-      kernel writes u = profile × (peak × waveform) into the dynamic scalars of the bulk and
-      envelope copies; the functor completes the node (Phase 1 function) and then applies the
-      bulk collision.
-- [ ] Pressure openings: GPU processor over a node list per block (not per row as on the CPU,
-      which would be one full-block sweep per row).
-  - Per node it uses the imposed ρ (dynamic scalar), the boundary velocity from the known
-    populations, one-sided normal and central in-plane velocity differences, and
-    complete-regularizes the populations.
-  - The neighbour velocity depends on the tag: 0 for walls, j/ρ + F/2 for fluid, the boundary
-    velocity for pressure nodes, the imposed u for velocity nodes.
-  - Two passes (Phase 1 findings): first the velocities of all pressure nodes into a buffer,
-    then the rebuild with `CellPhysics::pressureNodeGradient` / `completePressureNode`.
-  - Envelope width 2, as on the CPU.
-  - The functor then applies only the bulk collision. Keep ω∞ in the condition, as on the CPU
-    (TODO.md section 3), unless both builds change.
-- [ ] Refuse free outflow (type 4) and `LES 1` in the GPU build with a clear message.
-- [ ] Energy check and `-d` flow rates: GPU reductions (`transform_reduce`) with HemoFlow's
-      velocity definition (j/ρ + F/2 for fluid, imposed u at velocity nodes). For the debug
-      flow rates, a copy to lattice (1) every 200 steps is also acceptable.
+- [x] **Velocity and Murray openings** (Phase 2).
+  - Per-block node lists with the unit profile; before each step a kernel writes
+    u = profile × (peak × waveform) into the dynamic scalars, rounded as on the CPU.
+  - After streaming, `CellPhysics::completeVelocityNode` rebuilds the nodes, as
+    `WrappedLocalBoundaryFunctional3D` does on the CPU.
+- [x] **Pressure openings** (`gpuSolver.cpp`).
+  - Placeholder `RegularizedDensityBoundaryDynamics >> TRT`, with the imposed rhoBar in its
+    dynamic scalar.
+  - After streaming, two passes: the velocities of all pressure nodes into a buffer, then the
+    rebuild from the neighbour velocities.
+  - The neighbour types (fluid, wall or outside, velocity node, pressure node) are resolved once
+    on the host.
+  - Envelope width 2 in the memory estimate. ω∞ in the condition, as on the CPU.
+- [x] Free outflow, `LES 1` and openings on a box edge run on the CPU, with the reason in the log;
+      with `<device>gpu</device>` they are an error.
+- [x] **Energy check.** A GPU reduction with the velocity of each tag (`GpuSolver::averageEnergy`).
+      The `-d` flow rates use the copy to the CPU lattice every 200 steps.
+- **Verification** (GPU against CPU, same case):
+  - **Pipe** with a 0 Pa outlet, with a 100 Pa outlet and waveform, and Carreau. Double: velocity
+    within 3·10⁻¹¹, pressure identical in the output. Single: 3·10⁻⁶.
+  - **Full pipe validation** (`pipe.xml`, 80 k steps, single): `pressure_drop.py` gives 78.70 Pa
+    and flow rates 1.483 / 1.485·10⁻⁵ m³/s (CPU: 78.70 single, 78.72 double). It took 67 s,
+    against 263 / 358 s for 16 CPU cores in single / double.
+  - **NAP180 5 M, Murray mode** (velocity inlet, Murray outlets, 0 Pa outlet), flow diverter
+    with zero coefficients, Newtonian and Carreau. Double: output identical. Single: 2-4·10⁻⁶.
+- **Speed** (NAP180 5 M dense, 400 steps without output):
+  - GPU single 2.8 s, i.e. 728 M updates/s of the box;
+  - CPU single, 16 ranks, sparse: 9.8 s.
+
+  With output every 200 steps the GPU took 18.6 s. Each output or checkpoint costs about 5 s:
+  the copy from the GPU takes 0.1 s, the rest is `writeVTK` / `saveBinaryBlock` on one rank over
+  the dense box (see Phase 6). Setup on one rank takes about 15 s at 5 M voxels.
 
 ### Phase 4: porous force and Carreau
 
@@ -545,7 +584,15 @@ comparable to rounding.
       MPI (the HPC SDK's HPC-X) with `USE_CUDA_MALLOC`; GPUDirect RDMA if the cluster has it.
       The exchange does not overlap the computation, so each GPU should hold several million
       cells; small cases scale over few GPUs only.
-- [ ] Document the GPU build and launch in the README.
+- [ ] Output in GPU mode: about 5 s per output at 5 M voxels, against about 1 s on 16 CPU ranks,
+      because `writeVTK` runs on one rank over the dense box. Options:
+  - compute the output fields on the GPU (velocity, pressure, stress, viscosity, with the
+    moments of each tag);
+  - write only the fluid voxels;
+  - let the waiting ranks write.
+
+  Setup on one rank (about 15 s at 5 M voxels) could use the same help.
+- [x] GPU build and launch documented in the README (22 November 2026).
 
 ## Flow diverters and coils
 
