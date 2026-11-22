@@ -193,9 +193,9 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       diverged in the pipe case (NaN at step 1400) and changes NAP180 by 0.7 m/s, so it is
       not an option. Possible: a pressure condition that reads only one cell deep
       (e.g. Zou/He or an anti-bounce-back outlet) and re-verify against the pipe.
-- [ ] NVIDIA GPUs: Palabos' GPU lattice alone does not cover HemoFlow's physics and boundary
-      conditions; what a port needs, including several GPUs and nodes, is planned in
-      [TODO-GPU.md](TODO-GPU.md).
+- [x] NVIDIA GPUs (November 2026, [TODO-GPU.md](TODO-GPU.md), Phases 0-6): the GPU build runs
+      the time loop on one or several GPUs in single precision. Open: speed and scaling on a
+      machine with several GPUs, CUDA-aware MPI.
 
 ## 5. Code structure (C++)
 

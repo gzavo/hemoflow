@@ -34,7 +34,9 @@
 //   6. with several blocks: envelope copies of the opening nodes get all populations from the
 //      block that owns the node. Palabos' GPU exchange copies only the populations that streaming
 //      within the receiving block cannot provide, which is exact for plain streaming, but the
-//      owner has rebuilt all populations of an opening node after streaming.
+//      owner has rebuilt all populations of an opening node after streaming. Between blocks of
+//      the same process a GPU kernel copies them, between processes (several GPUs) an MPI
+//      message per pair of processes.
 //
 // The CPU lattice with the real dynamics stays: copyTo() brings the GPU state into it for
 // output, checkpoints and diagnostics, so that io.cpp and the checkpoint format do not change.
@@ -47,8 +49,20 @@
 #include <string>
 #include <vector>
 
-// The GPU of this process. Returns false if there is none.
+// The current GPU of this process. Returns false if there is none.
 bool queryGpu(std::string& name, std::size_t& freeBytes, std::size_t& totalBytes);
+
+// The GPUs this process can see (CUDA_VISIBLE_DEVICES), in CUDA's order: an id that is the
+// same in every process (the UUID) and the PCI bus address, for the assignment of GPUs to ranks
+struct GpuDevice {
+    std::string uuid;
+    std::string pciBus;
+};
+std::vector<GpuDevice> visibleGpus();
+
+// Make a visible GPU (index in visibleGpus()) the current one of this process, before the GPU
+// lattice is created. Returns false if CUDA refuses.
+bool selectGpu(int device);
 
 // Release the CUDA context of this process (MPI ranks that wait while another rank uses the
 // GPU). Afterwards this process must not touch memory it allocated before.
@@ -77,6 +91,8 @@ public:
     GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std::vector<OpeningHandler*> const& openings,
               SimPar const& sim, GpuPorousMedium const& porous);
     ~GpuSolver();
+    GpuSolver(GpuSolver const&) = delete;   // Owns the GPU lattice and pinned buffers
+    GpuSolver& operator=(GpuSolver const&) = delete;
 
     // One time step (collision, streaming, opening nodes, porous force, envelope exchange,
     // opening-node envelope copies)
@@ -99,6 +115,11 @@ public:
     // Envelope copy of an opening node and its owner cell
     struct CellPair {
         plint from, to;   // Linear indices in the owner block and in the block with the copy
+    };
+    // A cell of a local block whose populations go to or come from another process
+    struct RemoteCell {
+        AtomicAcceleratedLattice3D<T, DESCRIPTOR>* block;
+        plint cell;       // Linear index in the block
     };
     // Fluid cell in the porous medium
     struct PorousCell {
@@ -137,6 +158,12 @@ private:
         AtomicAcceleratedLattice3D<T, DESCRIPTOR>* to;
         std::vector<CellPair> cells;
     };
+    // Opening-node cells exchanged with one other process, in the same order on both sides
+    struct RemoteCopies {
+        int rank;                        // The other process
+        std::vector<RemoteCell> cells;   // Owner cells (sent) or envelope copies (received)
+        T* buffer;                       // Pinned host memory, cells.size() * q populations
+    };
     struct PorousGroup {
         AtomicAcceleratedLattice3D<T, DESCRIPTOR>* block;
         std::vector<PorousCell> cells;   // In the bulk of the block; the exchange fills the envelope
@@ -146,13 +173,16 @@ private:
     void completePressureNodes();
     void applyPorousForce();
     void copyNodeEnvelopes();
+    void freeMessageBuffers();
 
     AcceleratedLattice3D<T, DESCRIPTOR>* lattice;
     std::vector<NodeGroup<VelocityNode> > velocityNodes;
     std::vector<NodeGroup<PressureNode> > pressureNodes;
     std::vector<Array<T, 3> > pressureVelocities;   // Velocity buffer of the pressure nodes
     std::vector<PorousGroup> porousCells;
-    std::vector<EnvelopeCopies> nodeCopies;   // Per (owner block, block with copies)
+    std::vector<EnvelopeCopies> nodeCopies;   // Per (owner block, block with copies), both local
+    std::vector<RemoteCopies> nodeSends, nodeReceives;   // Per other process
+    mutable T* staging = nullptr;             // Pinned host buffer of copyTo, allocated at the first copy
     T linCoeff, quadCoeff;      // Porous coefficients a, b (lattice units)
     T omega;                    // Newtonian omega, or the one at infinite shear (Carreau)
     bool nonNewtonian;

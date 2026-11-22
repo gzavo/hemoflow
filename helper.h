@@ -42,9 +42,10 @@ inline long long gT2D(int size_y ,int x, int y){
 
 
 // Simple linear interpolation
-inline T interpolate(T x1, T x2, T xi, T y1, T y2)
+template <typename R>
+inline R interpolate(R x1, R x2, R xi, R y1, R y2)
 {
-    T r = (xi-x1)/(x2-x1);
+    R r = (xi-x1)/(x2-x1);
     return y1+r*(y2-y1);
 }
 

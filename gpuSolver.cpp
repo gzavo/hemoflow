@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <execution>
 #include <functional>
 #include <map>
@@ -186,6 +187,30 @@ void copyCells(Block const* from, Block* to, GpuSolver::CellPair const* pairs, s
     });
 }
 
+// The same between processes: the populations of owner cells into a message buffer, and from
+// a received buffer into the envelope copies
+void packCells(GpuSolver::RemoteCell const* cells, std::size_t n, T* buffer)
+{
+    auto indices = std::views::iota(std::size_t(0), n);
+    std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [=](std::size_t j) {
+        Array<T, D::q> f;
+        cells[j].block->pullPop(cells[j].cell, f);
+        for (int k = 0; k < D::q; ++k)
+            buffer[j * D::q + k] = f[k];
+    });
+}
+
+void unpackCells(GpuSolver::RemoteCell const* cells, std::size_t n, T const* buffer)
+{
+    auto indices = std::views::iota(std::size_t(0), n);
+    std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [=](std::size_t j) {
+        Array<T, D::q> f;
+        for (int k = 0; k < D::q; ++k)
+            f[k] = buffer[j * D::q + k];
+        cells[j].block->pushPop(cells[j].cell, f);
+    });
+}
+
 // Face index 0..5 of (direction, orientation), for the dispatch to the templates
 int faceIndex(int direction, int orientation)
 {
@@ -205,6 +230,32 @@ bool queryGpu(std::string& name, std::size_t& freeBytes, std::size_t& totalBytes
         return false;
     name = properties.name;
     return true;
+}
+
+std::vector<GpuDevice> visibleGpus()
+{
+    std::vector<GpuDevice> devices;
+    int count = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess)
+        return devices;
+    for (int d = 0; d < count; ++d) {
+        cudaDeviceProp properties;
+        if (cudaGetDeviceProperties(&properties, d) != cudaSuccess) {
+            devices.push_back(GpuDevice {"unknown-" + std::to_string(d), "unknown"});   // Keeps the indices
+            continue;
+        }
+        char uuid[33], bus[32];
+        for (int k = 0; k < 16; ++k)
+            std::snprintf(uuid + 2 * k, 3, "%02x", (unsigned char)properties.uuid.bytes[k]);
+        std::snprintf(bus, sizeof(bus), "%04x:%02x:%02x.0", properties.pciDomainID, properties.pciBusID, properties.pciDeviceID);
+        devices.push_back(GpuDevice {uuid, bus});
+    }
+    return devices;
+}
+
+bool selectGpu(int device)
+{
+    return cudaSetDevice(device) == cudaSuccess;
 }
 
 void releaseGpu()
@@ -234,6 +285,7 @@ GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std:
         throw std::runtime_error("GPU lattice: the placeholder lattice must not have data processors.");
     lattice = new AcceleratedLattice3D<T, DESCRIPTOR>(placeholder);
     auto fail = [this](std::string const& message) {
+        freeMessageBuffers();
         delete lattice;
         lattice = nullptr;
         throw std::runtime_error("GPU lattice: " + message);
@@ -370,43 +422,86 @@ GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std:
         }
     }
 
-    // Envelope copies of the opening nodes, with the cell of the block that owns the node (the
-    // one whose bulk contains it). None with a single block.
+    // Envelope copies of the opening nodes: every block whose domain (bulk and envelope) contains
+    // a node, other than the block whose bulk contains it (the owner), gets the owner's
+    // populations after each exchange. The pairs come from the global block structure in the
+    // same order on all processes, so that the cells of a message between two processes match
+    // one by one. None with a single block.
     {
         MultiBlockManagement3D const& management = lattice->getMultiBlockManagement();
-        std::map<std::pair<plint, plint>, std::size_t> copyGroup;   // (owner id, copy id) -> nodeCopies index
-        auto localIndex = [](Block const& block, Index3D const& node, plint& i) {
-            Dot3D location = block.getLocation();
+        std::map<plint, Box3D> const& bulks = management.getSparseBlockStructure().getBulks();
+        ThreadAttribution const& attribution = management.getThreadAttribution();
+        int const me = global::mpi().getRank();
+        auto localIndex = [this](plint id, Index3D const& node, Block*& block, plint& i) {
+            block = lattice->getBlockLattices().at(id);
+            Dot3D location = block->getLocation();
             plint iX = node.x - location.x, iY = node.y - location.y, iZ = node.z - location.z;
-            if (iX < 0 || iY < 0 || iZ < 0 || iX >= block.getNx() || iY >= block.getNy() || iZ >= block.getNz())
-                return false;
-            i = iZ + block.getNz() * (iY + block.getNy() * iX);
-            return true;
+            if (iX < 0 || iY < 0 || iZ < 0 || iX >= block->getNx() || iY >= block->getNy() || iZ >= block->getNz())
+                throw std::runtime_error("an opening node lies outside the block that should hold it.");
+            i = iZ + block->getNz() * (iY + block->getNy() * iX);
         };
-        for (OpeningHandler const* opening : openings) {
-            for (Index3D const& node : opening->getNodes()) {
-                plint owner = -1, ownerCell = -1;
-                for (auto const& entry : lattice->getBlockLattices())
-                    if (contained(node.x, node.y, node.z, management.getBulk(entry.first)) &&
-                        localIndex(*entry.second, node, ownerCell)) {
-                        owner = entry.first;
-                        break;
-                    }
-                if (owner < 0)
-                    continue;   // Owned by a block of another process (several GPUs, Phase 6)
-                for (auto const& entry : lattice->getBlockLattices()) {
-                    plint i = -1;
-                    if (entry.first == owner || !localIndex(*entry.second, node, i))
+        std::map<std::pair<plint, plint>, std::size_t> copyGroup;   // (owner id, copy id) -> nodeCopies index
+        std::map<int, std::size_t> sendIndex, receiveIndex;          // Other process -> nodeSends/nodeReceives index
+        try {
+            for (OpeningHandler const* opening : openings) {
+                for (Index3D const& node : opening->getNodes()) {
+                    plint owner = -1;
+                    for (auto const& bulk : bulks)
+                        if (contained(node.x, node.y, node.z, bulk.second)) {
+                            owner = bulk.first;
+                            break;
+                        }
+                    if (owner < 0)
                         continue;
-                    auto key = std::make_pair(owner, entry.first);
-                    auto it = copyGroup.find(key);
-                    if (it == copyGroup.end()) {
-                        it = copyGroup.insert(std::make_pair(key, nodeCopies.size())).first;
-                        nodeCopies.push_back(EnvelopeCopies {lattice->getBlockLattices().at(owner), entry.second, {}});
+                    int ownerRank = attribution.getMpiProcess(owner);
+                    for (auto const& bulk : bulks) {
+                        plint id = bulk.first;
+                        if (id == owner || !contained(node.x, node.y, node.z, management.getEnvelope(id)))
+                            continue;
+                        int copyRank = attribution.getMpiProcess(id);
+                        Block *ownerBlock = nullptr, *copyBlock = nullptr;
+                        plint ownerCell = -1, copyCell = -1;
+                        if (ownerRank == me && copyRank == me) {
+                            localIndex(owner, node, ownerBlock, ownerCell);
+                            localIndex(id, node, copyBlock, copyCell);
+                            auto key = std::make_pair(owner, id);
+                            auto it = copyGroup.find(key);
+                            if (it == copyGroup.end()) {
+                                it = copyGroup.insert(std::make_pair(key, nodeCopies.size())).first;
+                                nodeCopies.push_back(EnvelopeCopies {ownerBlock, copyBlock, {}});
+                            }
+                            nodeCopies[it->second].cells.push_back(CellPair {ownerCell, copyCell});
+                        }
+                        else if (ownerRank == me) {
+                            localIndex(owner, node, ownerBlock, ownerCell);
+                            auto it = sendIndex.find(copyRank);
+                            if (it == sendIndex.end()) {
+                                it = sendIndex.insert(std::make_pair(copyRank, nodeSends.size())).first;
+                                nodeSends.push_back(RemoteCopies {copyRank, {}, nullptr});
+                            }
+                            nodeSends[it->second].cells.push_back(RemoteCell {ownerBlock, ownerCell});
+                        }
+                        else if (copyRank == me) {
+                            localIndex(id, node, copyBlock, copyCell);
+                            auto it = receiveIndex.find(ownerRank);
+                            if (it == receiveIndex.end()) {
+                                it = receiveIndex.insert(std::make_pair(ownerRank, nodeReceives.size())).first;
+                                nodeReceives.push_back(RemoteCopies {ownerRank, {}, nullptr});
+                            }
+                            nodeReceives[it->second].cells.push_back(RemoteCell {copyBlock, copyCell});
+                        }
                     }
-                    nodeCopies[it->second].cells.push_back(CellPair {ownerCell, i});
                 }
             }
+            for (std::vector<RemoteCopies>* list : {&nodeSends, &nodeReceives})
+                for (RemoteCopies& r : *list)
+                    if (cudaMallocHost((void**)&r.buffer, sizeof(T) * D::q * r.cells.size()) != cudaSuccess) {
+                        r.buffer = nullptr;
+                        throw std::runtime_error("no pinned host memory for the opening-node messages.");
+                    }
+        }
+        catch (std::runtime_error const& error) {
+            fail(error.what());
         }
     }
 
@@ -451,7 +546,10 @@ GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std:
 
 GpuSolver::~GpuSolver()
 {
+    freeMessageBuffers();
     delete lattice;
+    if (staging != nullptr)
+        cudaFreeHost(staging);
 }
 
 void GpuSolver::collideAndStream()
@@ -517,6 +615,32 @@ void GpuSolver::copyNodeEnvelopes()
 {
     for (EnvelopeCopies const& group : nodeCopies)
         copyCells(group.from, group.to, group.cells.data(), group.cells.size());
+    if (nodeSends.empty() && nodeReceives.empty())
+        return;
+    // Every pair of processes that shares opening nodes exchanges one message each way at most
+    MPI_Comm communicator = global::mpi().getGlobalCommunicator();
+    int const tag = 7101;
+    std::vector<MPI_Request> requests(nodeSends.size() + nodeReceives.size());
+    std::size_t r = 0;
+    for (RemoteCopies& in : nodeReceives)
+        MPI_Irecv(in.buffer, (int)(sizeof(T) * D::q * in.cells.size()), MPI_BYTE, in.rank, tag, communicator, &requests[r++]);
+    for (RemoteCopies& out : nodeSends) {
+        packCells(out.cells.data(), out.cells.size(), out.buffer);
+        MPI_Isend(out.buffer, (int)(sizeof(T) * D::q * out.cells.size()), MPI_BYTE, out.rank, tag, communicator, &requests[r++]);
+    }
+    MPI_Waitall((int)requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+    for (RemoteCopies const& in : nodeReceives)
+        unpackCells(in.cells.data(), in.cells.size(), in.buffer);
+}
+
+void GpuSolver::freeMessageBuffers()
+{
+    for (std::vector<RemoteCopies>* list : {&nodeSends, &nodeReceives})
+        for (RemoteCopies& r : *list)
+            if (r.buffer != nullptr) {
+                cudaFreeHost(r.buffer);
+                r.buffer = nullptr;
+            }
 }
 
 void GpuSolver::applyPorousForce()
@@ -548,23 +672,45 @@ void GpuSolver::imposeOpenings(std::vector<OpeningHandler*> const& openings)
     }
 }
 
+// A GPU kernel writes the state into pinned host memory, chunk by chunk, and the host copies it
+// into the CPU lattice. Reading the GPU lattice from the host instead would move its managed
+// pages to the host, and the next time steps would fault them back one by one (about 7 s for
+// NAP180 at 5 M voxels, against 0.1 s for the copy itself).
 void GpuSolver::copyTo(MultiBlockLattice3D<T, DESCRIPTOR>& cpu) const
 {
+    constexpr int numExt = D::ExternalField::numScalars;
+    constexpr int perCell = D::q + numExt;
+    constexpr plint chunk = plint(1) << 20;   // Cells per chunk: 88 MB of staging in single precision
+    if (staging == nullptr && cudaMallocHost((void**)&staging, sizeof(T) * perCell * chunk) != cudaSuccess) {
+        staging = nullptr;
+        throw std::runtime_error("GPU lattice: no pinned host memory for the copy to the CPU.");
+    }
+    T* out = staging;
     for (auto const& entry : lattice->getBlockLattices()) {
-        Block const& gpuBlock = *entry.second;
+        Block const* gpuBlock = entry.second;
         BlockLattice3D<T, DESCRIPTOR>& cpuBlock = cpu.getComponent(entry.first);
-        plint nx = gpuBlock.getNx(), ny = gpuBlock.getNy(), nz = gpuBlock.getNz();
-        plint i = 0;
-        Array<T, D::q> f;
-        for (plint iX = 0; iX < nx; ++iX)
-            for (plint iY = 0; iY < ny; ++iY)
-                for (plint iZ = 0; iZ < nz; ++iZ, ++i) {
-                    Cell<T, DESCRIPTOR>& cell = cpuBlock.get(iX, iY, iZ);
-                    gpuBlock.pullPop(i, f);
-                    cell.getRawPopulations() = f;
-                    for (int k = 0; k < D::ExternalField::numScalars; ++k)
-                        *cell.getExternal(k) = gpuBlock.pullExt(i, k);
-                }
+        plint ny = gpuBlock->getNy(), nz = gpuBlock->getNz(), n = gpuBlock->getN();
+        for (plint begin = 0; begin < n; begin += chunk) {
+            plint count = std::min(chunk, n - begin);
+            auto indices = std::views::iota(plint(0), count);
+            // Component-major within the chunk, so that neighbouring threads write neighbouring words
+            std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [=](plint j) {
+                Array<T, D::q> f;
+                gpuBlock->pullPop(begin + j, f);
+                for (int k = 0; k < D::q; ++k)
+                    out[k * chunk + j] = f[k];
+                for (int k = 0; k < numExt; ++k)
+                    out[(D::q + k) * chunk + j] = gpuBlock->pullExt(begin + j, k);
+            });
+            for (plint j = 0; j < count; ++j) {
+                plint i = begin + j, iX = i / (ny * nz), iY = (i / nz) % ny, iZ = i % nz;
+                Cell<T, DESCRIPTOR>& cell = cpuBlock.get(iX, iY, iZ);
+                for (int k = 0; k < D::q; ++k)
+                    cell[k] = out[k * chunk + j];
+                for (int k = 0; k < numExt; ++k)
+                    *cell.getExternal(k) = out[(D::q + k) * chunk + j];
+            }
+        }
     }
 }
 
@@ -609,5 +755,6 @@ T GpuSolver::averageEnergy() const
                 return (double)VectorTemplate<T, DESCRIPTOR>::normSqr(u);
             });
     }
+    global::mpi().reduceAndBcast(sum, MPI_SUM);   // Several GPUs
     return (T)(sum / (double)domain.nCells());
 }

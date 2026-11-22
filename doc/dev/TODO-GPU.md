@@ -1,8 +1,8 @@
 # Running HemoFlow on NVIDIA GPUs (plan)
 
-Status: Phases 0-5 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
-openings, flow diverters, Newtonian and Carreau fluid on the GPU, verified against the CPU on the
-verification cases. Next: Phase 6 (output speed, several GPUs). First investigated on 10 November 2026 (that version is in git, commit bca490e);
+Status: Phases 0-6 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
+openings, flow diverters, Newtonian and Carreau fluid on one or several GPUs, verified against
+the CPU on the verification cases. Open: tests on a machine with several GPUs (Phase 6). First investigated on 10 November 2026 (that version is in git, commit bca490e);
 revised on 21 November 2026 after a second reading of the vendored Palabos (`palabos/src`), the
 upstream GPU examples and the workstation. Target precision: single (decided on 21 November
 2026); double only if single turns out insufficient. Palabos stays an external dependency: the
@@ -599,19 +599,18 @@ comparable to rounding.
 
 ### Output and checkpoints
 
-- [ ] At output steps:
-  - copy populations and external fields from the GPU into lattice (1) with HemoFlow's own
-    loop over `pullPop` / `pullExt` (not `writeBack`, which would replace the dynamics);
-  - impose the current opening values on (1);
-  - call `writeVTK` unchanged.
-
-  Each output moves the lattice over PCIe and back, about 0.2-0.5 s for NAP180 sparse.
-  Prefetching (`cudaMemPrefetchAsync`) can help.
-- [ ] Checkpoints: the same copy, then `saveBinaryBlock(lattice (1))`, so the files are the same
-      as from a CPU run and a run can be restarted on either build. Test CPU → GPU and
-      GPU → CPU restarts.
-- [ ] Later, only if output dominates: GPU functionals for the output fields, which then must
-      reproduce the moments of each dynamics type.
+- [x] At output steps (Phases 2-3, faster in Phase 6):
+  - `GpuSolver::copyTo` copies populations and external fields from the GPU into lattice (1):
+    a GPU kernel writes them into pinned host memory chunk by chunk, the host copies them into
+    the cells (not `writeBack`, which would replace the dynamics);
+  - the current opening values are imposed on (1);
+  - `writeVTK` runs unchanged.
+- [x] Checkpoints: the same copy, then `saveLattice` (io.cpp), which in GPU mode packs the cells
+      with Palabos' `MultiBlockSerializer3D` instead of `saveBinaryBlock`'s
+      `MultiBlockFastSerializer3D` (Phase 6). The files are byte-identical to `saveBinaryBlock`'s,
+      and a run can be restarted on either build (tested both ways).
+- Not needed: GPU functionals for the output fields. An output of velocity and pressure costs
+  0.65 s at 5 M voxels (Phase 6).
 
 ### Phase 5: verification (done 22 November 2026)
 
@@ -684,42 +683,118 @@ sparse decomposition) unless stated otherwise.
     velocity within 1.8·10⁻¹² m/s.
 - **CPU path** byte-identical to the committed code (harness, 7 cases); unit tests 74/74 (GCC).
 
-### Phase 6: performance and several GPUs
+### Phase 6: performance and several GPUs (done 22 November 2026; several GPUs not yet on a multi-GPU machine)
 
-- [ ] Layout on NAP180 20 M: dense (one block per GPU) against sparse with a few large blocks
-      (e.g. 96-160): time per step, memory, kernel count (Nsight Systems). Each block overlap
-      costs about 30 µs per step (Phase 0), so the optimum is at few blocks. The GPU build
-      should default to that layout and warn when a rank has many blocks.
-      `HEMOFLOW_GPU_BLOCK_SIZE=n` (development switch, Phase 5) already runs the sparse
-      decomposition with blocks of n on the GPU; several blocks give the single block's output.
-- [ ] Single precision, the target: validate the GPU build against the CPU double results on
-      the pipe, NAP180 with flow diverter (velocities near the device) and the Carreau pipe.
-      Palabos stores f - t_i, which helps single precision. On the CPU, single precision
-      already matches double on the pipe (Phase 0). If single is not enough somewhere, the
-      fallbacks are double on a data-centre GPU, or double only where it matters (e.g.
-      pressure output from ρ - 1).
-- [ ] Several GPUs: one MPI rank per GPU; the launcher binds devices (`CUDA_VISIBLE_DEVICES`
-      from `OMPI_COMM_WORLD_LOCAL_RANK` in a wrapper, or Slurm `--gpus-per-task=1`), otherwise
-      all ranks of a node use GPU 0. Print the device of every rank at start-up. Use CUDA-aware
-      MPI (the HPC SDK's HPC-X) with `USE_CUDA_MALLOC`; GPUDirect RDMA if the cluster has it.
-      The exchange does not overlap the computation, so each GPU should hold several million
-      cells; small cases scale over few GPUs only.
-      `GpuSolver::copyNodeEnvelopes` (Phase 5) copies the envelope copies of opening nodes from
-      their owner block on the same process only; across ranks it needs an MPI exchange of
-      these cells after Palabos' exchange.
-- [ ] Output in GPU mode: about 5 s per output at 5 M voxels, against about 1 s on 16 CPU ranks,
-      because `writeVTK` runs on one rank over the dense box. Options:
-  - compute the output fields on the GPU (velocity, pressure, stress, viscosity, with the
-    moments of each tag);
-  - write only the fluid voxels;
-  - let the waiting ranks write.
+All on the workstation (RTX A1000), single precision, NAP180 with its flow diverter in Murray
+mode unless stated otherwise.
 
-  Pressure in single precision: the output takes it from ρ, whose float32 resolution near 1
-  is one ulp, 0.004-0.01 Pa at the verification resolutions (Phase 5). Writing it from
-  ρ̄ = ρ − 1, which Palabos stores, would remove this limit, also for CPU single builds.
+- [x] **The allocator of the GPU build.** `nvc++ -stdpar=gpu` (managed memory mode, no HMM)
+      turns every heap allocation of its translation units into CUDA managed memory. A small
+      object then costs about 180 ns to allocate, 150 ns to free and about 1.2 kB of host
+      memory (glibc: 10 ns, 7 ns, 50 bytes). None of the `NVCOMPILER_ACC_POOL_*` settings change
+      this. The choice is made per translation unit at compile time; compiling the CPU-only
+      sources without `-stdpar` is not safe, because template code shared with `gpuSolver.cpp`
+      could then put GPU data in host memory. Palabos creates one dynamics object per cell in
+      several places, which caused the three problems below.
+- [x] **Checkpoints and output.** At 5 M voxels the "5 s per output" of Phases 2-3 was mostly the
+      checkpoint: `saveBinaryBlock` took 15.5 s on one rank, an output of velocity and pressure
+      0.65 s. `MultiBlockFastSerializer3D`, which `saveBinaryBlock` uses, copies every x-plane
+      into a new one-plane lattice with its own dynamics objects: 13 s of the 15.5 s (GCC build:
+      0.6 s). In GPU mode `saveLattice` / `loadLattice` (io.cpp) use Palabos'
+      `MultiBlockSerializer3D` instead, which packs the cells directly. The file is
+      byte-identical (cmp against `saveBinaryBlock`), the checkpoint takes 1.9 s.
+  - `GpuSolver::copyTo` runs as a GPU kernel into pinned host memory. The host loop read the
+    managed memory and moved its pages to the host, so the next steps were 0.1 s slower per
+    output (8 outputs in 400 steps: 7.9 instead of 8.8 s).
+  - Restarts: GPU → GPU reproduces the fluid bit for bit. Walls and outside cells keep values of
+    the second population buffer, which the checkpoint does not contain; these never reach the
+    fluid (checked: all 227 k fluid cells identical, only cells at rest differ). CPU (16 ranks,
+    sparse) → GPU and GPU → CPU agree with the uninterrupted runs to float rounding (1.4·10⁻⁶),
+    as without a restart.
+- [x] **Host memory and set-up time.** With the fluid dynamics as background and a NoDynamics
+      copy per outside voxel, NAP180 needed 17.7 GB of host memory at 5 M voxels and more than
+      82 GB at 20 M (the run was stopped). In GPU mode the CPU lattice and the placeholder now
+      have NoDynamics(1.0), the outside voxels' dynamics, as background; only fluid, opening and
+      wall voxels get their own (`FluidDynamicsFunctional3D` before the openings wrap them,
+      `OutsideToBackgroundFunctional3D` instead of a NoDynamics copy per outside voxel). The
+      output is unchanged (byte-identical). 5 M, 400 steps with two outputs and a checkpoint:
+      3.1 GB and 15 s wall against 56 s before, both while a 16-rank CPU job ran (9 s on the idle
+      machine); 20 M, 400 steps: 10.9 GB, 17 s wall.
+  - The placeholder dynamics of the openings are now set in one pass per opening over bulk and
+    envelope of every block (`definePlaceholder`). `defineDynamics` row by row made Palabos
+    regenerate the dynamics of all envelope cells once per row, which took hours with many
+    blocks. A Palabos detail: a functional with `modif::nothing` counts as read-only, and
+    Palabos then leaves out the envelope parts that overlap other blocks; the functionals that
+    cover the envelope declare `modif::dataStructure`, after which Palabos updates nothing.
+  - Still slow with many blocks (development switch only): the CPU lattice's opening boundary
+    conditions are set row by row with Palabos' instantiators, one envelope regeneration per
+    row (49 blocks: 2 min). One block per GPU is not affected.
+- [x] **Pressure output from ρ̄** (all builds, io.cpp): `computeRhoBar` instead of
+      `computeDensity` − 1, so single precision no longer rounds the pressure to one ulp of ρ.
+      CPU double: 401 of 5.1 M cells change, by at most 3·10⁻⁸ Pa (one float ulp of the output).
+      GPU single against CPU single at 400 steps: max 0.0076 Pa, rms 0.0002 Pa (before: 0.0186 Pa,
+      one ulp of ρ, nearly everywhere).
+- [x] **Waveform clock in double** (opening.h, found by the comparison with double below).
+      `OpeningHandler` added dt = 10⁻⁵ s to a clock of type T every step. In float the
+      additions round with a bias: the clock runs 0.18 ms ahead at 0.4 s and 0.72 ms at 0.8 s,
+      and the error grows with every cycle. Time, samples and interpolation of the waveform are
+      now double in every build; double builds compute exactly as before.
+- [x] **Several GPUs** (implemented; tested with several ranks sharing the workstation's GPU).
+  - One dense block per GPU rank. On each node the ranks, in rank order, take the first GPU
+    they see that no lower rank of the node has taken; GPUs are told apart by their UUID, so
+    this works with and without binding by the launcher (`scripts/gpu_bind.sh`, Slurm
+    `--gpus-per-task=1`). Other ranks wait. The start-up log lists GPU, PCI address and block
+    of every rank; the memory check is per GPU. Development switch `HEMOFLOW_GPU_RANKS=n`:
+    world ranks 0..n-1 become GPU ranks even if they share a GPU.
+  - `GpuSolver`: the envelope copies of opening nodes are listed from the global block
+    structure, in the same order on all ranks; copies across ranks travel in one MPI message
+    per pair of ranks and step, after Palabos' exchange. The average energy is reduced over the
+    ranks. A failure while setting up the GPU lattice stops all ranks.
+  - Tests, all byte-identical output to one rank: NAP180 5 M on 2, 3, 4, 5, 6 and 8 GPU ranks
+    (velocity openings cut between ranks with 4-8 ranks), 4 ranks with sparse blocks of 16
+    (the 0 Pa pressure outlet cut between ranks), 2 GPU ranks with 2 waiting ranks, 16 ranks (1
+    GPU rank, 15 waiting); the pipe with its pressure outlet on 3 ranks, Newtonian and Carreau.
+  - Open, needs a machine with several GPUs: speed and scaling; CUDA-aware transports
+    (`UCX_TLS`, the solver's default `^cuda` sends the messages through host memory);
+    GPUDirect; Palabos' `USE_CUDA_MALLOC`. The exchange does not overlap the computation, so
+    each GPU should hold a few million voxels.
+- [x] **Layout on NAP180 20 M** (20.3 M voxels, 4.5 % fluid; 400 steps without output, one GPU).
+      The sparse layouts use the development switch `HEMOFLOW_GPU_BLOCK_SIZE`.
 
-  Setup on one rank (about 15 s at 5 M voxels) could use the same help.
-- [x] GPU build and launch documented in the README (22 November 2026).
+      | Layout | Blocks | Allocated cells | 400 steps | Host memory |
+      |---|---|---|---|---|
+      | One dense block (default) | 1 | 20.3 M (100 %) | **9.8 s** (813 M updates/s) | 10.9 GB |
+      | Sparse, blocks of 48 | 49 | 8.3 M (41 %) | 18.2 s | 11.4 GB |
+      | Sparse, blocks of 64 | 26 | 12.6 M (62 %) | 11.9 s | 12.6 GB |
+      | Sparse, blocks of 96 | 9 | 18.3 M (90 %) | 12.8 s | 13.5 GB |
+      | Sparse, blocks of 128 or 160 | 3 | 20.3 M (100 %) | 11.2-11.3 s | 11.8 GB |
+
+      One dense block is the fastest. With 41 % of the cells, 49 blocks take almost twice as
+      long: each block costs about 0.7 ms per step on top of its cells (collision, opening and
+      exchange kernels per block, copies between blocks), far more than the 30 µs of the Phase 0
+      estimate. Even three blocks covering the same cells are 15 % slower. The default stays one
+      dense block per GPU (README, execution policy); the sparse decomposition on the GPU would
+      only help cases that do not fit as one block, and these run on the CPU or on several GPUs.
+      The dense block needs 4.3 GB at 20 M voxels (180 bytes per cell of the bounding box in
+      single precision), so the A1000 (7.9 GB free) holds bounding boxes of about 40 M voxels.
+- [x] **Single precision against CPU double** over a full cycle of NAP180 5 M with the device
+      (80 k steps, outputs every 0.1 s), cell by cell at all eight outputs against the CPU
+      double run (16 ranks). Near the device: the porous voxels and 3 cells around them (26 k of
+      227 k fluid cells).
+
+      | Difference to CPU double | Single, float waveform clock (Phase 5 runs) | GPU single now |
+      |---|---|---|
+      | Velocity, max over the fluid (per peak speed) | 0.03-0.61 %, largest at 0.4 s | 0.003-0.024 % |
+      | Velocity near the device, max (per peak speed) | 0.02-0.35 % | 0.002-0.01 % |
+      | Velocity near the device, median (per local speed) | 0.02-0.29 % | 0.002-0.005 % |
+      | Pressure, max | 0.3-5.5 Pa | 0.008-0.037 Pa |
+
+      Before the fix CPU single and GPU single deviated alike (the waveform clock is host code),
+      because the waveform ran ahead in time. What remains is the rounding of the single-precision
+      state. Single precision is enough for these cases; the double fallbacks are not needed.
+      The pipe validation (`pipe.xml`) gives 78.7035 Pa on the GPU (Phase 5: 78.7037 Pa; CPU
+      double 78.72 Pa); GPU 549 s for the NAP180 cycle, 69 s for the pipe.
+- [x] GPU build and launch documented in the README.
 
 ## Flow diverters and coils
 

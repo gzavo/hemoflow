@@ -37,6 +37,16 @@ struct OutputOptions {
 };
 
 void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, const OutputOptions &out);
+
+// Checkpoint of the lattice state (populations and external scalars), in the file format of
+// Palabos' saveBinaryBlock / loadBinaryBlock. With plainSerializer the cells are packed directly
+// (Palabos' MultiBlockSerializer3D) instead of through a copy of each x-plane into a new lattice
+// (MultiBlockFastSerializer3D, which saveBinaryBlock uses); the file is the same. The GPU build
+// needs it: there every heap allocation is CUDA managed memory, about 20 times slower than in a
+// CPU build, and the copies create one dynamics object per cell (15 s instead of 1 s on one rank
+// for NAP180 at 5 M voxels).
+void saveLattice(MultiBlockLattice3D<T,DESCRIPTOR> const& lattice, std::string const& fileName, bool plainSerializer);
+void loadLattice(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, std::string const& fileName, bool plainSerializer);
 void writeNPZ(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter);  // Velocity [m/s] as (Nx, Ny, Nz, 3)
 #ifdef HEMOFLOW_WITH_HDF5
 void writeHDF5(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, plint iter, string outDir,

@@ -84,7 +84,7 @@ master commit 4127697 of 3 April 2026, after release 2.3.0, with the two HemoFlo
 | `palabos/` | Vendored Palabos library (external dependency): `src/`, `externalLibraries/` and `dco/` of upstream master commit 4127697 (after 2.3.0), patched |
 | `patches/palabos/` | The HemoFlow patches to Palabos, each with the reason; `scripts/setup_palabos.sh` applies them |
 | `external/` | Vendored [HighFive](https://github.com/BlueBrain/HighFive) (HDF5 C++ wrapper) and [cnpy](https://github.com/rogersce/cnpy) (`.npz` reader) |
-| `scripts/`, `utils/` | Palabos setup (`setup_palabos.sh`), cluster job/environment scripts and small helpers (output compression) |
+| `scripts/`, `utils/` | Palabos setup (`setup_palabos.sh`), one GPU per MPI rank (`gpu_bind.sh`), cluster job/environment scripts and small helpers (output compression) |
 
 ---
 
@@ -157,9 +157,9 @@ current module versions will differ.
 
 ### GPU build (in development)
 
-The port to NVIDIA GPUs is planned and documented in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). The
-GPU build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested
-with 26.11) and runs the time loop on the GPU, in single precision by default.
+The port to NVIDIA GPUs is documented in [doc/dev/TODO-GPU.md](doc/dev/TODO-GPU.md). The GPU
+build compiles HemoFlow and Palabos with `nvc++ -stdpar` from the NVIDIA HPC SDK (tested with
+26.11) and runs the time loop on one or several GPUs, in single precision by default.
 
 ```bash
 cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=nvc++ -DHEMOFLOW_GPU=ON \
@@ -170,13 +170,14 @@ mpirun -np 16 ./build-gpu/hemoFlow case.xml     # the SDK's mpirun
 ```
 
 **Where the GPU build runs a case.**
-- **GPU.** The whole domain is one block on the GPU of MPI rank 0, in single precision. The
-  other ranks give back their GPU memory and wait for the end.
-- **CPU fallback.** At start-up the solver estimates the GPU memory of that block (about
-  190 bytes per voxel of the geometry's bounding box in single precision, e.g. 3.8 GB for
-  20 M voxels) and compares it with the free memory of the GPU. If the case does not fit, it
-  runs on the CPU instead, with the sparse multi-block decomposition (`<sparse>`, `<blockSize>`)
-  on all MPI ranks of the launch.
+- **GPU.** One dense block per GPU, in single precision. With one GPU the whole domain is one
+  block on the GPU of MPI rank 0; the other ranks give back their GPU memory and wait for the
+  end. With several GPUs (see below) the domain is split into one block per GPU.
+- **CPU fallback.** At start-up the solver estimates the GPU memory of each block (about
+  190 bytes per voxel of the geometry's bounding box in single precision, e.g. 4.3 GB for
+  NAP180 at 20 M voxels) and compares it with the free memory of its GPU. If the case does not
+  fit, it runs on the CPU instead, with the sparse multi-block decomposition (`<sparse>`,
+  `<blockSize>`) on all MPI ranks of the launch.
 - **Not on the GPU yet,** also run on the CPU:
   - free-outflow openings;
   - `LES 1`;
@@ -187,20 +188,40 @@ mpirun -np 16 ./build-gpu/hemoFlow case.xml     # the SDK's mpirun
 - **How to launch.** Start the GPU build with as many MPI ranks as the CPU fallback should use.
   The log says where the case runs and why (`Execution: GPU ...` or `Execution: CPU (...)`).
   `<simulation><device>` forces one or the other.
+- **Several GPUs.** On each node the ranks, in rank order, take one GPU each; ranks beyond the
+  number of GPUs wait. The blocks exchange their boundaries over MPI, and the log lists the
+  GPU and the block of every rank. Results are the same as on one GPU (tested with several
+  ranks sharing one GPU; speed on a machine with several GPUs not measured yet). Let the
+  launcher give each rank its own GPU, otherwise every rank also keeps a CUDA context of about
+  120 MB on the first GPU of the node:
+
+  ```bash
+  srun --ntasks-per-node=4 --gpus-per-task=1 ./build-gpu/hemoFlow case.xml      # Slurm
+  mpirun -np 4 scripts/gpu_bind.sh ./build-gpu/hemoFlow case.xml                # Open MPI or MPICH
+  ```
+
+  Each GPU should hold a few million voxels at least: the exchange does not overlap the
+  computation.
 
 **Results and speed** (RTX A1000, details in TODO-GPU.md).
 - **Accuracy.** A GPU build in double precision gives the output of the CPU build, to round-off
   (also with a flow diverter). In single precision it agrees with the CPU single-precision
   build to float rounding (about 10⁻⁶, up to 3·10⁻⁵ at peak systole), over full cardiac cycles
   of the verification cases (pipe, Carreau pipe, C0002 Murray split, NAP180 with flow
-  diverter). The pipe (test case 1) gives 78.70 Pa on the GPU against 78.72 Pa for the CPU in
+  diverter). Against the CPU in double precision, a full cycle of NAP180 with its flow
+  diverter differs by at most 0.024 % of the peak velocity (0.01 % next to the device) and
+  0.04 Pa. The pipe (test case 1) gives 78.70 Pa on the GPU against 78.72 Pa for the CPU in
   double precision; the Carreau pipe and the Murray split give the CPU's results.
 - **Speed.** The pipe validation (80 k steps) takes 67 s on the GPU against 263-358 s on 16 CPU
   cores. NAP180 at 5 M voxels with its flow diverter runs at about 720 M cell updates/s, for
   Newtonian and Carreau blood alike: 2.8 s for 400 steps, against about 8 s for the 16-core
   single-precision CPU run.
-- **Output is still slow.** About 5 s per output or checkpoint at 5 M voxels: the fields are
-  written on one rank.
+- **Output.** At 5 M voxels an output of velocity and pressure takes about 0.65 s and a
+  checkpoint about 2 s (16 CPU ranks: about 3 s per output).
+- **Size.** One 8 GB GPU holds NAP180 at 20 M voxels as one block (4.3 GB) and runs it at about
+  810 M cell updates/s; the run needs about 11 GB of host memory. One block per GPU is also the
+  fastest layout: the sparse decomposition on the GPU allocates fewer cells but is slower
+  (TODO-GPU.md, Phase 6).
 
 Output files and checkpoints have the same format on GPU and CPU; a run can be restarted on
 either.
@@ -211,7 +232,10 @@ either.
   `/usr/bin/mpirun`.
 - The GPU build sets `UCX_TLS=^cuda` and `OMPI_MCA_coll_ucc_enable=0` before `MPI_Init`, unless
   they are already set. With the CUDA parts of HPC-X's UCX and UCC, CPU runs of the GPU build
-  were several times slower, and the waiting ranks of a GPU run crashed at the end.
+  were several times slower, and the waiting ranks of a GPU run crashed at the end. Messages
+  between GPUs then go through host memory. On a cluster with several GPUs per job, CUDA-aware
+  transports (e.g. `UCX_TLS=all`, set before the launch) may make the exchange faster; not
+  tested yet.
 
 Compile-time switches in `globals.h`:
 

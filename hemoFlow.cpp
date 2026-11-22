@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -85,10 +87,11 @@ Box3D porousBox;   // Bounding box of the porous voxels
 
 // Where the time loop runs (doc/dev/TODO-GPU.md): <simulation><device> auto | gpu | cpu
 string deviceOption = "auto";
-bool gpuMode = false;   // The time loop runs on the GPU (one dense block on world rank 0)
+bool gpuMode = false;   // The time loop runs on the GPU (one dense block per GPU rank)
 #ifdef HEMOFLOW_GPU
+bool gpuRank = false;                          // This rank runs a block on its GPU (chooseGpu)
 GpuSolver *gpu = nullptr;                      // The GPU lattice, once the initial state is set
-MPI_Comm worldCommunicator = MPI_COMM_NULL;    // GPU mode with idle ranks: all ranks of the launch
+MPI_Comm worldCommunicator = MPI_COMM_NULL;    // GPU mode on several ranks: all ranks of the launch
 #endif
 
 
@@ -209,6 +212,84 @@ struct OpeningSpec {
 };
 
 const char* VALID_MODES = "'' (no mode), 'murray', 'pzero'";
+
+
+// ********** Dynamics of the GPU mode **********
+//
+// In GPU mode the lattices have NoDynamics(1.0), the dynamics of the outside voxels, as their
+// background dynamics, shared by all cells that use it. Palabos gives every other cell its own copy
+// of a dynamics object, and in the GPU build a heap allocation costs about 1.2 kB of host memory
+// (CUDA managed memory) against about 50 bytes in a CPU build: with the fluid dynamics as
+// background and a NoDynamics copy per outside voxel, NAP180 at 20 M voxels needed more than
+// 80 GB. The CPU build keeps the fluid dynamics as background (the results are the same).
+// The functionals cover bulk and envelope of every block (the label field has its envelope filled,
+// GeometryFile), so that Palabos does not regenerate the dynamics of all envelope cells afterwards.
+
+// A copy of the dynamics in every fluid, opening and device voxel (label other than UNUSED and WALL)
+class FluidDynamicsFunctional3D : public BoxProcessingFunctional3D_LS<T, DESCRIPTOR, int> {
+public:
+    explicit FluidDynamicsFunctional3D(Dynamics<T, DESCRIPTOR>* dynamics_) : dynamics(dynamics_) { }
+    FluidDynamicsFunctional3D(FluidDynamicsFunctional3D const& rhs) : dynamics(rhs.dynamics->clone()) { }
+    FluidDynamicsFunctional3D& operator=(FluidDynamicsFunctional3D const&) = delete;
+    ~FluidDynamicsFunctional3D() { delete dynamics; }
+
+    virtual void process(Box3D domain, BlockLattice3D<T, DESCRIPTOR>& lattice, ScalarField3D<int>& labels)
+    {
+        Dot3D offset = computeRelativeDisplacement(lattice, labels);
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                    int label = labels.get(iX + offset.x, iY + offset.y, iZ + offset.z);
+                    if (label != UNUSED && label != WALL)
+                        lattice.attributeDynamics(iX, iY, iZ, dynamics->clone());
+                }
+    }
+    virtual FluidDynamicsFunctional3D* clone() const { return new FluidDynamicsFunctional3D(*this); }
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const
+    {
+        modified[0] = modif::dataStructure;
+        modified[1] = modif::nothing;
+    }
+    virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulkAndEnvelope; }
+
+private:
+    Dynamics<T, DESCRIPTOR>* dynamics;
+};
+
+// The outside voxels (label UNUSED) back to the shared background dynamics
+class OutsideToBackgroundFunctional3D : public BoxProcessingFunctional3D_LS<T, DESCRIPTOR, int> {
+public:
+    virtual void process(Box3D domain, BlockLattice3D<T, DESCRIPTOR>& lattice, ScalarField3D<int>& labels)
+    {
+        Dot3D offset = computeRelativeDisplacement(lattice, labels);
+        Dynamics<T, DESCRIPTOR>* background = &lattice.getBackgroundDynamics();
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ)
+                    if (labels.get(iX + offset.x, iY + offset.y, iZ + offset.z) == UNUSED &&
+                        &lattice.get(iX, iY, iZ).getDynamics() != background)
+                        lattice.attributeDynamics(iX, iY, iZ, background);
+    }
+    virtual OutsideToBackgroundFunctional3D* clone() const { return new OutsideToBackgroundFunctional3D(*this); }
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const
+    {
+        modified[0] = modif::dataStructure;
+        modified[1] = modif::nothing;
+    }
+    virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulkAndEnvelope; }
+};
+
+// The bulk dynamics of the fluid
+Dynamics<T, DESCRIPTOR>* newBulkDynamics()
+{
+#if LES
+    return new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
+#else
+    if (sim.nonNewtonian)
+        return new CarreauBackgroundDynamics(sim.omega, sim.carreau);
+    return new BackgroundDynamics(sim.omega);
+#endif
+}
 
 }  // namespace
 
@@ -711,7 +792,7 @@ void createLattice(GeometryFile& geometry, vector<OpeningSpec> const& specs)
     pcout << "Envelope width: " << envelopeWidth << endl;
 
     if (gpuMode) {
-        // One dense block for the GPU. The GPU-side packing of MPI messages needs the blocking communicator.
+        // One dense block per GPU rank. The GPU-side packing of MPI messages needs the blocking communicator.
         defaultMultiBlockPolicy3D().toggleBlockingCommunication(true);
         // Development only (doc/dev/TODO-GPU.md, Phases 5-6): HEMOFLOW_GPU_BLOCK_SIZE=n puts the
         // sparse decomposition with blocks of n on the GPU, to test and time several blocks
@@ -724,20 +805,13 @@ void createLattice(GeometryFile& geometry, vector<OpeningSpec> const& specs)
         }
         else {
             if (useSparse)
-                pcout << "GPU mode: one dense block (<sparse> and <blockSize> apply to CPU runs)." << endl;
+                pcout << "GPU mode: one dense block per GPU (<sparse> and <blockSize> apply to CPU runs)." << endl;
             useSparse = false;
         }
     }
 
-    Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
-    #if LES
-        bulkDynamics = new SmagorinskyRegularizedDynamics<T, DESCRIPTOR>(sim.omega, cSmago);
-    #else
-        if (sim.nonNewtonian)
-            bulkDynamics = new CarreauBackgroundDynamics(sim.omega, sim.carreau);
-        else
-            bulkDynamics = new BackgroundDynamics(sim.omega);
-    #endif
+    // Background dynamics: the fluid's on the CPU, the outside voxels' in GPU mode (see FluidDynamicsFunctional3D)
+    Dynamics<T, DESCRIPTOR>* bulkDynamics = gpuMode ? new NoDynamics<T, DESCRIPTOR>(1.0) : newBulkDynamics();
 
     if (useSparse) {
         pcout << "Setting simulation domain mask for sparse decomposition (block size " << blockSize << ")..." << endl;
@@ -798,6 +872,10 @@ void createFieldsAndOpenings(GeometryFile& geometry, vector<OpeningSpec> const& 
             pcout << "1 (the geometry file has none: older preprocessor)." << std::endl;
     }
     geometry.release();
+
+    // GPU mode: the fluid dynamics in the fluid voxels, before the openings wrap them
+    if (gpuMode)
+        applyProcessingFunctional(new FluidDynamicsFunctional3D(newBulkDynamics()), lattice->getBoundingBox(), *lattice, *labelField);
 
     // **** Boundary conditions ****
     for (auto const& spec : specs) {
@@ -902,63 +980,207 @@ std::string gpuUnsupportedReason(GeometryFile const& geometry, vector<OpeningSpe
     return "";
 }
 
-// Where the time loop runs (collective): on the GPU of world rank 0 as one dense block if the
-// case is supported there and the block fits the free GPU memory, otherwise on the CPU with
-// the usual decomposition. <device>gpu</device> makes a missing GPU or an unsupported case an
-// error, <device>cpu</device> skips the GPU.
+// Where the time loop runs (collective): on the GPU, one dense block per GPU rank, if the case
+// is supported there, world rank 0 has a GPU and every block fits its GPU's free memory;
+// otherwise on the CPU with the usual decomposition. <device>gpu</device> makes a missing GPU
+// or an unsupported case an error, <device>cpu</device> skips the GPU.
+//
+// GPU ranks: on each node the ranks, in rank order, take the first GPU they can see that no
+// lower rank of the node has taken; ranks without one wait. GPUs are told apart by their UUID,
+// so this works whether every rank sees all GPUs of the node or the launcher gives each rank its
+// own (CUDA_VISIBLE_DEVICES, Slurm --gpus-per-task=1; recommended, see the README). Development
+// only: HEMOFLOW_GPU_RANKS=n makes world ranks 0..n-1 the GPU ranks even if they share a GPU.
 bool chooseGpu(GeometryFile const& geometry, vector<OpeningSpec> const& specs)
 {
+    // The same on all ranks (the geometry and the configuration are)
     std::string reason = (deviceOption == "cpu") ? "<device>cpu</device>" : gpuUnsupportedReason(geometry, specs);
-
-    // The other ranks on the node of rank 0 release their CUDA contexts in GPU mode (about 120 MB
-    // each, measured); count 100 MB for them.
-    MPI_Comm node;
-    MPI_Comm_split_type(global::mpi().getGlobalCommunicator(), MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
-    int nodeRanks = 1;
-    MPI_Comm_size(node, &nodeRanks);
-    MPI_Comm_free(&node);
-
-    int found = 0;
-    double available = 0.0, total = 0.0;
-    std::string name;
-    if (global::mpi().isMainProcessor()) {
-        std::size_t freeBytes = 0, totalBytes = 0;
-        found = queryGpu(name, freeBytes, totalBytes) ? 1 : 0;
-        available = (double)freeBytes + (nodeRanks - 1) * 100e6;
-        total = (double)totalBytes;
+    if (!reason.empty()) {
+        if (deviceOption == "gpu")
+            throw std::runtime_error("<simulation><device>gpu</device>, but " + reason + ".");
+        pcout << "Execution: CPU (" << reason << ")." << endl;
+        return false;
     }
-    global::mpi().bCast(&found, 1);
-    global::mpi().bCast(&available, 1);
-    global::mpi().bCast(&total, 1);
+    MPI_Comm world = global::mpi().getGlobalCommunicator();
+    int rank = 0, size = 1;
+    MPI_Comm_rank(world, &rank);
+    MPI_Comm_size(world, &size);
 
-    // One block with its envelope (two cells with pressure openings) and the list of porous
-    // cells, plus 5 % and 256 MB for the CUDA context and the runtime
+    // The GPUs of each rank, gathered on the first rank of every node
+    struct Visible {
+        int count;
+        char uuid[16][36];
+    };
+    Visible mine {};
+    std::vector<GpuDevice> devices = visibleGpus();
+    mine.count = (int)std::min<std::size_t>(devices.size(), 16);
+    for (int d = 0; d < mine.count; ++d)
+        std::snprintf(mine.uuid[d], sizeof(mine.uuid[d]), "%s", devices[d].uuid.c_str());
+    MPI_Comm node;
+    MPI_Comm_split_type(world, MPI_COMM_TYPE_SHARED, rank, MPI_INFO_NULL, &node);
+    int nodeRank = 0, nodeSize = 1;
+    MPI_Comm_rank(node, &nodeRank);
+    MPI_Comm_size(node, &nodeSize);
+    std::vector<Visible> all(nodeRank == 0 ? nodeSize : 0);
+    MPI_Gather(&mine, sizeof(Visible), MPI_BYTE, all.data(), sizeof(Visible), MPI_BYTE, 0, node);
+    // Per rank of the node: its GPU (index in its own list of visible GPUs, -1: none)
+    std::vector<int> assigned(nodeSize, -1);
+    if (nodeRank == 0) {
+        std::set<std::string> taken;
+        for (int r = 0; r < nodeSize; ++r)
+            for (int d = 0; d < all[r].count; ++d)
+                if (taken.insert(all[r].uuid[d]).second) {
+                    assigned[r] = d;
+                    break;
+                }
+    }
+    int device = -1;
+    MPI_Scatter(assigned.data(), 1, MPI_INT, &device, 1, MPI_INT, 0, node);
+    const char* forcedRanks = std::getenv("HEMOFLOW_GPU_RANKS");
+    if (forcedRanks != nullptr && std::atoi(forcedRanks) > 0) {
+        if (rank < std::atoi(forcedRanks) && device < 0 && mine.count > 0)
+            device = 0;   // Shares a GPU
+        else if (rank >= std::atoi(forcedRanks))
+            device = -1;
+        if (rank == 0)
+            pcout << "GPU ranks: the first " << std::atoi(forcedRanks) << " (HEMOFLOW_GPU_RANKS, for development)." << endl;
+    }
+    int isGpu = device >= 0 ? 1 : 0;
+    std::vector<int> gpuFlags(size, 0);
+    MPI_Allgather(&isGpu, 1, MPI_INT, gpuFlags.data(), 1, MPI_INT, world);
+    int numGpuRanks = std::accumulate(gpuFlags.begin(), gpuFlags.end(), 0);
+    int gpuIndex = std::accumulate(gpuFlags.begin(), gpuFlags.begin() + rank, 0);   // Block of this rank
+    // Start-up contexts: every rank has one on the first GPU it sees; waiting ranks release theirs
+    std::vector<int> waitingFlags(nodeRank == 0 ? nodeSize : 0);
+    int waiting = isGpu ? 0 : 1;
+    MPI_Gather(&waiting, 1, MPI_INT, waitingFlags.data(), 1, MPI_INT, 0, node);
+
+    // One block per GPU rank (the dense decomposition of createLattice), with its envelope (two
+    // cells with pressure openings) and the list of porous cells (all of them, an upper bound),
+    // plus 5 % and 256 MB for the CUDA context and the runtime
     bool hasPressure = std::any_of(specs.begin(), specs.end(), [](OpeningSpec const& spec) { return spec.type == OPENING_PRESSURE; });
     int e = hasPressure ? 2 : 1;
-    double cells = (double)(geometry.nx + 2 * e) * (geometry.ny + 2 * e) * (geometry.nz + 2 * e);
-    double porousCells = geometry.hasStent ? (double)geometry.numPorous : 0.0;
-    double needed = (cells * gpuBytesPerCell() + porousCells * gpuBytesPerPorousCell()) * 1.05 + 256e6;
-    std::ostringstream memory;
-    memory.precision(2);
-    memory << std::fixed << needed / 1e9 << " GB needed, " << available / 1e9 << " GB of " << total / 1e9 << " GB available";
-    if (reason.empty() && !found)
-        reason = "no GPU found";
-    if (reason.empty() && needed > available)
-        reason = "the domain does not fit the GPU memory in one block (" + memory.str() + ")";
+    struct RankGpu {
+        int gpuIndex;
+        char uuid[36], bus[16], name[64], host[64];
+        double needed, freeBytes, totalBytes, released;
+        long long nx, ny, nz;
+    };
+    RankGpu info {};
+    info.gpuIndex = isGpu ? gpuIndex : -1;
+    if (isGpu && numGpuRanks > 0) {
+        SparseBlockStructure3D blocks = createRegularDistribution3D(Box3D(0, geometry.nx - 1, 0, geometry.ny - 1, 0, geometry.nz - 1), numGpuRanks);
+        Box3D bulk = blocks.getBulks().at(gpuIndex);
+        info.nx = bulk.getNx() + 2 * e;
+        info.ny = bulk.getNy() + 2 * e;
+        info.nz = bulk.getNz() + 2 * e;
+        double porousCells = geometry.hasStent ? (double)geometry.numPorous : 0.0;
+        info.needed = ((double)info.nx * info.ny * info.nz * gpuBytesPerCell() + porousCells * gpuBytesPerPorousCell()) * 1.05 + 256e6;
+        std::string name;
+        std::size_t freeBytes = 0, totalBytes = 0;
+        if (selectGpu(device) && queryGpu(name, freeBytes, totalBytes)) {
+            info.freeBytes = (double)freeBytes;
+            info.totalBytes = (double)totalBytes;
+            std::snprintf(info.name, sizeof(info.name), "%s", name.c_str());
+        }
+        std::snprintf(info.uuid, sizeof(info.uuid), "%s", devices[device].uuid.c_str());
+        std::snprintf(info.bus, sizeof(info.bus), "%s", devices[device].pciBus.c_str());
+    }
+    // Released contexts per GPU of the node, credited to the GPU ranks there (100 MB each, measured about 120 MB)
+    std::vector<std::string> startUpUuid(nodeRank == 0 ? nodeSize : 0);
+    if (nodeRank == 0)
+        for (int r = 0; r < nodeSize; ++r)
+            startUpUuid[r] = all[r].count > 0 ? all[r].uuid[0] : "";
+    {
+        std::vector<double> credit(nodeSize, 0.0);
+        if (nodeRank == 0)
+            for (int r = 0; r < nodeSize; ++r)
+                if (waitingFlags[r] && !startUpUuid[r].empty())
+                    for (int g = 0; g < nodeSize; ++g)
+                        if (assigned[g] >= 0 && all[g].uuid[assigned[g]] == startUpUuid[r]) {
+                            credit[g] += 100e6;   // Once per GPU: the first GPU rank on it
+                            break;
+                        }
+        MPI_Scatter(credit.data(), 1, MPI_DOUBLE, &info.released, 1, MPI_DOUBLE, 0, node);
+    }
+    gethostname(info.host, sizeof(info.host) - 1);
+    MPI_Comm_free(&node);
+    std::vector<RankGpu> ranks(rank == 0 ? size : 0);
+    MPI_Gather(&info, sizeof(RankGpu), MPI_BYTE, ranks.data(), sizeof(RankGpu), MPI_BYTE, 0, world);
 
-    if (reason.empty()) {
-        pcout << "Execution: GPU (" << name << "), one block of " << geometry.nx << " x " << geometry.ny << " x " << geometry.nz
-              << " cells, " << memory.str() << "." << endl;
+    // Decision on world rank 0: every GPU must hold the blocks of its ranks
+    int use = 0;
+    std::ostringstream message, details;
+    if (rank == 0) {
+        message.precision(2);
+        details.precision(2);
+        message << std::fixed;
+        details << std::fixed;
+        struct Usage {
+            double needed = 0.0, available = 0.0, total = 0.0;
+        };
+        std::map<std::string, Usage> perGpu;   // host/uuid -> the ranks on that GPU
+        for (RankGpu const& r : ranks)
+            if (r.gpuIndex >= 0) {
+                Usage& u = perGpu[std::string(r.host) + "/" + r.uuid];
+                u.needed += r.needed;
+                u.available = std::max(u.available, r.freeBytes + r.released);
+                u.total = r.totalBytes;
+            }
+        std::string fullest;
+        double worst = -1.0;
+        for (auto const& p : perGpu)
+            if (p.second.needed / std::max(p.second.available, 1.0) > worst) {
+                worst = p.second.needed / std::max(p.second.available, 1.0);
+                fullest = p.first;
+            }
+        if (reason.empty() && (ranks[0].gpuIndex < 0 || ranks[0].totalBytes == 0.0))
+            reason = "no GPU found";
+        if (reason.empty()) {
+            Usage const& u = perGpu[fullest];
+            std::ostringstream memory;
+            memory.precision(2);
+            memory << std::fixed << u.needed / 1e9 << " GB needed, " << u.available / 1e9 << " GB of " << u.total / 1e9
+                   << " GB available";
+            if (worst > 1.0)
+                reason = (numGpuRanks == 1 ? "the domain does not fit the GPU memory in one block ("
+                                           : "the blocks do not fit the GPU memory (fullest GPU: ") + memory.str() + ")";
+            else if (numGpuRanks == 1)
+                message << "Execution: GPU (" << ranks[0].name << "), one block of " << ranks[0].nx - 2 * e << " x "
+                        << ranks[0].ny - 2 * e << " x " << ranks[0].nz - 2 * e << " cells, " << memory.str() << ".";
+            else {
+                message << "Execution: " << perGpu.size() << (perGpu.size() == 1 ? " GPU, " : " GPUs, ") << numGpuRanks << " ranks with one block each ("
+                        << "fullest GPU: " << memory.str() << ").";
+                if ((int)perGpu.size() < numGpuRanks)
+                    message << " Several ranks share a GPU.";
+                for (int r = 0; r < size; ++r)
+                    if (ranks[r].gpuIndex >= 0)
+                        details << std::endl << "  rank " << r << " on " << ranks[r].host << ": " << ranks[r].name << " (PCI "
+                                << ranks[r].bus << "), block of " << ranks[r].nx - 2 * e << " x " << ranks[r].ny - 2 * e << " x "
+                                << ranks[r].nz - 2 * e << " cells, " << ranks[r].needed / 1e9 << " GB";
+            }
+        }
+        use = reason.empty() ? 1 : 0;
+    }
+    MPI_Bcast(&use, 1, MPI_INT, 0, world);
+    gpuRank = use && isGpu;
+    if (use) {
+        pcout << message.str() << details.str() << endl;
         return true;
     }
-    if (deviceOption == "gpu")
+    if (deviceOption == "gpu") {
+        int length = (int)reason.size();
+        MPI_Bcast(&length, 1, MPI_INT, 0, world);
+        reason.resize(length);
+        MPI_Bcast(&reason[0], length, MPI_CHAR, 0, world);
         throw std::runtime_error("<simulation><device>gpu</device>, but " + reason + ".");
+    }
     pcout << "Execution: CPU (" << reason << ")." << endl;
     return false;
 }
 
-// GPU mode: Palabos continues on world rank 0 alone. The other ranks release their GPU and
-// wait, without spinning, for the end of the run (finishRun); they do not return.
+// GPU mode: Palabos continues on the GPU ranks, with their own communicator. The other ranks
+// release their GPU and wait, without spinning, for the end of the run (finishRun); they do not
+// return.
 void enterGpuMode()
 {
     gpuMode = true;
@@ -966,45 +1188,48 @@ void enterGpuMode()
     int rank = 0, size = 1;
     MPI_Comm_rank(world, &rank);
     MPI_Comm_size(world, &size);
-    if (size == 1)
-        return;
-    MPI_Comm gpuCommunicator;
-    MPI_Comm_split(world, rank == 0 ? 0 : MPI_UNDEFINED, 0, &gpuCommunicator);
-    if (rank == 0) {
+    if (size > 1) {
+        MPI_Comm gpuCommunicator;
+        MPI_Comm_split(world, gpuRank ? 0 : MPI_UNDEFINED, rank, &gpuCommunicator);
+        if (!gpuRank) {
+            releaseGpu();
+            MPI_Request request;
+            MPI_Ibarrier(world, &request);
+            int done = 0;
+            while (!done) {
+                MPI_Test(&request, &done, MPI_STATUS_IGNORE);
+                if (!done)
+                    usleep(100000);
+            }
+            int code = 0;
+            MPI_Bcast(&code, 1, MPI_INT, 0, world);
+            MPI_Finalize();
+            std::_Exit(code);
+        }
         worldCommunicator = world;
         global::mpi().init(gpuCommunicator);
-        pcout << "The other " << size - 1 << " MPI ranks wait for the end of the GPU run." << endl;
-        return;
+        int waiting = size - global::mpi().getSize();
+        if (waiting > 0)
+            pcout << "The other " << waiting << " MPI ranks wait for the end of the GPU run." << endl;
     }
-    releaseGpu();
-    MPI_Request request;
-    MPI_Ibarrier(world, &request);
-    int done = 0;
-    while (!done) {
-        MPI_Test(&request, &done, MPI_STATUS_IGNORE);
-        if (!done)
-            usleep(100000);
-    }
-    int code = 0;
-    MPI_Bcast(&code, 1, MPI_INT, 0, world);
-    MPI_Finalize();
-    std::_Exit(code);
+    // One block per GPU rank in the dense decomposition (the policy may have counted the world)
+    defaultMultiBlockPolicy3D().setNumProcesses(global::mpi().getSize());
 }
 
 // GPU mode: a CPU lattice with placeholder dynamics (gpuSolver.h) and the current state of the
 // CPU lattice is copied to the GPU. The CPU lattice keeps the real dynamics for output and
-// checkpoints.
-void startGpu()
+// checkpoints. Collective; false (on all ranks) if the GPU lattice fails on any rank.
+bool startGpu()
 {
     pcout << "Copying the lattice to the GPU..." << endl;
     Box3D box = lattice->getBoundingBox();
     auto *placeholder = new MultiBlockLattice3D<T, DESCRIPTOR>(
         lattice->getMultiBlockManagement(), defaultMultiBlockPolicy3D().getBlockCommunicator(),
         defaultMultiBlockPolicy3D().getCombinedStatistics(), defaultMultiBlockPolicy3D().getMultiCellAccess<T, DESCRIPTOR>(),
-        new BGKdynamics<T, DESCRIPTOR>(sim.omega));
+        new NoDynamics<T, DESCRIPTOR>(1.0));   // Outside voxels (see FluidDynamicsFunctional3D)
+    applyProcessingFunctional(new FluidDynamicsFunctional3D(new BGKdynamics<T, DESCRIPTOR>(sim.omega)), box, *placeholder, *labelField);
     for (auto &o : openings)
         o->setPlaceholderBCType(*placeholder, sim.omega);
-    defineDynamics(*placeholder, *labelField, box, new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);
     defineDynamics(*placeholder, *labelField, box, new BounceBack<T, DESCRIPTOR>(1.0), (int)WALL);
     copy(*lattice, box, *placeholder, box, modif::staticVariables);
     for (auto &o : openings)
@@ -1016,13 +1241,30 @@ void startGpu()
         porous.linCoeff = linCoeff_lb;
         porous.quadCoeff = quadCoeff_lb;
     }
-    gpu = new GpuSolver(*placeholder, openings, sim, porous);
+    int failed = 0;
+    std::string error;
+    try {
+        gpu = new GpuSolver(*placeholder, openings, sim, porous);
+    }
+    catch (std::exception const& exception) {
+        failed = 1;
+        error = exception.what();
+    }
     delete placeholder;
+    int anyFailed = failed;
+    global::mpi().reduceAndBcast(anyFailed, MPI_MAX);
+    if (anyFailed) {
+        if (failed)
+            std::cerr << "ERROR on rank " << global::mpi().getRank() << ": " << error << std::endl;
+        pcout << "ERROR: the GPU lattice could not be set up." << endl;
+        return false;
+    }
 
     std::string name;
     std::size_t freeBytes = 0, totalBytes = 0;
     if (queryGpu(name, freeBytes, totalBytes))
         pcout << "GPU memory in use: " << (totalBytes - freeBytes) / 1e9 << " GB of " << totalBytes / 1e9 << " GB." << endl;
+    return true;
 }
 #endif
 
@@ -1083,7 +1325,11 @@ int runSimulation(std::string const& outDir)
     // Walls and outside voxels. This also overrides the boundary dynamics that the openings
     // instantiated on wall/outside voxels of their bounding rectangles.
     pcout << "Defining walls..." << std::endl;
-    defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);  // Reference density, so outside cells report 0 Pa
+    // NoDynamics with the reference density, so outside cells report 0 Pa (in GPU mode the background dynamics)
+    if (gpuMode)
+        applyProcessingFunctional(new OutsideToBackgroundFunctional3D(), lattice->getBoundingBox(), *lattice, *labelField);
+    else
+        defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new NoDynamics<T, DESCRIPTOR>(1.0), (int)UNUSED);
     defineDynamics(*lattice, *labelField, lattice->getBoundingBox(), new BounceBack<T, DESCRIPTOR>(1.0), (int)WALL);
 
     pcout << "Initializing lattice in equilibrium..." << std::endl;
@@ -1112,7 +1358,7 @@ int runSimulation(std::string const& outDir)
             return -1;
         }
 
-        loadBinaryBlock(*lattice, chkDataFile);
+        loadLattice(*lattice, chkDataFile, gpuMode);
 
         // Bring the boundary waveforms to the time of the checkpoint
         imposeOpenings(stat_cycle * sim.C_t);
@@ -1121,8 +1367,8 @@ int runSimulation(std::string const& outDir)
     }
 
 #ifdef HEMOFLOW_GPU
-    if (gpuMode)
-        startGpu();
+    if (gpuMode && !startGpu())
+        return -1;
 #endif
     delete labelField;   // Not needed any more
     labelField = nullptr;
@@ -1192,7 +1438,7 @@ int runSimulation(std::string const& outDir)
 
             plb_ofstream ofile(chkParamFile.c_str()); ofile << stat_cycle << endl;
             syncCpuLattice();
-            saveBinaryBlock(*lattice, chkDataFile);
+            saveLattice(*lattice, chkDataFile, gpuMode);
         }
     } // End of main loop
 

@@ -42,8 +42,8 @@ public:
     // Advance time by dt and impose the boundary values
     void progressTime(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, T dt) { advanceTime(dt); imposeValues(lattice); }
     // Current boundary value: velocity openings u = profile * getVelocityScale() (peak velocity [lb]), pressure openings rho
-    T getVelocityScale() const { return bcParameter * cScale; }
-    T getDensity() const { return 1.0 + bcParameter * cScale; }
+    T getVelocityScale() const { return (T)(bcParameter * cScale); }
+    T getDensity() const { return (T)(1.0 + bcParameter * cScale); }
     void createConstantPressureProfile();
     void createPoiseuilleProfile();     // Peak velocity 1 (lattice units), zero on the fitted ellipse
     void createBluntVelocityProfile();  // Velocity 1 (lattice units) on every node
@@ -72,13 +72,13 @@ public:
     // Flow rate (lattice units, inflow positive) of the profile with unit peak velocity.
     T getProfileFlux() const { return profileFlux; }
     // Flow rate currently imposed on a velocity or Murray opening (lattice units, inflow positive).
-    T getImposedFluxLB() const { return isVelocityType() ? profileFlux * bcParameter * cScale : 0.0; }
+    T getImposedFluxLB() const { return isVelocityType() ? (T)(profileFlux * bcParameter * cScale) : (T)0.0; }
     T getImposedFlowRate(const SimPar& s) const;    // [m^3/s], inflow positive
     // Flow rate measured on the lattice nodes of the opening [m^3/s], inflow positive. Collective (all MPI ranks).
     T measureFlowRate(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, const SimPar& s) const;
 
     bool getHasScaleFunction() const { return hasScaleFunction; }
-    T getPeriod() const { return hasScaleFunction ? scaleTime.back() : -1.0; }
+    T getPeriod() const { return hasScaleFunction ? (T)scaleTime.back() : (T)-1.0; }
 
     void setName(const std::string& name_) { name = name_; }
     std::string getName() const { return name; }
@@ -103,13 +103,14 @@ private:
     T profileFlux;   // Flux of the unit-peak profile through the face [lattice units]
     T bcParameter;   // Velocity openings: peak velocity [lb]. Pressure openings: density deviation rho-1 [lb]. Scaled by the waveform.
 
-    // Scale function (waveform)
+    // Scale function (waveform). In double also in single-precision builds: a float clock that adds
+    // dt = 1e-5 s every step runs 0.7 ms ahead after one 0.8 s cycle (rounding of each addition).
     bool hasScaleFunction;
-    std::vector<T> scaleSignal;
-    std::vector<T> scaleTime;
-    T cScale;      // Current value of the scale function
-    int cTimePos;  // Current segment of the waveform
-    T cTimeVal;    // Current time within the period
+    std::vector<double> scaleSignal;
+    std::vector<double> scaleTime;
+    double cScale;      // Current value of the scale function
+    int cTimePos;       // Current segment of the waveform
+    double cTimeVal;    // Current time within the period
 };
 
 

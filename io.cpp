@@ -97,10 +97,10 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pli
         vtkOut.writeData<3,float>(*computeVelocity(lattice), "velocity [m/s]", sim.C_l/sim.C_t);
 
     if (out.pressure) {
-        // Gauge pressure p = c_s^2 (rho - 1) C_p. Subtract the reference density in double
-        // precision before converting to float to avoid cancellation.
-        std::unique_ptr<MultiScalarField3D<T> > rhoDeviation = subtract(*computeDensity(lattice), (T)1.0);
-        vtkOut.writeData<float>(*rhoDeviation, "pressure [Pa]", (float)(sim.C_p / 3.0));
+        // Gauge pressure p = c_s^2 (rho - 1) C_p, from rhoBar = rho - 1, which Palabos stores
+        // (populations as f - t_i). rho itself would round rhoBar to one ulp of rho: in single
+        // precision 6e-8, about 0.01 Pa at the verification resolutions.
+        vtkOut.writeData<float>(*computeRhoBar(lattice), "pressure [Pa]", (float)(sim.C_p / 3.0));
     }
 
     if (out.stress) {
@@ -125,6 +125,44 @@ void writeVTK(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, const SimPar &sim, pli
             setToConstant(*nu, nu->getBoundingBox(), (T)(DESCRIPTOR<T>::cs2 * (1.0 / sim.omega - 0.5)));
         vtkOut.writeData<float>(*nu, "viscosity [Pa s]", (float)(sim.C_r * sim.C_l * sim.C_l / sim.C_t));
     }
+}
+
+void saveLattice(MultiBlockLattice3D<T,DESCRIPTOR> const& lattice, std::string const& fileName, bool plainSerializer)
+{
+    if (!plainSerializer) {
+        saveBinaryBlock(lattice, fileName);
+        return;
+    }
+    // As saveBinaryBlock, with the other serializer
+    std::ofstream *ostr = nullptr;
+    bool isOK = true;
+    if (global::mpi().isMainProcessor()) {
+        ostr = new std::ofstream(fileName.c_str());
+        isOK = (bool)(*ostr);
+    }
+    plbMainProcIOError(!isOK, "Could not open binary file " + fileName + " for saving");
+    serializerToBase64Stream(new MultiBlockSerializer3D(lattice, lattice.getBoundingBox(), global::IOpolicy().getIndexOrderingForStreams()),
+                             ostr, false);
+    delete ostr;
+}
+
+void loadLattice(MultiBlockLattice3D<T,DESCRIPTOR>& lattice, std::string const& fileName, bool plainSerializer)
+{
+    if (!plainSerializer) {
+        loadBinaryBlock(lattice, fileName);
+        return;
+    }
+    // As loadBinaryBlock, with the other unserializer
+    std::ifstream *istr = nullptr;
+    bool isOK = true;
+    if (global::mpi().isMainProcessor()) {
+        istr = new std::ifstream(fileName.c_str());
+        isOK = (bool)(*istr);
+    }
+    plbMainProcIOError(!isOK, "Could not open binary file " + fileName + " for reading");
+    base64StreamToUnSerializer(istr, new MultiBlockUnSerializer3D(lattice, lattice.getBoundingBox(), global::IOpolicy().getIndexOrderingForStreams()),
+                               false);
+    delete istr;
 }
 
 #ifdef HEMOFLOW_WITH_HDF5

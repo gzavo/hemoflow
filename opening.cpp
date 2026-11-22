@@ -28,18 +28,49 @@ std::string labelStr(int label)
     return "Opening (label " + std::to_string(label) + ")";
 }
 
-// GPU placeholders: dynamics whose names Palabos maps to GPU models (gpuSolver.h)
+// GPU placeholders: dynamics whose names Palabos maps to GPU models (gpuSolver.h), in the cells
+// of one opening (its node set). The functional covers bulk and envelope of every block, so Palabos
+// does not regenerate the envelopes afterwards: defineDynamics row by row regenerated the dynamics
+// of all envelope cells of the lattice once per row, which took hours in the GPU build with many
+// blocks (there every allocation is CUDA managed memory).
 template <int direction, int orientation>
-void definePlaceholder(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, std::vector<Box3D> const& runs, T omega, bool velocity)
-{
-    for (Box3D const& run : runs) {
-        if (velocity)
-            defineDynamics(lattice, run, new RegularizedVelocityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
-                                             new BGKdynamics<T, DESCRIPTOR>(omega)));
-        else
-            defineDynamics(lattice, run, new RegularizedDensityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
-                                             new TRTdynamics<T, DESCRIPTOR>(omega)));
+class PlaceholderDynamics3D : public BoxProcessingFunctional3D_L<T, DESCRIPTOR> {
+public:
+    PlaceholderDynamics3D(NodeSet const* nodes_, T omega_, bool velocity_) : nodes(nodes_), omega(omega_), velocity(velocity_) { }
+
+    virtual void process(Box3D domain, BlockLattice3D<T, DESCRIPTOR>& lattice)
+    {
+        Dot3D offset = lattice.getLocation();
+        for (plint iX = domain.x0; iX <= domain.x1; ++iX)
+            for (plint iY = domain.y0; iY <= domain.y1; ++iY)
+                for (plint iZ = domain.z0; iZ <= domain.z1; ++iZ) {
+                    plint x = iX + offset.x, y = iY + offset.y, z = iZ + offset.z;
+                    if (x < 0 || y < 0 || z < 0 || x >= Nx || y >= Ny || z >= Nz || nodes->find(gT(x, y, z)) == nodes->end())
+                        continue;
+                    if (velocity)
+                        lattice.attributeDynamics(iX, iY, iZ, new RegularizedVelocityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
+                                                                  new BGKdynamics<T, DESCRIPTOR>(omega)));
+                    else
+                        lattice.attributeDynamics(iX, iY, iZ, new RegularizedDensityBoundaryDynamics<T, DESCRIPTOR, direction, orientation>(
+                                                                  new TRTdynamics<T, DESCRIPTOR>(omega)));
+                }
     }
+    virtual PlaceholderDynamics3D<direction, orientation>* clone() const { return new PlaceholderDynamics3D<direction, orientation>(*this); }
+    // Written (dataStructure): with modif::nothing Palabos would treat the lattice as read-only and
+    // leave out the envelope parts that overlap other blocks
+    virtual void getTypeOfModification(std::vector<modif::ModifT>& modified) const { modified[0] = modif::dataStructure; }
+    virtual BlockDomain::DomainT appliesTo() const { return BlockDomain::bulkAndEnvelope; }
+
+private:
+    NodeSet const* nodes;
+    T omega;
+    bool velocity;
+};
+
+template <int direction, int orientation>
+void definePlaceholder(MultiBlockLattice3D<T, DESCRIPTOR>& lattice, NodeSet const& nodes, Box3D const& box, T omega, bool velocity)
+{
+    applyProcessingFunctional(new PlaceholderDynamics3D<direction, orientation>(&nodes, omega, velocity), box, lattice);
 }
 
 }  // namespace
@@ -353,7 +384,7 @@ void OpeningHandler::loadScaleFunction(const std::string& fileName)
     for (size_t i = 1; i < scaleTime.size(); i++)
         if (scaleTime[i] <= scaleTime[i - 1])
             throw std::runtime_error("Scale function " + fileName + ": the times must be strictly increasing.");
-    if (std::fabs(scaleSignal.front() - scaleSignal.back()) > 1e-6 * std::max((T)1.0, std::fabs(scaleSignal.front())))
+    if (std::fabs(scaleSignal.front() - scaleSignal.back()) > 1e-6 * std::max(1.0, std::fabs(scaleSignal.front())))
         pcout << "-> *WARNING*: the first and last value of " << fileName
               << " differ, so the boundary value jumps at the start of every cycle." << std::endl;
 
@@ -405,12 +436,12 @@ void OpeningHandler::setPlaceholderBCType(MultiBlockLattice3D<T, DESCRIPTOR>& la
         throw std::runtime_error(labelStr(label) + ": free-outflow openings have no GPU placeholder.");
     int orientation = -faceSign;   // Palabos: sign of the outward normal
     switch (faceAxis * 2 + (orientation > 0 ? 1 : 0)) {
-        case 0: definePlaceholder<0, -1>(lattice, runs, omega, velocity); break;
-        case 1: definePlaceholder<0, 1>(lattice, runs, omega, velocity); break;
-        case 2: definePlaceholder<1, -1>(lattice, runs, omega, velocity); break;
-        case 3: definePlaceholder<1, 1>(lattice, runs, omega, velocity); break;
-        case 4: definePlaceholder<2, -1>(lattice, runs, omega, velocity); break;
-        default: definePlaceholder<2, 1>(lattice, runs, omega, velocity); break;
+        case 0: definePlaceholder<0, -1>(lattice, nodeSet, boundingBox, omega, velocity); break;
+        case 1: definePlaceholder<0, 1>(lattice, nodeSet, boundingBox, omega, velocity); break;
+        case 2: definePlaceholder<1, -1>(lattice, nodeSet, boundingBox, omega, velocity); break;
+        case 3: definePlaceholder<1, 1>(lattice, nodeSet, boundingBox, omega, velocity); break;
+        case 4: definePlaceholder<2, -1>(lattice, nodeSet, boundingBox, omega, velocity); break;
+        default: definePlaceholder<2, 1>(lattice, nodeSet, boundingBox, omega, velocity); break;
     }
 }
 
@@ -418,7 +449,7 @@ void OpeningHandler::advanceTime(T dt)
 {
     if (hasScaleFunction) {
         int len = scaleTime.size();
-        T period = scaleTime[len - 1];
+        double period = scaleTime[len - 1];
 
         cTimeVal += dt;
         if (cTimeVal >= period) {
