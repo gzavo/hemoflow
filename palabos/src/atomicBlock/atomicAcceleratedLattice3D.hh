@@ -1433,6 +1433,12 @@ void AcceleratedLatticeDataTransfer3D<T, Descriptor>::attribute_static(
     plint Ndomain = toDomain.nCells();
     Box3D destBoundingBox = constLattice->getBoundingBox();
     plint Nlattice = destBoundingBox.nCells();
+    // HemoFlow local patch: index the source block with its own size (the blocks of a sparse
+    // decomposition differ in size; with the destination's size, population iPop was read from
+    // the wrong cell)
+    plint from_ny = from.getNy();
+    plint from_nz = from.getNz();
+    plint from_N = from.getBoundingBox().nCells();
     T *to_populations = lattice->populations;
     T const *from_populations = from.populations;
     ExternalFieldArray<T, typename Descriptor<T>::ExternalField> *to_ext = lattice->externalScalars;
@@ -1450,7 +1456,7 @@ void AcceleratedLatticeDataTransfer3D<T, Descriptor>::attribute_static(
             plint iX_from = iX_to + deltaX;
             plint iY_from = iY_to + deltaY;
             plint iZ_from = iZ_to + deltaZ;
-            plint iFrom = iZ_from + lattice_nz * (iY_from + lattice_ny * iX_from);
+            plint iFrom = iZ_from + from_nz * (iY_from + from_ny * iX_from);
 
             for (plint iPop = 0; iPop < Descriptor<T>::numPop; ++iPop) {
                 plint iX_prev = iX_to - Descriptor<T>::c_gpu(iPop, 0);
@@ -1459,7 +1465,7 @@ void AcceleratedLatticeDataTransfer3D<T, Descriptor>::attribute_static(
                 bool selectPopulation = !contained(iX_prev, iY_prev, iZ_prev, destBoundingBox);
                 if (selectPopulation) {
                     to_populations[iPop * Nlattice + iTo] =
-                        from_populations[iPop * Nlattice + iFrom];
+                        from_populations[iPop * from_N + iFrom];
                 }
             }
             for (plint iExt = 0; iExt < numExt; ++iExt) {

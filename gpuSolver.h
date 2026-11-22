@@ -30,7 +30,11 @@
 //   4. porous force of a flow diverter (on the CPU PorousForceFunctional, after the opening
 //      processors): from the velocity after streaming, written into the force field that the
 //      next collision uses. Only porous fluid cells, from a list made at start-up;
-//   5. envelope exchange (populations and external scalars).
+//   5. envelope exchange (populations and external scalars);
+//   6. with several blocks: envelope copies of the opening nodes get all populations from the
+//      block that owns the node. Palabos' GPU exchange copies only the populations that streaming
+//      within the receiving block cannot provide, which is exact for plain streaming, but the
+//      owner has rebuilt all populations of an opening node after streaming.
 //
 // The CPU lattice with the real dynamics stays: copyTo() brings the GPU state into it for
 // output, checkpoints and diagnostics, so that io.cpp and the checkpoint format do not change.
@@ -74,7 +78,8 @@ public:
               SimPar const& sim, GpuPorousMedium const& porous);
     ~GpuSolver();
 
-    // One time step (collision, streaming, opening nodes, porous force, envelope exchange)
+    // One time step (collision, streaming, opening nodes, porous force, envelope exchange,
+    // opening-node envelope copies)
     void collideAndStream();
     // Write the current boundary values of the openings (OpeningHandler::getVelocityScale,
     // getDensity) to the GPU
@@ -90,6 +95,10 @@ public:
         int kind;
         plint cell;   // FLUID: linear index of the cell in its block
         plint aux;    // VELOCITY_NODE: dynamic-scalar index; PRESSURE_NODE: index in the velocity buffer
+    };
+    // Envelope copy of an opening node and its owner cell
+    struct CellPair {
+        plint from, to;   // Linear indices in the owner block and in the block with the copy
     };
     // Fluid cell in the porous medium
     struct PorousCell {
@@ -123,6 +132,11 @@ private:
         std::vector<Node> nodes;
     };
 
+    struct EnvelopeCopies {
+        AtomicAcceleratedLattice3D<T, DESCRIPTOR> const* from;
+        AtomicAcceleratedLattice3D<T, DESCRIPTOR>* to;
+        std::vector<CellPair> cells;
+    };
     struct PorousGroup {
         AtomicAcceleratedLattice3D<T, DESCRIPTOR>* block;
         std::vector<PorousCell> cells;   // In the bulk of the block; the exchange fills the envelope
@@ -131,12 +145,14 @@ private:
     void completeVelocityNodes();
     void completePressureNodes();
     void applyPorousForce();
+    void copyNodeEnvelopes();
 
     AcceleratedLattice3D<T, DESCRIPTOR>* lattice;
     std::vector<NodeGroup<VelocityNode> > velocityNodes;
     std::vector<NodeGroup<PressureNode> > pressureNodes;
     std::vector<Array<T, 3> > pressureVelocities;   // Velocity buffer of the pressure nodes
     std::vector<PorousGroup> porousCells;
+    std::vector<EnvelopeCopies> nodeCopies;   // Per (owner block, block with copies)
     T linCoeff, quadCoeff;      // Porous coefficients a, b (lattice units)
     T omega;                    // Newtonian omega, or the one at infinite shear (Carreau)
     bool nonNewtonian;

@@ -38,6 +38,13 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       `palabos/src/acceleratedLattice/acceleratedProcessors3D.hh` (non-inline function in a
       header, so programs with several source files fail to link). Report upstream and drop
       the patch once fixed there.
+- [x] Local patch (22 November 2026, GPU Phase 5):
+      `AcceleratedLatticeDataTransfer3D::attribute_static` in
+      `palabos/src/atomicBlock/atomicAcceleratedLattice3D.hh` indexed the source block with
+      the destination block's size. Envelope copies between GPU blocks of different sizes on
+      the same process read population i from a cell i·(difference in cells) away. Only
+      several GPU blocks per process are affected, not the one-block GPU mode or the CPU.
+      Report upstream and drop the patch once fixed there.
 - [x] Build with GCC 13 (system) and GCC 15 (conda)
 - [x] Regression-test against the old Palabos: bit-identical results for the pipe,
       NAP180 with flow diverter, C0002 Murray split, 100 Pa outlet with waveform, free
@@ -222,7 +229,7 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 ## 8. Repository hygiene
 
 - [ ] Track Palabos as a pinned git submodule or CMake `FetchContent` instead of a
-      vendored snapshot (keeping the `replaceAll` patch, see section 0); record the
+      vendored snapshot (keeping the two local patches of section 0); record the
       HighFive and cnpy versions (cnpy has a local patch for ZIP64 `.npz` files written by
       Python ≥ 3.12).
 - [ ] Remove or update stale scripts: `scripts/cartesius_job.sh` (Cartesius is

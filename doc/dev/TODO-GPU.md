@@ -1,8 +1,8 @@
 # Running HemoFlow on NVIDIA GPUs (plan)
 
-Status: Phases 0-4 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
-openings, flow diverters, Newtonian and Carreau fluid on the GPU. Next: Phase 5 (verification)
-and Phase 6 (output speed, several GPUs). First investigated on 10 November 2026 (that version is in git, commit bca490e);
+Status: Phases 0-5 done (21-22 November 2026). The GPU build runs velocity, Murray and pressure
+openings, flow diverters, Newtonian and Carreau fluid on the GPU, verified against the CPU on the
+verification cases. Next: Phase 6 (output speed, several GPUs). First investigated on 10 November 2026 (that version is in git, commit bca490e);
 revised on 21 November 2026 after a second reading of the vendored Palabos (`palabos/src`), the
 upstream GPU examples and the workstation. Target precision: single (decided on 21 November
 2026); double only if single turns out insufficient. Palabos stays an external dependency: the
@@ -613,20 +613,76 @@ comparable to rounding.
 - [ ] Later, only if output dominates: GPU functionals for the output fields, which then must
       reproduce the moments of each dynamics type.
 
-### Phase 5: verification
+### Phase 5: verification (done 22 November 2026)
 
-- [ ] Pipe (`tests/verification/0-pipe`): GPU against CPU, pressure drop (78.7 Pa) and profile;
-      Carreau pipe (`carreau.xml`).
-- [ ] NAP180 with the flow diverter, C0002 Murray, a pressure waveform: GPU against CPU.
-      Short runs (400 steps) of NAP180 with the flow diverter in Murray mode are done
-      (Phase 4); a full cycle and the other two cases are not.
-      Newtonian runs of the validation build without FMA may be bit-identical; otherwise
-      report the differences, which are expected near round-off. Carreau differs at round-off
-      level because the device `pow` differs from glibc's.
-- [ ] Decomposition: 1, 2 and 4 ranks on the one GPU (without `USE_CUDA_MALLOC`, as the system
-      MPI is not CUDA-aware) and different block sizes must give bit-identical results, as on
-      the CPU.
-- [ ] Checkpoint restart reproduces an uninterrupted GPU run.
+All runs in single precision, GPU against the CPU build in the same precision (GCC, 16 ranks,
+sparse decomposition) unless stated otherwise.
+
+- [x] **Pipe** (`tests/verification/0-pipe`).
+  - `pipe.xml`, 80 k steps: `pressure_drop.py` gives 78.70 Pa and flow rates
+    1.483 / 1.485·10⁻⁵ m³/s, as in Phase 3 (CPU: 78.70 single, 78.72 double). The velocity
+    profile is within 6.6·10⁻⁷ m/s of the CPU single profile and within 3.4·10⁻⁵ m/s (3.8·10⁻⁵
+    relative) of CPU double. GPU 71 s.
+  - Carreau pipe (`carreau.xml` with `--calibrate newtonian.xml`, 48 k steps each). The GPU
+    gives the CPU's verification metrics:
+
+    | Run | Pressure gradient | Peak velocity | Profile RMS |
+    |---|---|---|---|
+    | GPU single | 220.20 Pa/m (+0.13 %) | −0.79 % | 0.72 % |
+    | CPU single | 220.19 Pa/m (+0.13 %) | −0.78 % | 0.72 % |
+    | CPU double | 220.21 Pa/m (+0.12 %) | −0.79 % | 0.72 % |
+
+    GPU 44 s for either fluid; CPU 150 s Newtonian, 225 s Carreau.
+- [x] **Pressure waveform**: the pipe with the cerebral flow waveform at the inlet and a
+      100 Pa × waveform outlet, one cycle (0.8 s, 40 k steps). Velocity within 2-5·10⁻⁶
+      relative at every output. Pressure differs by a constant 0.0095 Pa: one float32 ulp of
+      the density near 1, i.e. the pressure resolution of single precision at this dx and dt,
+      the same on the CPU (see Phase 6, output).
+- [x] **C0002, Murray mode** (`tests/verification/2-aneurisk_C0002`, voxelized at its
+      configured resolution: 1.8 M voxels, 108 k fluid, four openings), one cycle (40 k steps,
+      50 outputs).
+  - Velocity within about 1·10⁻⁶ relative for most of the cycle. The largest difference,
+    2.9·10⁻⁵, is at peak systole (1.0 m/s); it decays to 1·10⁻⁶ by the end of the cycle.
+  - Pressure within 1-2 float ulps (0.004-0.008 Pa).
+  - `Murray_check.py` gives the same split on both, to all printed digits. Murray outlets
+    within 0.04 % of their d³ share at the end of the cycle (0.24-0.65 % at systole). The 0 Pa
+    outlet deviates by 18-36 % on both (the smallest outlet, about 2.5 voxels in radius).
+  - GPU 148 s, CPU 475 s.
+- [x] **NAP180 5 M with the flow diverter** (a = 100, b = 200, Murray mode), one cycle of the
+      cerebral waveform (80 k steps, outputs every 0.1 s). Velocity within
+      1.2-5.5·10⁻⁶ relative at all eight outputs, pressure within one float ulp (0.018 Pa).
+      GPU 569 s, CPU 1643 s.
+- **No-FMA build**: not made. GPU double already gives the CPU double output to one ulp of the
+  float32 output (Phase 4); bit-identical checkpoints would also need the two-pass pressure
+  condition to run in the CPU's order.
+- [x] **Decomposition**: several blocks on the one GPU, with the development switch
+      `HEMOFLOW_GPU_BLOCK_SIZE=n` (sparse decomposition with blocks of n in GPU mode). Several
+      ranks on the GPU are a Phase 6 item (one rank per GPU). This test found two bugs, both
+      only with several blocks per process:
+  - **Palabos** (`attribute_static`, the copy between GPU blocks on the same process) indexed
+    the source block with the destination block's size. Blocks of different sizes therefore
+    exchanged populations from the wrong cells; with 16-cell blocks on the pipe the velocity was
+    off by up to 35 %, and NAP180 with 64-cell blocks hit an illegal memory access. Fixed in
+    the vendored Palabos (local patch, TODO.md section 0). gpuSmoke did not catch it, as its
+    blocks have equal sizes.
+  - **HemoFlow**: Palabos' GPU exchange copies only the envelope populations that streaming
+    within the receiving block cannot provide. HemoFlow rebuilds all populations of an opening
+    node after streaming, so envelope copies of opening nodes kept a mix of their own and the
+    owner's values. `GpuSolver` now copies all populations of these copies from their owner
+    after the exchange (`copyNodeEnvelopes`). With MPI between GPUs (Phase 6) this copy needs
+    communication.
+
+  After the fixes, NAP180 (Newtonian and Carreau, 8 and 44 blocks) and three pipe cases
+  (velocity only, 100 Pa outlet with waveform, flow diverter with Carreau; 27 blocks) give
+  exactly the output of the single block. The single block is unchanged (byte-identical
+  checkpoint).
+- [x] **Restarts.**
+  - GPU → GPU (Phase 4): identical output.
+  - CPU → GPU (Phase 2).
+  - GPU → CPU: a GPU double checkpoint of the pipe with flow diverter, continued on 16 CPU
+    ranks with the sparse decomposition, gives the uninterrupted CPU run: pressure identical,
+    velocity within 1.8·10⁻¹² m/s.
+- **CPU path** byte-identical to the committed code (harness, 7 cases); unit tests 74/74 (GCC).
 
 ### Phase 6: performance and several GPUs
 
@@ -634,6 +690,8 @@ comparable to rounding.
       (e.g. 96-160): time per step, memory, kernel count (Nsight Systems). Each block overlap
       costs about 30 µs per step (Phase 0), so the optimum is at few blocks. The GPU build
       should default to that layout and warn when a rank has many blocks.
+      `HEMOFLOW_GPU_BLOCK_SIZE=n` (development switch, Phase 5) already runs the sparse
+      decomposition with blocks of n on the GPU; several blocks give the single block's output.
 - [ ] Single precision, the target: validate the GPU build against the CPU double results on
       the pipe, NAP180 with flow diverter (velocities near the device) and the Carreau pipe.
       Palabos stores f - t_i, which helps single precision. On the CPU, single precision
@@ -646,12 +704,19 @@ comparable to rounding.
       MPI (the HPC SDK's HPC-X) with `USE_CUDA_MALLOC`; GPUDirect RDMA if the cluster has it.
       The exchange does not overlap the computation, so each GPU should hold several million
       cells; small cases scale over few GPUs only.
+      `GpuSolver::copyNodeEnvelopes` (Phase 5) copies the envelope copies of opening nodes from
+      their owner block on the same process only; across ranks it needs an MPI exchange of
+      these cells after Palabos' exchange.
 - [ ] Output in GPU mode: about 5 s per output at 5 M voxels, against about 1 s on 16 CPU ranks,
       because `writeVTK` runs on one rank over the dense box. Options:
   - compute the output fields on the GPU (velocity, pressure, stress, viscosity, with the
     moments of each tag);
   - write only the fluid voxels;
   - let the waiting ranks write.
+
+  Pressure in single precision: the output takes it from ρ, whose float32 resolution near 1
+  is one ulp, 0.004-0.01 Pa at the verification resolutions (Phase 5). Writing it from
+  ρ̄ = ρ − 1, which Palabos stores, would remove this limit, also for CPU single builds.
 
   Setup on one rank (about 15 s at 5 M voxels) could use the same help.
 - [x] GPU build and launch documented in the README (22 November 2026).

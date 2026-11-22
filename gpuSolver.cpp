@@ -176,6 +176,16 @@ void porousForce(Block* block, PorousCell const* cells, std::size_t n, T linCoef
     });
 }
 
+// All populations of envelope copies of opening nodes from their owner cells
+void copyCells(Block const* from, Block* to, GpuSolver::CellPair const* pairs, std::size_t n)
+{
+    std::for_each(std::execution::par_unseq, pairs, pairs + n, [=](GpuSolver::CellPair const& p) {
+        Array<T, D::q> f;
+        from->pullPop(p.from, f);
+        to->pushPop(p.to, f);
+    });
+}
+
 // Face index 0..5 of (direction, orientation), for the dispatch to the templates
 int faceIndex(int direction, int orientation)
 {
@@ -360,6 +370,46 @@ GpuSolver::GpuSolver(MultiBlockLattice3D<T, DESCRIPTOR> const& placeholder, std:
         }
     }
 
+    // Envelope copies of the opening nodes, with the cell of the block that owns the node (the
+    // one whose bulk contains it). None with a single block.
+    {
+        MultiBlockManagement3D const& management = lattice->getMultiBlockManagement();
+        std::map<std::pair<plint, plint>, std::size_t> copyGroup;   // (owner id, copy id) -> nodeCopies index
+        auto localIndex = [](Block const& block, Index3D const& node, plint& i) {
+            Dot3D location = block.getLocation();
+            plint iX = node.x - location.x, iY = node.y - location.y, iZ = node.z - location.z;
+            if (iX < 0 || iY < 0 || iZ < 0 || iX >= block.getNx() || iY >= block.getNy() || iZ >= block.getNz())
+                return false;
+            i = iZ + block.getNz() * (iY + block.getNy() * iX);
+            return true;
+        };
+        for (OpeningHandler const* opening : openings) {
+            for (Index3D const& node : opening->getNodes()) {
+                plint owner = -1, ownerCell = -1;
+                for (auto const& entry : lattice->getBlockLattices())
+                    if (contained(node.x, node.y, node.z, management.getBulk(entry.first)) &&
+                        localIndex(*entry.second, node, ownerCell)) {
+                        owner = entry.first;
+                        break;
+                    }
+                if (owner < 0)
+                    continue;   // Owned by a block of another process (several GPUs, Phase 6)
+                for (auto const& entry : lattice->getBlockLattices()) {
+                    plint i = -1;
+                    if (entry.first == owner || !localIndex(*entry.second, node, i))
+                        continue;
+                    auto key = std::make_pair(owner, entry.first);
+                    auto it = copyGroup.find(key);
+                    if (it == copyGroup.end()) {
+                        it = copyGroup.insert(std::make_pair(key, nodeCopies.size())).first;
+                        nodeCopies.push_back(EnvelopeCopies {lattice->getBlockLattices().at(owner), entry.second, {}});
+                    }
+                    nodeCopies[it->second].cells.push_back(CellPair {ownerCell, i});
+                }
+            }
+        }
+    }
+
     // Porous fluid cells: nonzero multipliers and the fluid tag. As on the CPU, opening nodes in
     // the porous medium get no force (PorousForceFunctional skips boundary dynamics); porous voxels
     // are fluid or opening voxels (GeometryFile::isPorous), so walls and outside cells do not occur.
@@ -414,6 +464,7 @@ void GpuSolver::collideAndStream()
     completePressureNodes();
     applyPorousForce();
     lattice->executeInternalProcessors();   // Envelope exchange
+    copyNodeEnvelopes();
     lattice->incrementTime();
 }
 
@@ -460,6 +511,12 @@ void GpuSolver::completePressureNodes()
         default: completePressure<2, 1>(group.block, group.dynamicScalars, nodes, n, buffer, omega); break;
         }
     }
+}
+
+void GpuSolver::copyNodeEnvelopes()
+{
+    for (EnvelopeCopies const& group : nodeCopies)
+        copyCells(group.from, group.to, group.cells.data(), group.cells.size());
 }
 
 void GpuSolver::applyPorousForce()

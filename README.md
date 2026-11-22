@@ -12,7 +12,7 @@ haemodynamic effect of a device can be compared against the untreated case.
 The solver is built on the [Palabos](https://palabos.unige.ch) library
 (D3Q19 lattice, regularized BGK collision with Guo forcing). Palabos is an
 external dependency that ships with this repository in `palabos/` (upstream
-master after release 2.3.0, with one local patch listed in [doc/dev/TODO.md](doc/dev/TODO.md));
+master after release 2.3.0, with two local patches listed in [doc/dev/TODO.md](doc/dev/TODO.md));
 it is not developed here.
 
 * Language: C++ (solver), Python (preprocessing and post-processing scripts)
@@ -179,9 +179,11 @@ mpirun -np 16 ./build-gpu/hemoFlow case.xml     # the SDK's mpirun
 
 **Results and speed** (RTX A1000, details in TODO-GPU.md).
 - **Accuracy.** A GPU build in double precision gives the output of the CPU build, to round-off
-  (also with a flow diverter). In single precision it agrees to float rounding, about 3·10⁻⁶.
-  The pipe (test case 1) gives 78.70 Pa on the GPU against 78.72 Pa for the CPU in double
-  precision.
+  (also with a flow diverter). In single precision it agrees with the CPU single-precision
+  build to float rounding (about 10⁻⁶, up to 3·10⁻⁵ at peak systole), over full cardiac cycles
+  of the verification cases (pipe, Carreau pipe, C0002 Murray split, NAP180 with flow
+  diverter). The pipe (test case 1) gives 78.70 Pa on the GPU against 78.72 Pa for the CPU in
+  double precision; the Carreau pipe and the Murray split give the CPU's results.
 - **Speed.** The pipe validation (80 k steps) takes 67 s on the GPU against 263-358 s on 16 CPU
   cores. NAP180 at 5 M voxels with its flow diverter runs at about 720 M cell updates/s, for
   Newtonian and Carreau blood alike: 2.8 s for 400 steps, against about 8 s for the 16-core

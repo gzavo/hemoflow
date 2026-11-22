@@ -713,9 +713,20 @@ void createLattice(GeometryFile& geometry, vector<OpeningSpec> const& specs)
     if (gpuMode) {
         // One dense block for the GPU. The GPU-side packing of MPI messages needs the blocking communicator.
         defaultMultiBlockPolicy3D().toggleBlockingCommunication(true);
-        if (useSparse)
-            pcout << "GPU mode: one dense block (<sparse> and <blockSize> apply to CPU runs)." << endl;
-        useSparse = false;
+        // Development only (doc/dev/TODO-GPU.md, Phases 5-6): HEMOFLOW_GPU_BLOCK_SIZE=n puts the
+        // sparse decomposition with blocks of n on the GPU, to test and time several blocks
+        const char* gpuBlockSize = std::getenv("HEMOFLOW_GPU_BLOCK_SIZE");
+        if (gpuBlockSize != nullptr && std::atoi(gpuBlockSize) > 0) {
+            blockSize = std::atoi(gpuBlockSize);
+            useSparse = true;
+            pcout << "GPU mode: sparse decomposition with blocks of " << blockSize
+                  << " (HEMOFLOW_GPU_BLOCK_SIZE, for development)." << endl;
+        }
+        else {
+            if (useSparse)
+                pcout << "GPU mode: one dense block (<sparse> and <blockSize> apply to CPU runs)." << endl;
+            useSparse = false;
+        }
     }
 
     Dynamics<T, DESCRIPTOR>* bulkDynamics = nullptr;
