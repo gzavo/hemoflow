@@ -12,8 +12,8 @@ haemodynamic effect of a device can be compared against the untreated case.
 The solver is built on the [Palabos](https://palabos.unige.ch) library
 (D3Q19 lattice, regularized BGK collision with Guo forcing). Palabos is an
 external dependency that ships with this repository in `palabos/` (upstream
-master after release 2.3.0, with two local patches listed in [doc/dev/TODO.md](doc/dev/TODO.md));
-it is not developed here.
+master commit 4127697 of 3 April 2026, after release 2.3.0, with the two HemoFlow patches in
+`patches/palabos/`); it is not developed here.
 
 * Language: C++ (solver), Python (preprocessing and post-processing scripts)
 * Parallelism: MPI (Palabos block decomposition)
@@ -81,9 +81,10 @@ it is not developed here.
 | `tests/sensitivity/`, `tests/uncertainty/` | [EasyVVUQ](https://github.com/UCL-CCS/EasyVVUQ) sensitivity and uncertainty campaigns |
 | `doc/VV/` | Verification and validation notebook (`hemoflow_VV.ipynb`) and its data |
 | `doc/paraview_wss_calc.txt` | How to compute wall shear stress in ParaView from the stress output |
-| `palabos/` | Vendored Palabos library (external dependency): `src/` and `externalLibraries/` of upstream master after 2.3.0 |
+| `palabos/` | Vendored Palabos library (external dependency): `src/`, `externalLibraries/` and `dco/` of upstream master commit 4127697 (after 2.3.0), patched |
+| `patches/palabos/` | The HemoFlow patches to Palabos, each with the reason; `scripts/setup_palabos.sh` applies them |
 | `external/` | Vendored [HighFive](https://github.com/BlueBrain/HighFive) (HDF5 C++ wrapper) and [cnpy](https://github.com/rogersce/cnpy) (`.npz` reader) |
-| `scripts/`, `utils/` | Cluster job/environment scripts and small helpers (output compression) |
+| `scripts/`, `utils/` | Palabos setup (`setup_palabos.sh`), cluster job/environment scripts and small helpers (output compression) |
 
 ---
 
@@ -101,6 +102,16 @@ it is not developed here.
 
 Palabos, HighFive and cnpy come with the repository; nothing else needs
 to be downloaded.
+
+`palabos/` is upstream Palabos at a pinned commit with the patches of `patches/palabos/`
+applied. `scripts/setup_palabos.sh` creates it from these: it fetches the commit from
+gitlab.com, applies the patches and keeps only what the build uses. `--check` compares an
+existing `palabos/` with that result and lists any differences; `--force` replaces it.
+`palabos/HEMOFLOW_PATCHES` records the commit and the patches. CMake stops with a message
+when this record does not match `scripts/setup_palabos.sh` and `patches/palabos/`, because an
+unpatched Palabos fails to link and gives wrong results on several GPU blocks. Change
+Palabos only through a new patch in `patches/palabos/`, then run
+`scripts/setup_palabos.sh --force`.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

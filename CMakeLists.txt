@@ -117,6 +117,34 @@ endif()
 # Palabos library (external dependency, vendored in palabos/)
 ###############################################################################
 
+# palabos/ is upstream Palabos at the commit pinned in scripts/setup_palabos.sh, with the
+# HemoFlow patches of patches/palabos/; palabos/HEMOFLOW_PATCHES records both. Stop when the
+# record does not match: without the patches, the build fails to link or several GPU blocks
+# give wrong results.
+set(PALABOS_RECORD "${CMAKE_CURRENT_SOURCE_DIR}/palabos/HEMOFLOW_PATCHES")
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_palabos.sh" PALABOS_COMMIT REGEX "^PALABOS_COMMIT=")
+string(REGEX REPLACE "^PALABOS_COMMIT=([0-9a-f]+).*" "\\1" PALABOS_COMMIT "${PALABOS_COMMIT}")
+file(GLOB PALABOS_PATCHES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/patches/palabos/*.patch")
+list(SORT PALABOS_PATCHES)
+set(PALABOS_EXPECTED "commit ${PALABOS_COMMIT}")
+foreach(patch IN LISTS PALABOS_PATCHES)
+    file(SHA256 "${patch}" patchHash)
+    get_filename_component(patchName "${patch}" NAME)
+    string(APPEND PALABOS_EXPECTED "\npatch ${patchHash} ${patchName}")
+endforeach()
+if(NOT EXISTS "${PALABOS_RECORD}")
+    message(FATAL_ERROR "palabos/ is missing or was not set up by scripts/setup_palabos.sh. "
+                        "Run scripts/setup_palabos.sh (scripts/setup_palabos.sh --force replaces an existing palabos/).")
+endif()
+file(READ "${PALABOS_RECORD}" PALABOS_FOUND)
+string(STRIP "${PALABOS_FOUND}" PALABOS_FOUND)
+if(NOT PALABOS_FOUND STREQUAL PALABOS_EXPECTED)
+    message(FATAL_ERROR "palabos/ was set up for another Palabos commit or other patches than those of "
+                        "scripts/setup_palabos.sh and patches/palabos/. Run scripts/setup_palabos.sh --force.")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${PALABOS_RECORD}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_palabos.sh" ${PALABOS_PATCHES})
+
 file(GLOB_RECURSE PALABOS_SRC CONFIGURE_DEPENDS "palabos/src/*.cpp")
 file(GLOB_RECURSE PALABOS_EXT_SRC CONFIGURE_DEPENDS "palabos/externalLibraries/tinyxml/*.cpp")
 

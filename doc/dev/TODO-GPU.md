@@ -663,8 +663,8 @@ sparse decomposition) unless stated otherwise.
     the source block with the destination block's size. Blocks of different sizes therefore
     exchanged populations from the wrong cells; with 16-cell blocks on the pipe the velocity was
     off by up to 35 %, and NAP180 with 64-cell blocks hit an illegal memory access. Fixed in
-    the vendored Palabos (local patch, TODO.md section 0). gpuSmoke did not catch it, as its
-    blocks have equal sizes.
+    the vendored Palabos (`patches/palabos/0002-attribute_static-source-block-size.patch`,
+    TODO.md section 0). gpuSmoke did not catch it, as its blocks have equal sizes.
   - **HemoFlow**: Palabos' GPU exchange copies only the envelope populations that streaming
     within the receiving block cannot provide. HemoFlow rebuilds all populations of an opening
     node after streaming, so envelope copies of opening nodes kept a mix of their own and the

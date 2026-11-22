@@ -1,0 +1,25 @@
+HemoFlow patch to Palabos: make replaceAll() inline
+
+replaceAll() is a non-inline function defined in a header
+(acceleratedProcessors3D.hh, included through palabos3D.h). A program
+with several source files that include palabos3D.h then fails to link
+with a multiple-definition error. Affects every HemoFlow build, CPU and
+GPU.
+
+Added in November 2026 with the move to upstream master. Report
+upstream and drop this patch once fixed there.
+
+diff --git a/src/acceleratedLattice/acceleratedProcessors3D.hh b/src/acceleratedLattice/acceleratedProcessors3D.hh
+index d753245..52d7ecb 100644
+--- a/src/acceleratedLattice/acceleratedProcessors3D.hh
++++ b/src/acceleratedLattice/acceleratedProcessors3D.hh
+@@ -910,7 +910,8 @@ void ShanChenMultiComponentAccelerated3D<T, Descriptor, numSpecies>::getTypeOfMo
+ }
+ 
+ // https://stackoverflow.com/questions/3418231/replace-part-of-a-string-with-another-string
+-void replaceAll(std::string &str, const std::string &from, const std::string &to)
++// HemoFlow patch: 'inline' added, the header is included by several translation units.
++inline void replaceAll(std::string &str, const std::string &from, const std::string &to)
+ {
+     if (from.empty())
+         return;

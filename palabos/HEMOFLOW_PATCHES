@@ -1,0 +1,3 @@
+commit 4127697e90169bbef982295f1d1c933cf6e90caa
+patch eb6901c98f74eaa934428632ca099d7e2214018a7d2e658bd20dd988db6b8013 0001-inline-replaceAll.patch
+patch 0526d84d151bfb282ac5244163e163bc9c334ab21186ca8b7b148b3c4ef95fe4 0002-attribute_static-source-block-size.patch

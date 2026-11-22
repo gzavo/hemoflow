@@ -34,17 +34,24 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
       only switched to an identical `constexpr` constant; the removed `addGuoForce` call
       fixes double forcing in the Smagorinsky variant, which HemoFlow does not use)
 - [x] Adapt the build: C++20 default, skip the MPI C++ bindings
-- [x] Local patch: `inline` added to `replaceAll()` in
-      `palabos/src/acceleratedLattice/acceleratedProcessors3D.hh` (non-inline function in a
-      header, so programs with several source files fail to link). Report upstream and drop
-      the patch once fixed there.
-- [x] Local patch (22 November 2026, GPU Phase 5):
-      `AcceleratedLatticeDataTransfer3D::attribute_static` in
-      `palabos/src/atomicBlock/atomicAcceleratedLattice3D.hh` indexed the source block with
-      the destination block's size. Envelope copies between GPU blocks of different sizes on
-      the same process read population i from a cell i·(difference in cells) away. Only
-      several GPU blocks per process are affected, not the one-block GPU mode or the CPU.
-      Report upstream and drop the patch once fixed there.
+- [x] Local patch `patches/palabos/0001-inline-replaceAll.patch`: `inline` added to
+      `replaceAll()` in `palabos/src/acceleratedLattice/acceleratedProcessors3D.hh`
+      (non-inline function in a header, so programs with several source files fail to
+      link). Report upstream and drop the patch once fixed there.
+- [x] Local patch `patches/palabos/0002-attribute_static-source-block-size.patch`
+      (22 November 2026, GPU Phase 5): `AcceleratedLatticeDataTransfer3D::attribute_static`
+      in `palabos/src/atomicBlock/atomicAcceleratedLattice3D.hh` indexed the source block
+      with the destination block's size. Envelope copies between GPU blocks of different
+      sizes on the same process read population i from a cell i·(difference in cells) away.
+      Only several GPU blocks per process are affected, not the one-block GPU mode or the
+      CPU. Report upstream and drop the patch once fixed there.
+- [x] Pinned and reproducible (22 November 2026): the vendored copy is upstream master
+      commit 4127697e90169bbef982295f1d1c933cf6e90caa (3 April 2026) with the two patches
+      above and nothing else. Checked by diffing against upstream. `scripts/setup_palabos.sh`
+      recreates `palabos/` from the commit and `patches/palabos/` (`--check` compares,
+      `--force` replaces). `palabos/HEMOFLOW_PATCHES` records the commit and the patch
+      hashes, and CMake stops when the record does not match. Any further change to Palabos
+      goes in as a new patch file.
 - [x] Build with GCC 13 (system) and GCC 15 (conda)
 - [x] Regression-test against the old Palabos: bit-identical results for the pipe,
       NAP180 with flow diverter, C0002 Murray split, 100 Pa outlet with waveform, free
@@ -228,10 +235,11 @@ release 2.3.0; adds GPU-oriented accelerated lattices, needs C++20).
 
 ## 8. Repository hygiene
 
-- [ ] Track Palabos as a pinned git submodule or CMake `FetchContent` instead of a
-      vendored snapshot (keeping the two local patches of section 0); record the
-      HighFive and cnpy versions (cnpy has a local patch for ZIP64 `.npz` files written by
-      Python ≥ 3.12).
+- [x] Palabos is pinned and reproducible from `scripts/setup_palabos.sh` and
+      `patches/palabos/` (section 0). It stays vendored in git (25 MB, decided 22 November
+      2026), so that builds need no network access.
+- [ ] Record the HighFive and cnpy versions in the same way (cnpy has a local patch for
+      ZIP64 `.npz` files written by Python ≥ 3.12).
 - [ ] Remove or update stale scripts: `scripts/cartesius_job.sh` (Cartesius is
       decommissioned), `utils/update_times.sh`, the duplicate `compress_output.py`
       (root and `utils/`), the empty `preprocessor/run.sh`.
